@@ -333,11 +333,52 @@ ros2 topic pub --once /joint_command sensor_msgs/msg/JointState "{name: ['left_f
 
 ## Running Scripts
 
-Inside an Isaac Sim runtime, construct and inspect reusable USD scenes with:
+Inside an Isaac Sim runtime, construct reusable USD scenes with these tools.
+
+`scripts/tools/create_wall_room.py` creates a room USD asset.
+
+- `--output PATH`: base output path. Default: `assets/plain_white_room.usd`. The script appends room dimensions, and `_partition` when enabled.
+- `--length METERS`: inside room length along Y. Default: `30.0`.
+- `--width METERS`: inside room width along X. Default: `20.0`.
+- `--height METERS`: wall height. Default: `3.0`.
+- `--wall-thickness METERS`: wall thickness. Default: `0.1`.
+- `--material-preset NAME`: room material, one of `plain-white`, `matte-gray`, or `warm-white`. Default: `plain-white`.
+- `--floor-only`: create only the floor, without walls.
+- `--ceiling`: add a ceiling panel.
+- `--light-density METERS`: target spacing between ceiling rect lights. Smaller values create more lights. Default: `1.8`.
+- `--light-size NAME`: ceiling light panel shape, either `square` or `rectangle`. Default: `square`.
+- `--partition`: add a 5m partition wall with a 1m x 2m door opening.
+
+`scripts/tools/compose_scene_usd.py` composes the tabletop task scene.
+
+- `--output PATH`: USD file to write when `--save` is set. Default: `assets/tabletop_task_scene.usd`.
+- `--save`: write the composed scene to `--output`.
+- `--preview`: open the composed scene in Isaac Sim for visual checking.
+- `--include-top-table`: add the top-center table. Do not combine this with `--with-robot`, because they occupy the same area.
+- `--with-robot`: also reference the robot USD at `/World/Robot` for GUI validation.
+- `--env PATH_OR_NONE`: optional environment USD. Use `none` or a USD path; relative paths resolve from the repository root. Default: `none`.
+- `--randomize-cutlery-color`: apply random preview colors to cutlery assets.
+- `--randomize-cutlery-placement`: randomize cutlery placement around the cutlery table.
+- `--add-head`: add head payloads on the tables that have text labels.
+- `--bean-count COUNT`: number of coffee bean rigid bodies to place in the bowl. Default: `150`.
+- `--bean-color R G B`: coffee bean RGB color as three floats in `[0, 1]`. Default: `0.20 0.12 0.07`.
+- `--bean-density VALUE`: coffee bean density for USD physics mass properties. Default: `850.0`.
+
+Official room generation example:
 
 ```bash
-python scripts/tools/compose_scene_usd.py --output assets/tabletop_task_scene.usd
-python scripts/tools/compose_scene_usd.py --output assets/tabletop_task_scene_with_robot.usd --with-robot
+python scripts/tools/create_wall_room.py --length 30.0 --width 20.0 --height 3.0 --ceiling --partition
+```
+
+Official scene composition example:
+
+```bash
+python scripts/tools/compose_scene_usd.py --env assets/plain_white_room_20_30_3_partition.usd --bean-count 300 --save
+```
+
+Inspect the composed USD hierarchy:
+
+```bash
 python scripts/tools/inspect_usd.py assets/tabletop_task_scene_with_robot.usd
 ```
 
