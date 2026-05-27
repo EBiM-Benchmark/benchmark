@@ -19,6 +19,7 @@ DEFAULT_SCENE_NAME = "tabletop_task_scene.usd"
 DEFAULT_ENABLED_HEADS = 2
 HEAD_ROOT_PATH = "/World/Scene"
 HEAD_NAME_PREFIX = "Head_"
+ISAACSIM_FULL_EXPERIENCE = "/isaac-sim/apps/isaacsim.exp.full.kit"
 SCENE_ALIASES = {
     "default": DEFAULT_SCENE_NAME,
     "demo": "tabletop_task_scene_DEMO.usd",
@@ -123,14 +124,17 @@ def start_app(args: argparse.Namespace) -> Any:
         return app_launcher.app
 
     try:
-        from isaacsim import SimulationApp
+        from isaacsim.simulation_app import SimulationApp
     except ImportError as exc:
         raise SystemExit(
             "Could not import isaacsim. Run this inside an Isaac Sim runtime "
             "or use --launcher isaaclab."
         ) from exc
 
-    return SimulationApp({"headless": False})
+    return SimulationApp(
+        {"headless": False},
+        experience=ISAACSIM_FULL_EXPERIENCE,
+    )
 
 
 def open_stage(app: Any, scene_path: Path) -> Any:
@@ -161,9 +165,11 @@ def clear_selection() -> None:
     clear_paths = getattr(selection, "clear_selected_prim_paths", None)
     if clear_paths is not None:
         clear_paths()
-        return
 
-    selection.set_selected_prim_paths([], True)
+    # Isaac Sim 5.1 inside the container can leave an empty ALL-source
+    # selection entry after payload load-state changes unless the USD
+    # selection is explicitly normalized to an empty list.
+    selection.set_selected_prim_paths([], False)
 
 
 def head_payload_paths(stage: Any) -> list[Any]:
@@ -199,17 +205,21 @@ def select_random_heads(
     return sorted(rng.sample(head_paths, DEFAULT_ENABLED_HEADS), key=str)
 
 
-def set_head_payloads(stage: Any, selected_paths: list[Any]) -> None:
+def set_head_payloads(app: Any, stage: Any, selected_paths: list[Any]) -> None:
     selected = {str(path) for path in selected_paths}
     all_heads = head_payload_paths(stage)
     unload_paths = [path for path in all_heads if str(path) not in selected]
 
     clear_selection()
+    app.update()
     for path in unload_paths:
         stage.Unload(path)
+        app.update()
     for path in selected_paths:
         stage.Load(path)
+        app.update()
     clear_selection()
+    app.update()
 
 
 def start_timeline() -> None:
@@ -259,7 +269,7 @@ def main() -> None:
         clear_selection()
         all_head_paths = head_payload_paths(stage)
         selected_paths = select_random_heads(all_head_paths, args.seed)
-        set_head_payloads(stage, selected_paths)
+        set_head_payloads(app, stage, selected_paths)
         if not args.paused:
             start_timeline()
 
