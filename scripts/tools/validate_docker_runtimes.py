@@ -34,11 +34,13 @@ RUNTIMES = (
         mount_targets=(
             WORKSPACE_ROOT,
             "/isaac-sim/.cache",
+            "/isaac-sim/kit/cache",
             "/isaac-sim/.cache/ov",
             "/isaac-sim/.cache/warp",
             "/isaac-sim/.nv/ComputeCache",
             "/isaac-sim/.nvidia-omniverse/logs",
             "/isaac-sim/.nvidia-omniverse/config",
+            "/isaac-sim/kit/data/documents",
             "/isaac-sim/.local/share/ov/data/documents",
             "/isaac-sim/.local/share/ov/data/Kit",
             "/isaac-sim/.local/share/ov/pkg",
@@ -51,11 +53,13 @@ RUNTIMES = (
         mount_targets=(
             WORKSPACE_ROOT,
             "/isaac-sim/.cache",
+            "/isaac-sim/kit/cache",
             "/isaac-sim/.cache/ov",
             "/isaac-sim/.cache/warp",
             "/isaac-sim/.nv/ComputeCache",
             "/isaac-sim/.nvidia-omniverse/logs",
             "/isaac-sim/.nvidia-omniverse/config",
+            "/isaac-sim/kit/data/documents",
             "/isaac-sim/.local/share/ov/data/documents",
             "/isaac-sim/.local/share/ov/data/Kit",
             "/isaac-sim/.local/share/ov/pkg",
@@ -100,6 +104,7 @@ HOST_RUNTIME_DIRS = (
     "isaac-lab-2.3.2/data",
     "isaac-lab-2.3.2/documents",
 )
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -275,10 +280,10 @@ def python_runner_snippet() -> str:
         "USD_LIB=$(find /workspace/isaaclab/_isaac_sim/extscache "
         "/isaac-sim/extscache -maxdepth 1 -type d "
         "-name 'omni.usd.libs-*' 2>/dev/null | sort | tail -n 1); "
-        "if [ -n \"$USD_LIB\" ]; then "
-        "export PYTHONPATH=\"$USD_LIB${PYTHONPATH:+:$PYTHONPATH}\"; "
-        "export LD_LIBRARY_PATH=\"$USD_LIB/bin"
-        "${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}\"; "
+        'if [ -n "$USD_LIB" ]; then '
+        'export PYTHONPATH="$USD_LIB${PYTHONPATH:+:$PYTHONPATH}"; '
+        'export LD_LIBRARY_PATH="$USD_LIB/bin'
+        '${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"; '
         "fi; "
         "if command -v python >/dev/null 2>&1; then "
         "PY='python'; "
@@ -404,7 +409,7 @@ def validate_scripts(container: str) -> None:
             f"cd {WORKSPACE_ROOT} && "
             "export PYTHONDONTWRITEBYTECODE=1 && "
             f"{python_runner_snippet()} && "
-            "test \"$PY\" = python && "
+            'test "$PY" = python && '
             f"$PY -c {shlex.quote(runtime_check)} && "
             f"$PY -c {shlex.quote(syntax_check)} && "
             f"$PY -c {shlex.quote(path_check)} && "

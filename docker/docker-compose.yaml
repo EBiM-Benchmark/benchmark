@@ -55,6 +55,9 @@ services:
         source: ${ISAAC_DOCKER_ROOT}/isaac-sim-5.1.0/cache/main
         target: /isaac-sim/.cache
       - type: bind
+        source: ${ISAAC_DOCKER_ROOT}/isaac-sim-5.1.0/cache/main
+        target: /isaac-sim/kit/cache
+      - type: bind
         source: ${ISAAC_DOCKER_ROOT}/isaac-sim-5.1.0/cache/computecache
         target: /isaac-sim/.nv/ComputeCache
       - type: bind
@@ -66,6 +69,9 @@ services:
       - type: bind
         source: ${ISAAC_DOCKER_ROOT}/isaac-sim-5.1.0/data
         target: /isaac-sim/.local/share/ov/data
+      - type: bind
+        source: ${ISAAC_DOCKER_ROOT}/isaac-sim-5.1.0/data/documents
+        target: /isaac-sim/kit/data/documents
       - type: bind
         source: ${ISAAC_DOCKER_ROOT}/isaac-sim-5.1.0/pkg
         target: /isaac-sim/.local/share/ov/pkg
@@ -102,6 +108,9 @@ services:
         source: ${ISAAC_DOCKER_ROOT}/isaac-sim-6.0.0/cache/main
         target: /isaac-sim/.cache
       - type: bind
+        source: ${ISAAC_DOCKER_ROOT}/isaac-sim-6.0.0/cache/main
+        target: /isaac-sim/kit/cache
+      - type: bind
         source: ${ISAAC_DOCKER_ROOT}/isaac-sim-6.0.0/cache/computecache
         target: /isaac-sim/.nv/ComputeCache
       - type: bind
@@ -113,6 +122,9 @@ services:
       - type: bind
         source: ${ISAAC_DOCKER_ROOT}/isaac-sim-6.0.0/data
         target: /isaac-sim/.local/share/ov/data
+      - type: bind
+        source: ${ISAAC_DOCKER_ROOT}/isaac-sim-6.0.0/data/documents
+        target: /isaac-sim/kit/data/documents
       - type: bind
         source: ${ISAAC_DOCKER_ROOT}/isaac-sim-6.0.0/pkg
         target: /isaac-sim/.local/share/ov/pkg
