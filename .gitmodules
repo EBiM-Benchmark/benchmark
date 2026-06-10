@@ -1,0 +1,8 @@
+# Placeholder submodule definition for future extraction of the Franka robot description package.
+# Replace the URL with the chosen upstream repository before running `git submodule add`.
+[submodule "third_party/franka_description"]
+	path = third_party/franka_description
+	url = https://github.com/frankarobotics/franka_description.git
+[submodule "newton"]
+	path = newton
+	url = https://github.com/newton-physics/newton.git

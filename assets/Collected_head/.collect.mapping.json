@@ -1,0 +1,23 @@
+{
+    "version": "1.0",
+    "file_records": [
+        {
+            "source_url": "/workspace/IROS_Workshop/assets/textures/N_normal2.png",
+            "source_hash": "f2db130fde6e3fa18e0844d86d78818a192f9c59",
+            "target_url": "./textures/N_normal2.png",
+            "target_hash": "4bf86b6419053736227378fcba3c6b4523915437"
+        },
+        {
+            "source_url": "/workspace/IROS_Workshop/assets/textures/Std_Eye_L_Diffuse.png",
+            "source_hash": "fb659926b92044292ff8384193f7f99fe52b9c06",
+            "target_url": "./textures/Std_Eye_L_Diffuse.png",
+            "target_hash": "e8af31ce9c58b771b7158ebef58600f35d4d7355"
+        },
+        {
+            "source_url": "/workspace/IROS_Workshop/assets/textures/bake_albedo2.png",
+            "source_hash": "f2b8fca3e799d2c7a656463d30678e9df873813d",
+            "target_url": "./textures/bake_albedo2.png",
+            "target_hash": "2e1e8a1307786dd22ffaeceabb0bc0592f6834a9"
+        }
+    ]
+}

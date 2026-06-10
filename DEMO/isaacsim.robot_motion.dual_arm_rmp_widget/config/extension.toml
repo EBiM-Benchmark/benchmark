@@ -1,0 +1,23 @@
+[package]
+version = "1.0.0"
+category = "Simulation"
+title = "Dual Arm RmpFlow Dashboard"
+description = "Real-time dual arm RMPflow reactive obstacle avoidance control dashboard"
+authors = ["Paul"]
+repository = ""
+keywords = ["isaac", "lula", "dual_arm", "rmpflow"]
+changelog = "docs/CHANGELOG.md"
+readme = "docs/README.md"
+preview_image = "data/preview.png"
+icon = "data/icon.png"
+writeTarget.kit = true
+
+[dependencies]
+"isaacsim.core.api" = {}
+"isaacsim.gui.components" = {}
+"isaacsim.robot_motion.lula" = {}
+"isaacsim.robot_motion.motion_generation" = {}
+"omni.kit.uiapp" = {}
+
+[[python.module]]
+name = "isaacsim.robot_motion.dual_arm_rmp_widget"

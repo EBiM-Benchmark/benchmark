@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+find_usd_lib() {
+  for root in /workspace/isaaclab/_isaac_sim/extscache /isaac-sim/extscache; do
+    if [ -d "$root" ]; then
+      find "$root" -maxdepth 1 -type d -name 'omni.usd.libs-*' | sort
+    fi
+  done
+}
+
+USD_LIB="$(find_usd_lib | tail -n 1 || true)"
+if [ -n "$USD_LIB" ]; then
+  export PYTHONPATH="$USD_LIB${PYTHONPATH:+:$PYTHONPATH}"
+  export LD_LIBRARY_PATH="$USD_LIB/bin${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+fi
+
+if [ -x /workspace/isaaclab/isaaclab.sh ]; then
+  exec /workspace/isaaclab/isaaclab.sh -p "$@"
+elif [ -x /isaac-sim/python.sh ]; then
+  exec /isaac-sim/python.sh "$@"
+elif command -v python3 >/dev/null 2>&1; then
+  exec python3 "$@"
+elif [ -x /usr/bin/python ]; then
+  exec /usr/bin/python "$@"
+fi
+
+echo "No Isaac Sim, Isaac Lab, or system Python runner found." >&2
+exit 127

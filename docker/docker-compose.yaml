@@ -1,0 +1,178 @@
+name: iros-workshop
+
+x-common-env: &common-env
+  ACCEPT_EULA: ${ACCEPT_EULA}
+  PRIVACY_CONSENT: ${PRIVACY_CONSENT}
+  PRIVACY_USERID: ${PRIVACY_USERID}
+  DISPLAY: ${DISPLAY}
+  XAUTHORITY: ${XAUTHORITY}
+  HOME: /isaac-sim
+  XDG_CACHE_HOME: /isaac-sim/.cache
+  XDG_CONFIG_HOME: /isaac-sim/.nvidia-omniverse/config
+  XDG_DATA_HOME: /isaac-sim/.local/share
+  OMNI_KIT_ALLOW_ROOT: 1
+
+x-common-deploy: &common-deploy
+  resources:
+    reservations:
+      devices:
+        - driver: nvidia
+          count: all
+          capabilities: [gpu]
+
+x-common-stdin: &common-stdin
+  stdin_open: true
+  tty: true
+  entrypoint: bash
+  working_dir: ${WORKSPACE_ROOT}
+  network_mode: ${DOCKER_NETWORK_MODE}
+  deploy: *common-deploy
+
+x-runtime-build: &runtime-build
+  context: .
+  dockerfile: Dockerfile.runtime
+
+services:
+  isaac-sim-5-1-0:
+    env_file: .env.base
+    build:
+      <<: *runtime-build
+      args:
+        BASE_IMAGE: ${ISAAC_SIM_5_IMAGE}
+        WORKSPACE_ROOT: ${WORKSPACE_ROOT}
+        HOST_UID: ${HOST_UID}
+        HOST_GID: ${HOST_GID}
+    image: ${ISAAC_SIM_5_TAG}
+    container_name: ${ISAAC_SIM_5_CONTAINER}
+    profiles: ["isaac-sim-5.1.0"]
+    user: "${HOST_UID}:${HOST_GID}"
+    group_add:
+      - "${ISAAC_SIM_GID}"
+    environment:
+      <<: *common-env
+    volumes:
+      - type: bind
+        source: ${ISAAC_DOCKER_ROOT}/isaac-sim-5.1.0/cache/main
+        target: /isaac-sim/.cache
+      - type: bind
+        source: ${ISAAC_DOCKER_ROOT}/isaac-sim-5.1.0/cache/computecache
+        target: /isaac-sim/.nv/ComputeCache
+      - type: bind
+        source: ${ISAAC_DOCKER_ROOT}/isaac-sim-5.1.0/logs
+        target: /isaac-sim/.nvidia-omniverse/logs
+      - type: bind
+        source: ${ISAAC_DOCKER_ROOT}/isaac-sim-5.1.0/config
+        target: /isaac-sim/.nvidia-omniverse/config
+      - type: bind
+        source: ${ISAAC_DOCKER_ROOT}/isaac-sim-5.1.0/data
+        target: /isaac-sim/.local/share/ov/data
+      - type: bind
+        source: ${ISAAC_DOCKER_ROOT}/isaac-sim-5.1.0/pkg
+        target: /isaac-sim/.local/share/ov/pkg
+      - type: bind
+        source: ../
+        target: ${WORKSPACE_ROOT}
+      - type: bind
+        source: ${X11_SOCKET_DIR}
+        target: /tmp/.X11-unix
+      - type: bind
+        source: ${XAUTHORITY}
+        target: ${XAUTHORITY}
+    <<: *common-stdin
+
+  isaac-sim-6-0-0:
+    env_file: .env.base
+    build:
+      <<: *runtime-build
+      args:
+        BASE_IMAGE: ${ISAAC_SIM_6_IMAGE}
+        WORKSPACE_ROOT: ${WORKSPACE_ROOT}
+        HOST_UID: ${HOST_UID}
+        HOST_GID: ${HOST_GID}
+    image: ${ISAAC_SIM_6_TAG}
+    container_name: ${ISAAC_SIM_6_CONTAINER}
+    profiles: ["isaac-sim-6.0.0"]
+    user: "${HOST_UID}:${HOST_GID}"
+    group_add:
+      - "${ISAAC_SIM_GID}"
+    environment:
+      <<: *common-env
+    volumes:
+      - type: bind
+        source: ${ISAAC_DOCKER_ROOT}/isaac-sim-6.0.0/cache/main
+        target: /isaac-sim/.cache
+      - type: bind
+        source: ${ISAAC_DOCKER_ROOT}/isaac-sim-6.0.0/cache/computecache
+        target: /isaac-sim/.nv/ComputeCache
+      - type: bind
+        source: ${ISAAC_DOCKER_ROOT}/isaac-sim-6.0.0/logs
+        target: /isaac-sim/.nvidia-omniverse/logs
+      - type: bind
+        source: ${ISAAC_DOCKER_ROOT}/isaac-sim-6.0.0/config
+        target: /isaac-sim/.nvidia-omniverse/config
+      - type: bind
+        source: ${ISAAC_DOCKER_ROOT}/isaac-sim-6.0.0/data
+        target: /isaac-sim/.local/share/ov/data
+      - type: bind
+        source: ${ISAAC_DOCKER_ROOT}/isaac-sim-6.0.0/pkg
+        target: /isaac-sim/.local/share/ov/pkg
+      - type: bind
+        source: ../
+        target: ${WORKSPACE_ROOT}
+      - type: bind
+        source: ${X11_SOCKET_DIR}
+        target: /tmp/.X11-unix
+      - type: bind
+        source: ${XAUTHORITY}
+        target: ${XAUTHORITY}
+    <<: *common-stdin
+
+  isaac-lab-2-3-2:
+    env_file: .env.base
+    build:
+      <<: *runtime-build
+      args:
+        BASE_IMAGE: ${ISAAC_LAB_IMAGE}
+        WORKSPACE_ROOT: ${WORKSPACE_ROOT}
+        HOST_UID: ${HOST_UID}
+        HOST_GID: ${HOST_GID}
+    image: ${ISAAC_LAB_TAG}
+    container_name: ${ISAAC_LAB_CONTAINER}
+    profiles: ["isaac-lab-2.3.2"]
+    environment:
+      <<: *common-env
+    volumes:
+      - type: bind
+        source: ${ISAAC_DOCKER_ROOT}/isaac-lab-2.3.2/cache/kit
+        target: /isaac-sim/kit/cache
+      - type: bind
+        source: ${ISAAC_DOCKER_ROOT}/isaac-lab-2.3.2/cache/ov
+        target: /root/.cache/ov
+      - type: bind
+        source: ${ISAAC_DOCKER_ROOT}/isaac-lab-2.3.2/cache/pip
+        target: /root/.cache/pip
+      - type: bind
+        source: ${ISAAC_DOCKER_ROOT}/isaac-lab-2.3.2/cache/glcache
+        target: /root/.cache/nvidia/GLCache
+      - type: bind
+        source: ${ISAAC_DOCKER_ROOT}/isaac-lab-2.3.2/cache/computecache
+        target: /root/.nv/ComputeCache
+      - type: bind
+        source: ${ISAAC_DOCKER_ROOT}/isaac-lab-2.3.2/logs
+        target: /root/.nvidia-omniverse/logs
+      - type: bind
+        source: ${ISAAC_DOCKER_ROOT}/isaac-lab-2.3.2/data
+        target: /root/.local/share/ov/data
+      - type: bind
+        source: ${ISAAC_DOCKER_ROOT}/isaac-lab-2.3.2/documents
+        target: /root/Documents
+      - type: bind
+        source: ../
+        target: ${WORKSPACE_ROOT}
+      - type: bind
+        source: ${X11_SOCKET_DIR}
+        target: /tmp/.X11-unix
+      - type: bind
+        source: ${XAUTHORITY}
+        target: ${XAUTHORITY}
+    <<: *common-stdin
