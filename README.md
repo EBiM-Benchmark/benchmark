@@ -50,6 +50,39 @@ The current submodules are:
 - `newton/`
 - `third_party/franka_description/`
 
+## Git LFS Notes
+
+Some large workshop assets may be tracked with Git LFS instead of regular Git blobs.
+
+Before cloning or pulling LFS-tracked assets, install and enable Git LFS once on your machine:
+
+```bash
+git lfs install
+```
+
+After that, normal Git commands are usually enough:
+
+```bash
+git clone --recurse-submodules <repository-url>
+git pull
+```
+
+If Git LFS is installed, the real large files are downloaded automatically during clone and pull. If Git LFS is not installed, Git will only check out small pointer files instead of the actual `.usd` or `.blend` assets. If that happens, run:
+
+```bash
+git lfs pull
+```
+
+To inspect which files are currently tracked through Git LFS:
+
+```bash
+git lfs ls-files
+```
+
+GitHub charges Git LFS storage and download bandwidth to the repository owner. If this repository is owned by an organization such as `HCIS-Lab`, pushes to its LFS-tracked files consume the organization's Git LFS quota, not the pusher's personal quota.
+
+On a local checkout, Git LFS stores downloaded objects under `.git/lfs/objects`. On GitHub, the repository history stores pointer files, while the actual large-file content is stored in GitHub's managed Git LFS object storage for the repository.
+
 ## Supported Container Targets
 
 The Docker stack is parameterized in `docker/.env.base` and `docker/docker-compose.yaml`.
