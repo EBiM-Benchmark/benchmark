@@ -378,10 +378,16 @@ class Extension(omni.ext.IExt):
 
                 # ================= 新增：Load Franka 快捷预设按钮 =================
                 def on_load_franka_preset(model=None, val=None):
-                    # 固定的本地预设路径
-                    left_yaml = "/home/IROS_Workshop/robot_description/left_arm_description.yaml"
-                    right_yaml = "/home/IROS_Workshop/robot_description/right_arm_description.yaml"
-                    robot_urdf = "/home/IROS_Workshop/robot_description/mobile_fr3_duo_v0_2_.urdf"
+                    # 🌟 核心修改：动态获取当前文件（extension.py）所在的绝对路径
+                    current_dir = os.path.dirname(os.path.abspath(__file__))
+                    
+                    # 🌟 动态拼接同级目录下的 robotdescription 文件夹路径
+                    robot_desc_dir = os.path.join(current_dir, "robot_description")
+                    
+                    # 🌟 转换为动态相对路径组合
+                    left_yaml = os.path.join(robot_desc_dir, "left_arm_description.yaml")
+                    right_yaml = os.path.join(robot_desc_dir, "right_arm_description.yaml")
+                    robot_urdf = os.path.join(robot_desc_dir, "mobile_fr3_duo_v0_2_.urdf")
                     
                     # 修复：SimpleStringModel 直接调用 .set_value() 即可
                     if "input_robot_description_file_left" in self._models:
@@ -417,7 +423,7 @@ class Extension(omni.ext.IExt):
                     else:
                         carb.log_error(f"[Load Franka] Cannot find target articulation '{target_articulation}' in current stage. Make sure timeline is PLAYING.")
 
-                # 4. 新增：自动在生成的下拉列表中检索并选中 left_tcp 和 right_tcp
+                    # 4. 新增：自动在生成的下拉列表中检索并选中 left_tcp 和 right_tcp
                     if "ee_frame_left" in self._models and self._ee_frame_options_left:
                         try:
                             # 寻找完全匹配 left_tcp 的索引位置（不区分大小写）
@@ -434,14 +440,14 @@ class Extension(omni.ext.IExt):
                         except StopIteration:
                             carb.log_warn("[Load Franka] 在右臂描述文件中未找到 'right_tcp' 坐标系")
 
-                # 利用 HStack 让两个常规操作并排排列
+                    # 利用 HStack 让两个常规操作并排排列
                 with ui.HStack():
                     ui.Label("Load Selected Config", width=LABEL_WIDTH, alignment=ui.Alignment.LEFT_CENTER)
                     with ui.HStack(spacing=10):
                         self._models["load_config_btn"] = ui.Button("LOAD", name="load_btn", clicked_fn=on_load_config)
                         self._models["load_franka_btn"] = ui.Button("Load Franka", name="franka_preset_btn", clicked_fn=on_load_franka_preset)
                     add_line_rect_flourish(False)
-                # =========================================================================
+                    # =========================================================================
 
                 self._models["ee_frame_left"] = DynamicComboBoxModel([])
                 with ui.HStack():

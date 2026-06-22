@@ -16,7 +16,12 @@ from isaacsim.robot_motion.motion_generation.articulation_kinematics_solver impo
 from isaacsim.robot_motion.motion_generation.articulation_motion_policy import ArticulationMotionPolicy
 from isaacsim.robot_motion.motion_generation.lula.kinematics import LulaKinematicsSolver
 from isaacsim.robot_motion.motion_generation.lula.motion_policies import RmpFlow
-from isaacsim.robot_motion.motion_generation.motion_policy_controller import MotionPolicyController
+from isaacsim.robot_motion.motion_generation.motion_policy_controller import MotionPolicyController# 在文件顶部添加：
+import rclpy
+from rclpy.node import Node
+from geometry_msgs.msg import PoseStamped
+import omni.timeline
+
 
 from .controllers import KinematicsController
 
@@ -31,6 +36,18 @@ class LulaTestScenarios:
         # 定义双臂解耦控制所需的私有控制器对象
         self._controller_left = None
         self._controller_right = None
+
+        # ====== 新增：初始化 ROS 2 ======
+        if not rclpy.ok():
+            rclpy.init()
+        self._ros_node = Node("isaac_target_pose_publisher")
+        
+        # 创建左臂和右臂的发布者，使用标准 PoseStamped 消息
+        self._left_pub = self._ros_node.create_publisher(PoseStamped, "/left_target", 10)
+        self._right_pub = self._ros_node.create_publisher(PoseStamped, "/right_target", 10)
+        # ====== 在 __init__ 中新增：当前位姿发布者 ======
+        self._left_current_pub = self._ros_node.create_publisher(PoseStamped, "/left_current_pose", 10)
+        self._right_current_pub = self._ros_node.create_publisher(PoseStamped, "/right_current_pose", 10)
 
         self.timestep = 0
         self.use_orientation = True
@@ -230,6 +247,34 @@ class LulaTestScenarios:
             if self._target_left is not None and self._target_right is not None:
                 pos_left, rot_left = self._target_left.get_local_pose()
                 pos_right, rot_right = self._target_right.get_local_pose()
+                # ====== 新增：在每次 IK 更新时发布到 ROS 2 ======
+                # 如果是 local_pose，frame_id 应该设为你的机器人 base_link 名称
+                self._publish_target_pose(self._left_pub, pos_left, rot_left, frame_id="base_link")
+                self._publish_target_pose(self._right_pub, pos_right, rot_right, frame_id="base_link")
+
+                # ====== 新增：获取并发布实际当前位姿 (Current Pose) ======
+                # 从我们组合的控制器中拿到左臂和右臂的底层 Lula Kinematics Solver 实例
+                art_solver_l = self._controller._art_kinematics_left
+                art_solver_r = self._controller._art_kinematics_right
+                
+                if art_solver_l and art_solver_r:
+                    # 这个官方 API 会自动读取当前物理世界机器人的状态并计算末端位姿
+                    # 返回的格式： position (numpy 数组), rotation (3x3 旋转矩阵)
+                    curr_pos_l, curr_rot_mat_l = art_solver_l.compute_end_effector_pose()
+                    curr_pos_r, curr_rot_mat_r = art_solver_r.compute_end_effector_pose()
+                    
+                    # 转换为 [w, x, y, z] 四元数
+                    curr_quat_l = rot_matrices_to_quats(curr_rot_mat_l)
+                    curr_quat_r = rot_matrices_to_quats(curr_rot_mat_r)
+                    
+                    # 发布当前实际位姿话题
+                    self._publish_target_pose(self._left_current_pub, curr_pos_l, curr_quat_l, frame_id="base_link")
+                    self._publish_target_pose(self._right_current_pub, curr_pos_r, curr_quat_r, frame_id="base_link")
+                # ========================================================
+                
+                # 让 ROS 2 节点处理回调（非阻塞）
+                rclpy.spin_once(self._ros_node, timeout_sec=0.0)
+                # ===============================================
                 if not self.use_orientation:
                     rot_left, rot_right = None, None
                 return self._controller.forward(pos_left, pos_right, rot_left, rot_right)
@@ -250,3 +295,27 @@ class LulaTestScenarios:
             return self._controller.forward(pos_left, pos_right, rot_left, rot_right)
         
         return ArticulationAction()
+
+    def _publish_target_pose(self, publisher, pos, rot, frame_id="world"):
+        """将位置和四元数发布到指定的 ROS 2 topic"""
+        msg = PoseStamped()
+        # 填充时间戳（使用仿真当前时间或系统时间）
+        msg.header.stamp = self._ros_node.get_clock().now().to_msg()
+        msg.header.frame_id = frame_id
+        
+        # Lula 内部单位如果是米，可以直接赋给 ROS 2
+        msg.pose.position.x = float(pos[0])
+        msg.pose.position.y = float(pos[1])
+        msg.pose.position.z = float(pos[2])
+        
+        # Isaac Sim 的四元数顺序通常是 [w, x, y, z]，而 ROS 2 是 [x, y, z, w]
+        # 请根据你具体 Lula 输出的四元数格式检查，以下假设输入是 Isaac 标准的 [w, x, y, z]
+        if rot is not None and len(rot) == 4:
+            msg.pose.orientation.w = float(rot[0])
+            msg.pose.orientation.x = float(rot[1])
+            msg.pose.orientation.y = float(rot[2])
+            msg.pose.orientation.z = float(rot[3])
+        else:
+            msg.pose.orientation.w = 1.0  # 默认无旋转
+            
+        publisher.publish(msg)
