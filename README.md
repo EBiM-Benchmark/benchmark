@@ -14,7 +14,7 @@ IROS_Workshop/
 │   └── dual_arm_rmp_widget      # Lula solver widget intergrated with issac sim
 │   └── robot_description        # urdf assets and armconfiguration that Lula needs
 │   └── Robotiq_2f_85_with_d405_mobile_fr3_duo_v0_2.usd
-                                 # pure usd assets intergrted with ROS communication
+                                 # pure usd assets intergrted with ROS communication and Robotiq grippers
 │   └── record.py                # lerobot dataset tool
 ├── docker/                      # Docker Compose runtimes for Isaac Sim and Isaac Lab
 ├── docs/                        # Images and supporting documentation assets
