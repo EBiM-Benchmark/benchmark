@@ -426,7 +426,7 @@ The `DEMO/record.py` script automatically subscribes to the corresponding ROS 2 
 
 * **State Data (States):**
   * **Manipulators:** 14 joint positions and velocities across both arms (14 joints total).
-  * **End-Effectors:** Gripper poses for both left and right arms.
+  * **End-Effectors:** Gripper poses for both left and right grippers.
   * **Mobile Base:** Linear velocity and angular velocity of the chassis.
 * **Camera Views (Visual Inputs):**
   * `camera_left`: Wrist camera mounted on the left gripper.
