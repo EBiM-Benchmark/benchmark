@@ -13,8 +13,9 @@ IROS_Workshop/
 ├── DEMO/                        # Lula solver widget and robotdescription of DEMO robot
 │   └── dual_arm_rmp_widget      # Lula solver widget intergrated with issac sim
 │   └── robot_description        # urdf assets and armconfiguration that Lula needs
-│   └── mobile_fr3_duo_v0_2.usd  # pure usd assets intergrted with ROS communication
-│   └── record/train.py          # lerobot dataset tool
+│   └── Robotiq_2f_85_with_d405_mobile_fr3_duo_v0_2.usd
+                                 # pure usd assets intergrted with ROS communication and Robotiq grippers
+│   └── record.py                # lerobot dataset tool
 ├── docker/                      # Docker Compose runtimes for Isaac Sim and Isaac Lab
 ├── docs/                        # Images and supporting documentation assets
 ├── newton/                      # Newton physics engine submodule
@@ -420,6 +421,55 @@ After changes, verify the following:
 - Clean any generated URDF files in `third_party/franka_description/urdfs/` that still contain absolute paths from previous machines.
 - Optionally add helper shell scripts for directory bootstrap of the Docker cache layout.
 
+## LeRobot dataset recording
+The `DEMO/record.py` script automatically subscribes to the corresponding ROS 2 topics, synchronizes the multi-modal streams, and aggregates them into the structured dataset:
+
+* **State Data (States):**
+  * **Manipulators:** 14 joint positions and velocities across both arms (14 joints total).
+  * **End-Effectors:** Gripper poses for both left and right grippers.
+  * **Mobile Base:** Linear velocity and angular velocity of the chassis.
+* **Camera Views (Visual Inputs):**
+  * `camera_left`: Wrist camera mounted on the left gripper.
+  * `camera_right`: Wrist camera mounted on the right gripper.
+  * `camera_head`: Head-mounted camera.
+  * `camera_front`: Static observer/front camera.
+###  Environment Setup
+
+Before recording, you must set up the required virtual environment. Please follow the detailed installation guidelines available at:
+
+🔗 [lerobot_ros2 Environment Setup Guide](https://github.com/fiveages-sim/lerobot_ros2/tree/main)
+###  Dataset Recording Steps
+
+1. Ensure your virtual environment is activated and the required ROS 2 topics are active and publishing data.
+2. Navigate to the `DEMO` directory:
+   ```bash
+   cd IROS_Workshop/DEMO
+3. Execute the recording script:
+      ```bash
+   python record.py
+      
+ Recording Control via Terminal:
+  *  Enter `2`: Start recording the dataset.
+  *  Enter `3`: Stop recording and automatically save the episode.
+###  Dataset Visualization
+Once the recording is complete, you can inspect and replay the collected dataset using the visualize_dataset tool from LeRobot.
+#### Base Command
+   ```bash
+PYTHONPATH=submodules/lerobot/src python -m lerobot.scripts.visualize_dataset
+```
+#### Argument Descriptions:
+
+You can append the following arguments to specify the target dataset and subset:
+
+* `--repo-id`: The unique identifier/name of the dataset repository.
+* `--root`: The root directory path where your local datasets are stored.
+* `--episode-index`: Specifies which episode to visualize (e.g., `--episode-index 0` loads the first recorded episode).
+
+#### Complete Example:
+
+```bash
+PYTHONPATH=submodules/lerobot/src python -m lerobot.scripts.visualize_dataset --root ./data --repo-id mobile_dual_arm_test --episode-index 0
+```
 ## References
 
 - Isaac Sim 5.1.0 container documentation: <https://docs.isaacsim.omniverse.nvidia.com/5.1.0/installation/install_container.html>
