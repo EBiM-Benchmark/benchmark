@@ -425,7 +425,7 @@ After changes, verify the following:
 The `DEMO/record.py` script automatically subscribes to the corresponding ROS 2 topics, synchronizes the multi-modal streams, and aggregates them into the structured dataset:
 
 * **State Data (States):**
-  * **Manipulators:** 14 joint positions across both arms (14 joints total).
+  * **Manipulators:** 14 joint positions and velocities across both arms (14 joints total).
   * **End-Effectors:** Gripper poses for both left and right arms.
   * **Mobile Base:** Linear velocity and angular velocity of the chassis.
 * **Camera Views (Visual Inputs):**
@@ -433,13 +433,17 @@ The `DEMO/record.py` script automatically subscribes to the corresponding ROS 2 
   * `camera_right`: Wrist camera mounted on the right gripper.
   * `camera_head`: Head-mounted camera.
   * `camera_front`: Static observer/front camera.
-## 🛠️ Environment Setup
+###  Environment Setup
 
 Before recording, you must set up the required virtual environment. Please follow the detailed installation guidelines available at:
 
 🔗 [lerobot_ros2 Environment Setup Guide](https://github.com/fiveages-sim/lerobot_ros2/tree/main)
+###  Dataset Recording Steps
 
----
+1. Ensure your virtual environment is activated and the required ROS 2 topics are active and publishing data.
+2. Navigate to the `DEMO` directory:
+   ```bash
+   cd DEMO
 
 ## References
 
