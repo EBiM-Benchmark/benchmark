@@ -447,9 +447,10 @@ Before recording, you must set up the required virtual environment. Please follo
 3. Execute the recording script:
       ```bash
    python record.py
-   Recording Control via Terminal:
-     * Enter 2: Start recording the dataset.
-     * Enter 3: Stop recording and automatically save the episode.
+      
+ Recording Control via Terminal:
+     * Enter `2`: Start recording the dataset.
+     * Enter `3`: Stop recording and automatically save the episode.
 
 ## References
 
