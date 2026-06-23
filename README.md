@@ -421,6 +421,26 @@ After changes, verify the following:
 - Clean any generated URDF files in `third_party/franka_description/urdfs/` that still contain absolute paths from previous machines.
 - Optionally add helper shell scripts for directory bootstrap of the Docker cache layout.
 
+## LeRobot dataset recording
+The `DEMO/record.py` script automatically subscribes to the corresponding ROS 2 topics, synchronizes the multi-modal streams, and aggregates them into the structured dataset:
+
+* **State Data (States):**
+  * **Manipulators:** 14 joint positions across both arms (14 joints total).
+  * **End-Effectors:** Gripper poses for both left and right arms.
+  * **Mobile Base:** Linear velocity and angular velocity of the chassis.
+* **Camera Views (Visual Inputs):**
+  * `camera_left`: Wrist camera mounted on the left gripper.
+  * `camera_right`: Wrist camera mounted on the right gripper.
+  * `camera_head`: Head-mounted camera.
+  * `camera_front`: Static observer/front camera.
+## 🛠️ Environment Setup
+
+Before recording, you must set up the required virtual environment. Please follow the detailed installation guidelines available at:
+
+🔗 [lerobot_ros2 Environment Setup Guide](https://github.com/fiveages-sim/lerobot_ros2/tree/main)
+
+---
+
 ## References
 
 - Isaac Sim 5.1.0 container documentation: <https://docs.isaacsim.omniverse.nvidia.com/5.1.0/installation/install_container.html>
