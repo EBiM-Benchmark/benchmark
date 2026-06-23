@@ -443,7 +443,7 @@ Before recording, you must set up the required virtual environment. Please follo
 1. Ensure your virtual environment is activated and the required ROS 2 topics are active and publishing data.
 2. Navigate to the `DEMO` directory:
    ```bash
-   cd DEMO
+   cd IROS_Workshop/DEMO
 3. Execute the recording script:
       ```bash
    python record.py
