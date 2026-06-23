@@ -456,7 +456,7 @@ Once the recording is complete, you can inspect and replay the collected dataset
 #### Base Command
    ```bash
 PYTHONPATH=submodules/lerobot/src python -m lerobot.scripts.visualize_dataset
-
+```
 #### Argument Descriptions:
 
 You can append the following arguments to specify the target dataset and subset:
@@ -469,7 +469,7 @@ You can append the following arguments to specify the target dataset and subset:
 
 ```bash
 PYTHONPATH=submodules/lerobot/src python -m lerobot.scripts.visualize_dataset --root ./data --repo-id mobile_dual_arm_test --episode-index 0
-
+```
 ## References
 
 - Isaac Sim 5.1.0 container documentation: <https://docs.isaacsim.omniverse.nvidia.com/5.1.0/installation/install_container.html>
