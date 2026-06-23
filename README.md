@@ -451,6 +451,24 @@ Before recording, you must set up the required virtual environment. Please follo
  Recording Control via Terminal:
   *  Enter `2`: Start recording the dataset.
   *  Enter `3`: Stop recording and automatically save the episode.
+###  Dataset Visualization
+Once the recording is complete, you can inspect and replay the collected dataset using the visualize_dataset tool from LeRobot.
+#### Base Command
+   ```bash
+PYTHONPATH=submodules/lerobot/src python -m lerobot.scripts.visualize_dataset
+
+#### Argument Descriptions:
+
+You can append the following arguments to specify the target dataset and subset:
+
+* `--repo-id`: The unique identifier/name of the dataset repository.
+* `--root`: The root directory path where your local datasets are stored.
+* `--episode-index`: Specifies which episode to visualize (e.g., `--episode-index 0` loads the first recorded episode).
+
+#### Complete Example:
+
+```bash
+PYTHONPATH=submodules/lerobot/src python -m lerobot.scripts.visualize_dataset --root ./data --repo-id mobile_dual_arm_test --episode-index 0
 
 ## References
 
