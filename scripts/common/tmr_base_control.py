@@ -1,10 +1,12 @@
+# Copyright (c) 2024-2026 Ziqi Fan
+# SPDX-License-Identifier: Apache-2.0
+
 """Keyboard and wheel-target helpers for the diagonal TMR steer-drive base."""
 
 import math
 from dataclasses import dataclass
 
 import torch
-
 
 WHEEL_RADIUS_M = 0.05
 LINEAR_SPEED_MPS = 0.5
@@ -55,7 +57,9 @@ def get_keyboard_twist(pressed_keys: set[str]) -> tuple[float, float, float]:
     return vx, vy, wz
 
 
-def find_drive_joint_ids(joint_names: list[str]) -> tuple[list[int], list[int]]:
+def find_drive_joint_ids(
+    joint_names: list[str],
+) -> tuple[list[int], list[int]]:
     """Return steering and wheel-spin joint ids in DRIVE_MODULES order."""
     name_to_id = {name: idx for idx, name in enumerate(joint_names)}
     missing = [
@@ -83,7 +87,9 @@ def compute_drive_targets(
     device: str,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Convert body twist into steering-position and wheel-velocity targets."""
-    steering_targets = torch.zeros((num_envs, len(DRIVE_MODULES)), device=device)
+    steering_targets = torch.zeros(
+        (num_envs, len(DRIVE_MODULES)), device=device
+    )
     drive_targets = torch.zeros((num_envs, len(DRIVE_MODULES)), device=device)
 
     wheel_vectors = []
@@ -100,7 +106,9 @@ def compute_drive_targets(
     if max_speed_mps > max_speed_mps_allowed:
         speed_scale = max_speed_mps_allowed / max_speed_mps
 
-    for module_index, (wheel_vx, wheel_vy, speed_mps) in enumerate(wheel_vectors):
+    for module_index, (wheel_vx, wheel_vy, speed_mps) in enumerate(
+        wheel_vectors
+    ):
         wheel_vx *= speed_scale
         wheel_vy *= speed_scale
         speed_mps *= speed_scale
@@ -110,7 +118,9 @@ def compute_drive_targets(
             steering_targets[:, module_index] = current_angle
             continue
 
-        raw_target = torch.full_like(current_angle, math.atan2(wheel_vy, wheel_vx))
+        raw_target = torch.full_like(
+            current_angle, math.atan2(wheel_vy, wheel_vx)
+        )
         direct_delta = _wrap_to_pi(raw_target - current_angle)
         flipped_delta = _wrap_to_pi(raw_target + math.pi - current_angle)
         use_flipped = torch.abs(flipped_delta) < torch.abs(direct_delta)
@@ -118,9 +128,13 @@ def compute_drive_targets(
 
         steering_targets[:, module_index] = current_angle + steering_delta
 
-        wheel_speed = torch.full_like(current_angle, speed_mps / WHEEL_RADIUS_M)
+        wheel_speed = torch.full_like(
+            current_angle, speed_mps / WHEEL_RADIUS_M
+        )
         wheel_speed *= _steering_alignment_scale(torch.abs(steering_delta))
-        drive_targets[:, module_index] = torch.where(use_flipped, -wheel_speed, wheel_speed)
+        drive_targets[:, module_index] = torch.where(
+            use_flipped, -wheel_speed, wheel_speed
+        )
 
     return steering_targets, drive_targets
 
@@ -134,7 +148,7 @@ def compensate_yaw_rate(
     *,
     manual_rotation: bool,
 ) -> tuple[float, float]:
-    """Hold heading during pure translation and reset hold heading otherwise."""
+    """Hold heading during translation and reset hold heading otherwise."""
     current_yaw = get_root_yaw(robot)
     if manual_rotation or math.hypot(vx, vy) < STOP_EPS:
         return wz, current_yaw
@@ -142,7 +156,10 @@ def compensate_yaw_rate(
     yaw_error = _wrap_to_pi_scalar(desired_yaw - current_yaw)
     yaw_rate = get_root_yaw_rate(robot)
     compensation = HEADING_HOLD_KP * yaw_error - HEADING_HOLD_KD * yaw_rate
-    compensation = max(-MAX_HEADING_COMP_RADPS, min(MAX_HEADING_COMP_RADPS, compensation))
+    compensation = max(
+        -MAX_HEADING_COMP_RADPS,
+        min(MAX_HEADING_COMP_RADPS, compensation),
+    )
     return wz + compensation, desired_yaw
 
 

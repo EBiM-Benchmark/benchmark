@@ -201,10 +201,12 @@ Inside any container:
 cd /workspace/IROS_Workshop
 ```
 
-## Isaac Sim Scene Construction
+## Isaac Sim Robot Room Workflow
 
-Use Isaac Sim for USD-focused scene construction and inspection. These scripts
-do not require the Isaac Lab task stack.
+Use Isaac Sim with the prebuilt `assets/robot_room.usd` base scene. New workshop
+task work should build on that room through
+`scripts/scenes/scene_robot_room_keyboard.py`, not by generating new base
+scenes.
 
 The local runtime image maps `python` to the matching Isaac runtime. In Isaac
 Sim containers it delegates to that image's `/isaac-sim/python.sh`; in the
@@ -212,32 +214,16 @@ Isaac Lab container it delegates to `/workspace/isaaclab/isaaclab.sh -p`.
 The same wrapper also exposes the USD `pxr` libraries needed by plain USD
 tools.
 
-Generate the tabletop task USD:
+Inspect the active robot-room USD:
 
 ```bash
-python scripts/tools/compose_scene_usd.py \
-  --output assets/tabletop_task_scene.usd
+python scripts/tools/inspect_usd.py assets/robot_room.usd
 ```
 
-Generate a preview USD that also references the robot:
+Launch the active robot-room scene:
 
 ```bash
-python scripts/tools/compose_scene_usd.py \
-  --output assets/tabletop_task_scene_with_robot.usd \
-  --with-robot
-```
-
-Inspect a generated USD:
-
-```bash
-python scripts/tools/inspect_usd.py \
-  assets/tabletop_task_scene_with_robot.usd
-```
-
-Create the simple wall-room asset:
-
-```bash
-python scripts/tools/create_wall_room.py
+python scripts/scenes/scene_robot_room_keyboard.py --task task3
 ```
 
 Open Isaac Sim GUI from inside an Isaac Sim container:
@@ -246,35 +232,60 @@ Open Isaac Sim GUI from inside an Isaac Sim container:
 ./runapp.sh
 ```
 
-Then open the generated USD from `/workspace/IROS_Workshop/assets`.
+<details>
+<summary>Deprecated scene generators and demos</summary>
+
+The scripts below are kept for reference only. They do not define the current
+competition base scene.
+
+Generate the old tabletop task USD:
+
+```bash
+python scripts/deprecated/compose_scene_usd.py \
+  --output assets/tabletop_task_scene.usd
+```
+
+Generate an old preview USD that also references the robot:
+
+```bash
+python scripts/deprecated/compose_scene_usd.py \
+  --output assets/tabletop_task_scene_with_robot.usd \
+  --with-robot
+```
+
+Create the old simple wall-room asset:
+
+```bash
+python scripts/deprecated/create_wall_room.py
+```
 
 ## Isaac Lab Robot Manipulation And Advanced Tasks
 
 Use the Isaac Lab container for scripts that create `InteractiveScene`,
 `ArticulationCfg`, actuators, and robot control loops.
 
-Run the complete tabletop scene with keyboard-controlled mobile dual-arm robot:
+Run the old complete tabletop scene with keyboard-controlled mobile dual-arm robot:
 
 ```bash
-python scripts/scenes/scene_robot_keyboard.py
+python scripts/deprecated/scene_robot_keyboard.py
 ```
 
-Run the robot scene without keyboard control:
+Run the old robot scene without keyboard control:
 
 ```bash
-python scripts/scenes/scene_robot_tables.py
+python scripts/deprecated/scene_robot_tables.py
 ```
 
-Run the reduced keyboard-control robot demo:
+Run the old reduced keyboard-control robot demo:
 
 ```bash
-python scripts/scenes/keyboard_control.py
+python scripts/deprecated/keyboard_control.py
 ```
 
-Run the static 11-table scene:
+Run the old static 11-table scene:
 
 ```bash
-python scripts/scenes/scene_11_tables.py
+python scripts/deprecated/scene_11_tables.py
 ```
 
 Keyboard controls in the robot demos:
@@ -293,11 +304,13 @@ If `pynput` is missing in a runtime:
 python -m pip install pynput
 ```
 
-For advanced manipulation work, keep static scene construction in
-`scripts/tools/compose_scene_usd.py` and keep robot behavior in
-`scripts/scenes/` or a new Isaac Lab task module. That keeps USD asset
-composition reusable while allowing Isaac Lab to own articulations,
-actuators, observations, rewards, and control policies.
+</details>
+
+For advanced manipulation work, keep the active base scene in
+`assets/robot_room.usd` and keep robot behavior in
+`scripts/scenes/scene_robot_room_keyboard.py` or a new Isaac Lab task module.
+That keeps USD asset composition stable while allowing Isaac Lab to own
+articulations, actuators, observations, rewards, and control policies.
 
 ## Manual Asset Checks
 

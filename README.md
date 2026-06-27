@@ -1,6 +1,6 @@
 # IROS Workshop Competition Repository
 
-This repository provides a workshop-focused Isaac Sim environment for an international competition. It contains tabletop scene composition scripts, keyboard-controlled mobile dual-arm robot demos, USD utilities, Docker runtimes for Isaac Sim and Isaac Lab, and third-party robot description assets.
+This repository provides a workshop-focused Isaac Sim environment for an international competition. The active workflow uses `assets/robot_room.usd` as the base scene and launches the mobile dual-arm robot through Isaac Sim. Older tabletop scene generators are kept only for reference.
 
 For the full developer workflow, see [`docs/developer_setup.md`](docs/developer_setup.md).
 
@@ -49,6 +49,39 @@ git submodule update --init --recursive
 The current submodules are:
 - `newton/`
 - `third_party/franka_description/`
+
+## Git LFS Notes
+
+Some large workshop assets may be tracked with Git LFS instead of regular Git blobs.
+
+Before cloning or pulling LFS-tracked assets, install and enable Git LFS once on your machine:
+
+```bash
+git lfs install
+```
+
+After that, normal Git commands are usually enough:
+
+```bash
+git clone --recurse-submodules <repository-url>
+git pull
+```
+
+If Git LFS is installed, the real large files are downloaded automatically during clone and pull. If Git LFS is not installed, Git will only check out small pointer files instead of the actual `.usd` or `.blend` assets. If that happens, run:
+
+```bash
+git lfs pull
+```
+
+To inspect which files are currently tracked through Git LFS:
+
+```bash
+git lfs ls-files
+```
+
+GitHub charges Git LFS storage and download bandwidth to the repository owner. If this repository is owned by an organization such as `HCIS-Lab`, pushes to its LFS-tracked files consume the organization's Git LFS quota, not the pusher's personal quota.
+
+On a local checkout, Git LFS stores downloaded objects under `.git/lfs/objects`. On GitHub, the repository history stores pointer files, while the actual large-file content is stored in GitHub's managed Git LFS object storage for the repository.
 
 ## Supported Container Targets
 
@@ -156,6 +189,12 @@ sudo chmod -R g+rwX \
   "$HOME/docker/iros-workshop/isaac-sim-6.0.0"
 ```
 
+The compose stack persists the main Kit cache, CUDA compute cache,
+Omniverse data/config, Kit data, logs, and package data. It intentionally does
+not bind-mount `/isaac-sim/extscache`, because those extension cache folders
+also contain required bundled shader resources; an empty host directory there
+would hide them and break RTX shader loading.
+
 ## Docker Quick Start
 
 Run all commands from the repository root.
@@ -179,6 +218,15 @@ This builds the three local images in parallel, starts the containers, and check
 
 ### Start Isaac Sim 5.1.0
 
+Build the local Isaac Sim 5.1.0 runtime image:
+
+```bash
+docker compose --env-file docker/.env.base -f docker/docker-compose.yaml \
+  --profile isaac-sim-5.1.0 build isaac-sim-5-1-0
+```
+
+Start the container:
+
 ```bash
 docker compose --env-file docker/.env.base -f docker/docker-compose.yaml \
   --profile isaac-sim-5.1.0 up -d
@@ -195,6 +243,56 @@ Typical GUI launch inside the container:
 ```bash
 ./runapp.sh
 ```
+
+### Launch Mobile FR3 In The Robot Room
+
+The robot-room launch script runs in the Isaac Sim container. It loads
+`assets/robot_room.usd` by default, places the mobile FR3 from a task
+preset, and opens the scene paused. Presets are `task1` at `(4.4, -2.5, 0.0)`,
+`task2` at `(4.4, 2.6, 0.0)`, and `task3` at `(-4.6, 2.7, 0.0)`. The preset
+robot yaw is `90` degrees for `task1` and `-90` degrees for `task2`/`task3`.
+For `task3`, the launcher also adds 300 coffee bean rigid bodies to the bowl at
+`(-4.3, -1.5, 0.74659)` and sets the built-in Perspective viewport to
+`(-6.94158, 4.45737, 2.85191, 71.76099, 0.0, -136.55911)`.
+
+Launch the demo from the host:
+
+```bash
+docker exec -it isaac-sim-5-1-0-workshop bash -lc \
+  'cd /workspace/IROS_Workshop && python scripts/scenes/scene_robot_room_keyboard.py --task task3'
+```
+
+To use a different room USD, pass `--room-usd`, for example:
+
+```bash
+docker exec -it isaac-sim-5-1-0-workshop bash -lc \
+  'cd /workspace/IROS_Workshop && python scripts/scenes/scene_robot_room_keyboard.py --room-usd assets/robot_room.usd'
+```
+
+You can still override the preset with `--robot-x`, `--robot-y`, and
+`--robot-z` when manually checking a placement.
+
+The first launch can spend time compiling Isaac/RTX shader caches before the
+scene becomes interactive. Click Play in the Isaac Sim GUI to start the
+timeline, or add `--autoplay` to start immediately.
+
+The script launches native Isaac Sim and forwards the task preset into Kit, so
+switching `--task task1`, `--task task2`, or `--task task3` changes the spawn
+position without editing the command coordinates.
+
+For ROS2 bridge development, enable the bridge explicitly. The launcher sets
+`ROS_DISTRO`, `RMW_IMPLEMENTATION`, and the bundled bridge library path before
+Isaac Sim starts:
+
+```bash
+docker exec -it isaac-sim-5-1-0-workshop bash -lc \
+  'cd /workspace/IROS_Workshop && python scripts/scenes/scene_robot_room_keyboard.py --task task3 --ros2-bridge fastdds'
+```
+
+Use `--ros2-bridge cyclonedds` if you want CycloneDDS instead of FastDDS. The
+default `--experience base` avoids loading optional extensions such as the ROS2
+bridge unless requested; use `--experience full` when you need the full Isaac
+Sim extension set.
 
 ### Start Isaac Sim 6.0.0-dev2
 
@@ -260,16 +358,24 @@ If GUI applications fail to open:
 ## Main Workshop Scripts
 
 ### Demo Scenes
-- `scripts/scenes/scene_robot_keyboard.py` — complete tabletop scene with keyboard control.
-- `scripts/scenes/scene_robot_tables.py` — complete tabletop scene with robot but without keyboard control.
-- `scripts/scenes/scene_11_tables.py` — 11-table composition utility and preview.
-- `scripts/scenes/scene_with_table.py` — simple single-table placement example.
-- `scripts/scenes/keyboard_control.py` — reduced robot keyboard-control demo.
+- `scripts/scenes/scene_robot_room_keyboard.py` — Isaac Sim launcher for the robot room scene with task-based mobile FR3 spawn presets. `task3` includes coffee beans in the bowl.
 
 ### Utilities
-- `scripts/tools/compose_scene_usd.py` — compose the tabletop task scene directly as USD.
-- `scripts/tools/create_wall_room.py` — generate a simple wall-room USD asset.
 - `scripts/tools/inspect_usd.py` — print the prim hierarchy of a USD file.
+
+<details>
+<summary>Outdated scene generators and demos</summary>
+
+- `scripts/deprecated/scene_robot_keyboard.py` — older tabletop scene with keyboard control.
+- `scripts/deprecated/scene_robot_tables.py` — older tabletop scene with robot but without keyboard control.
+- `scripts/deprecated/scene_11_tables.py` — older 11-table composition utility and preview.
+- `scripts/deprecated/scene_with_table.py` — older single-table placement example.
+- `scripts/deprecated/keyboard_control.py` — older reduced robot keyboard-control demo.
+- `scripts/deprecated/launch_random_heads_scene.py` — older tabletop head randomization launcher.
+- `scripts/deprecated/create_wall_room.py` — older wall-room USD generator. The current base room is `assets/robot_room.usd`.
+- `scripts/deprecated/compose_scene_usd.py` — deprecated tabletop scene composer kept for reference. The active task3 bean setup now lives in `scripts/scenes/scene_robot_room_keyboard.py`.
+
+</details>
 
 ### Manual Validation Scenes
 - `scripts/manual_tests/test_table_cutlery.py` — validate table plus cutlery placement.
@@ -333,9 +439,23 @@ ros2 topic pub --once /joint_command sensor_msgs/msg/JointState "{name: ['left_f
 
 ## Running Scripts
 
-Inside an Isaac Sim runtime, construct reusable USD scenes with these tools.
+Inside an Isaac Sim runtime, use the prebuilt `assets/robot_room.usd` base scene
+through `scripts/scenes/scene_robot_room_keyboard.py`. New workshop task work
+should build on that room instead of generating new base scenes.
 
-`scripts/tools/create_wall_room.py` creates a room USD asset.
+Inspect the active robot-room USD hierarchy:
+
+```bash
+python scripts/tools/inspect_usd.py assets/robot_room.usd
+```
+
+<details>
+<summary>Outdated scene generators</summary>
+
+These scripts are kept for reference only. They do not define the current
+competition base scene.
+
+`scripts/deprecated/create_wall_room.py` creates a room USD asset.
 
 - `--output PATH`: base output path. Default: `assets/plain_white_room.usd`. The script appends room dimensions, and `_partition` when enabled.
 - `--length METERS`: inside room length along Y. Default: `30.0`.
@@ -349,7 +469,15 @@ Inside an Isaac Sim runtime, construct reusable USD scenes with these tools.
 - `--light-size NAME`: ceiling light panel shape, either `square` or `rectangle`. Default: `square`.
 - `--partition`: add a 5m partition wall with a 1m x 2m door opening.
 
-`scripts/tools/compose_scene_usd.py` composes the tabletop task scene.
+Official room generation example:
+
+```bash
+python scripts/deprecated/create_wall_room.py --length 30.0 --width 20.0 --height 3.0 --ceiling --partition
+```
+
+`scripts/deprecated/compose_scene_usd.py` composes the older tabletop task scene.
+It is kept for reference and for inspecting the previous coffee bean setup, but
+new robot-room task work should use `scripts/scenes/scene_robot_room_keyboard.py`.
 
 - `--output PATH`: USD file to write when `--save` is set. Default: `assets/tabletop_task_scene.usd`.
 - `--save`: write the composed scene to `--output`.
@@ -364,31 +492,13 @@ Inside an Isaac Sim runtime, construct reusable USD scenes with these tools.
 - `--bean-color R G B`: coffee bean RGB color as three floats in `[0, 1]`. Default: `0.20 0.12 0.07`.
 - `--bean-density VALUE`: coffee bean density for USD physics mass properties. Default: `850.0`.
 
-Official room generation example:
-
-```bash
-python scripts/tools/create_wall_room.py --length 30.0 --width 20.0 --height 3.0 --ceiling --partition
-```
-
 Official scene composition example:
 
 ```bash
-python scripts/tools/compose_scene_usd.py --env assets/plain_white_room_20_30_3_partition.usd --bean-count 300 --save
+python scripts/deprecated/compose_scene_usd.py --env assets/plain_white_room_20_30_3_partition.usd --bean-count 300 --save
 ```
 
-Inspect the composed USD hierarchy:
-
-```bash
-python scripts/tools/inspect_usd.py assets/tabletop_task_scene_with_robot.usd
-```
-
-Inside an Isaac Lab runtime, run robot manipulation and control scenes with:
-
-```bash
-python scripts/scenes/scene_robot_keyboard.py
-python scripts/scenes/scene_robot_tables.py
-python scripts/manual_tests/test_table_cutlery.py
-```
+</details>
 
 ## Submodules
 
@@ -448,10 +558,32 @@ Hydra render-transform synchronization. With Fabric, USD remains the authoring
 format, but runtime body transforms are propagated through Fabric's simulation
 data path to the renderer. This is much cheaper for dense dynamic scenes.
 
-When Fabric is enabled, USD may not contain the latest live transforms(xform 
-transforms will be stale) duringsimulation. Use PhysX, Fabric-aware, or tensor 
-APIs for runtime state queriesinstead of reading moving body poses directly 
+When Fabric is enabled, USD may not contain the latest live transforms(xform
+transforms will be stale) duringsimulation. Use PhysX, Fabric-aware, or tensor
+APIs for runtime state queriesinstead of reading moving body poses directly
 from USD.
+
+## Runtime Troubleshooting
+
+If Isaac Sim reports permission errors for `/isaac-sim/kit/logs` or
+`/isaac-sim/kit/data/Kit/.../user.config.json`, recreate the container after
+updating the compose mounts and ensure the host cache directories are owned by
+your container UID/GID:
+
+```bash
+python3 scripts/tools/validate_docker_runtimes.py --prepare-dirs --skip-script-check
+sudo chown -R "${HOST_UID:-$(id -u)}:${HOST_GID:-$(id -g)}" \
+  "$HOME/docker/iros-workshop/isaac-sim-5.1.0" \
+  "$HOME/docker/iros-workshop/isaac-sim-6.0.0"
+docker compose --env-file docker/.env.base -f docker/docker-compose.yaml \
+  --profile isaac-sim-5.1.0 up -d --force-recreate isaac-sim-5-1-0
+```
+
+If ROS2 bridge startup fails with missing `libament_index_cpp.so`, launch with
+`--ros2-bridge fastdds` or `--ros2-bridge cyclonedds` so the bundled ROS2
+library path is configured before Isaac Sim starts. The launcher re-execs
+itself once in ROS mode so `LD_LIBRARY_PATH` is visible to the dynamic loader
+from process startup, and stores ROS logs under `/isaac-sim/kit/logs/ros`.
 
 ## Validation Checklist
 
@@ -460,7 +592,7 @@ After changes, verify the following:
 1. `docker compose` resolves all configured profiles.
 2. The repository appears inside each container at `/workspace/IROS_Workshop`.
 3. Isaac Sim GUI launches correctly through X11.
-4. `scripts/scenes/scene_robot_keyboard.py` starts and resolves all required USD assets.
+4. `scripts/scenes/scene_robot_room_keyboard.py --task task3` starts and resolves all required USD assets.
 5. `third_party/franka_description/urdfs/mobile_fr3_duo_v0_2_franka_hand.usd` is available.
 6. No tools or docs still reference the removed `source/robot_lab` tree.
 

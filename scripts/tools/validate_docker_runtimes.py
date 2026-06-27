@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Copyright (c) 2024-2026 Ziqi Fan
+# SPDX-License-Identifier: Apache-2.0
+
 """Build, start, and validate the workshop Docker runtimes."""
 
 from __future__ import annotations
@@ -39,8 +42,11 @@ RUNTIMES = (
             "/isaac-sim/.cache/warp",
             "/isaac-sim/.nv/ComputeCache",
             "/isaac-sim/.nvidia-omniverse/logs",
+            "/isaac-sim/kit/logs",
             "/isaac-sim/.nvidia-omniverse/config",
+            "/isaac-sim/data/Kit",
             "/isaac-sim/kit/data/documents",
+            "/isaac-sim/kit/data/Kit",
             "/isaac-sim/.local/share/ov/data/documents",
             "/isaac-sim/.local/share/ov/data/Kit",
             "/isaac-sim/.local/share/ov/pkg",
@@ -58,8 +64,11 @@ RUNTIMES = (
             "/isaac-sim/.cache/warp",
             "/isaac-sim/.nv/ComputeCache",
             "/isaac-sim/.nvidia-omniverse/logs",
+            "/isaac-sim/kit/logs",
             "/isaac-sim/.nvidia-omniverse/config",
+            "/isaac-sim/data/Kit",
             "/isaac-sim/kit/data/documents",
+            "/isaac-sim/kit/data/Kit",
             "/isaac-sim/.local/share/ov/data/documents",
             "/isaac-sim/.local/share/ov/data/Kit",
             "/isaac-sim/.local/share/ov/pkg",
@@ -216,9 +225,9 @@ def prepare_host_dirs(env: dict[str, str]) -> None:
 
     print(f"Prepared host Docker storage under {docker_root}")
     print(
-        "Isaac Sim containers run as UID/GID 1234. "
+        "Isaac Sim containers run as HOST_UID/HOST_GID. "
         "If write checks fail, run:\n"
-        f"  sudo chown -R 1234:1234 "
+        '  sudo chown -R "${HOST_UID:-$(id -u)}:${HOST_GID:-$(id -g)}" '
         f"{docker_root / 'isaac-sim-5.1.0'} "
         f"{docker_root / 'isaac-sim-6.0.0'}"
     )
@@ -323,8 +332,9 @@ def validate_mounts(container: str, runtime: Runtime) -> None:
             f"{mount_checks} && "
             f"{write_checks} && "
             f"test -f {WORKSPACE_ROOT}/README.md && "
-            f"test -f {WORKSPACE_ROOT}/scripts/tools/compose_scene_usd.py && "
-            f"test -f {WORKSPACE_ROOT}/assets/table_edit.usd"
+            f"test -f {WORKSPACE_ROOT}/scripts/scenes/"
+            "scene_robot_room_keyboard.py && "
+            f"test -f {WORKSPACE_ROOT}/assets/robot_room.usd"
         ),
     )
 
@@ -374,12 +384,8 @@ def validate_scripts(container: str) -> None:
         "files = ["
         "'scripts/common/path_utils.py', "
         "'scripts/common/tmr_base_control.py', "
-        "'scripts/tools/compose_scene_usd.py', "
         "'scripts/tools/inspect_usd.py', "
-        "'scripts/scenes/scene_11_tables.py', "
-        "'scripts/scenes/scene_robot_tables.py', "
-        "'scripts/scenes/scene_robot_keyboard.py', "
-        "'scripts/scenes/keyboard_control.py'"
+        "'scripts/scenes/scene_robot_room_keyboard.py', "
         "]; "
         "[compile(Path(file).read_text(encoding='utf-8'), file, 'exec') "
         "for file in files]; "
@@ -390,7 +396,7 @@ def validate_scripts(container: str) -> None:
         "import sys; "
         "sys.path.insert(0, 'scripts/common'); "
         "from path_utils import asset_path, franka_urdf_path; "
-        "assert asset_path('table_edit.usd').is_file(); "
+        "assert asset_path('robot_room.usd').is_file(); "
         "assert franka_urdf_path("
         "'mobile_fr3_duo_v0_2_franka_hand.usd'"
         ").is_file(); "
@@ -413,9 +419,9 @@ def validate_scripts(container: str) -> None:
             f"$PY -c {shlex.quote(runtime_check)} && "
             f"$PY -c {shlex.quote(syntax_check)} && "
             f"$PY -c {shlex.quote(path_check)} && "
-            "$PY scripts/tools/compose_scene_usd.py "
-            "--output /tmp/iros_workshop_validate_scene.usd && "
-            "test -f /tmp/iros_workshop_validate_scene.usd"
+            "$PY scripts/tools/inspect_usd.py "
+            "assets/robot_room.usd >/tmp/iros_workshop_robot_room.txt && "
+            "test -s /tmp/iros_workshop_robot_room.txt"
         ),
     )
 

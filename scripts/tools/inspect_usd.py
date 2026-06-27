@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Copyright (c) 2024-2026 Ziqi Fan
+# SPDX-License-Identifier: Apache-2.0
+
 """Inspect the structure of a USD file."""
 
 import sys
