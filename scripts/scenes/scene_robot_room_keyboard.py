@@ -65,6 +65,39 @@ TASK_ROBOT_POSES = {
     "task3": {"position": (-4.6, 2.7, 0.0), "yaw": -90.0},
 }
 
+# Task 2 Specific
+TASK2_TABLE_POSITION = (2.05, 1.95, 0.75)
+TASK2_CAMERA_POSITION = (2.087, 1.885, 2.7)
+TASK2_OBJECT_SPAWN_CONFIG = { # relative to table origin
+    "thermalpad": {
+        "asset_path": "task2_objects/Ram_ThermalPad_Res20_Top.usda",
+        "position": (-0.3, 0.0, 0.0),
+        "rotation": (0.70711, 0.0, 0.0, 0.70711)
+    },
+    "board_target": {
+        "asset_path": "task2_objects/Ram_Board_Target.usda",
+        "position": (0.1, 0.0, 0.0),
+        "rotation": (0.70711, 0.0, 0.0, 0.70711)
+    },
+    "boards": {
+        "asset_path": "task2_objects/Ram_Board.usda",
+        "spawns": [
+            {
+                "position": (-0.1, 0.0, 0.0),
+                "rotation": (0.70711, 0.0, 0.0, 0.70711)
+            },
+            {
+                "position": (0.0, 0.0, 0.0),
+                "rotation": (0.70711, 0.0, 0.0, 0.70711)
+            },
+            {
+                "position": (0.2, 0.0, 0.0),
+                "rotation": (0.70711, 0.0, 0.0, 0.70711)
+            },
+        ]
+    }
+}
+
 
 def parse_args() -> argparse.Namespace:
     argv = None
@@ -676,6 +709,140 @@ def add_coffee_beans(
         mass_api.CreateDensityAttr(density)
         UsdShade.MaterialBindingAPI.Apply(bean_prim).Bind(material)
 
+def load_deformable_assets(
+    stage: Any,
+) -> None:
+    root_position = TASK2_TABLE_POSITION
+    reference_usd(
+        stage,
+        "/World/Scene/task_objects/thermalpad",
+        asset_path(TASK2_OBJECT_SPAWN_CONFIG["thermalpad"]["asset_path"]),
+        position=tuple(root_position[index] + TASK2_OBJECT_SPAWN_CONFIG["thermalpad"]["position"][index] for index in range(3)),
+        rotation=TASK2_OBJECT_SPAWN_CONFIG["thermalpad"]["rotation"]
+    )
+    reference_usd(
+        stage,
+        "/World/Scene/task_objects/board_target",
+        asset_path(TASK2_OBJECT_SPAWN_CONFIG["board_target"]["asset_path"]),
+        position=tuple(root_position[index] + TASK2_OBJECT_SPAWN_CONFIG["board_target"]["position"][index] for index in range(3)),
+        rotation=TASK2_OBJECT_SPAWN_CONFIG["board_target"]["rotation"]
+    )
+    for i, board_spawn in enumerate(TASK2_OBJECT_SPAWN_CONFIG["boards"]["spawns"]):
+        reference_usd(
+            stage,
+            f"/World/Scene/task_objects/board_{i}",
+            asset_path(TASK2_OBJECT_SPAWN_CONFIG["boards"]["asset_path"]),
+            position=tuple(root_position[index] + board_spawn["position"][index] for index in range(3)),
+            rotation=board_spawn["rotation"]
+        )
+
+def setup_deformable_camera(
+    stage: Any,
+) -> None:
+    from pxr import Gf as pxr_gf
+    from pxr import UsdGeom as pxr_usd_geom
+    import omni.graph.core as og
+
+    Gf: Any = pxr_gf
+    UsdGeom: Any = pxr_usd_geom
+
+    # Creating a Camera Prim
+    camera_prim_path = "/World/Scene/eval_camera"
+    camera_prim = UsdGeom.Camera.Define(stage, camera_prim_path)
+    xform_api = UsdGeom.XformCommonAPI(camera_prim)
+    xform_api.SetTranslate(Gf.Vec3d(*TASK2_CAMERA_POSITION))
+    xform_api.SetRotate((0, 0, 0), UsdGeom.XformCommonAPI.RotationOrderXYZ)
+    camera_prim.GetFocalLengthAttr().Set(20)
+    camera_prim.GetFocusDistanceAttr().Set(400)
+    camera_prim.GetProjectionAttr().Set("perspective")
+    # camera_prim.GetHorizontalApertureAttr().Set(21)
+    # camera_prim.GetVerticalApertureAttr().Set(16)
+
+    # ROS2 helper
+    ROS_TOPIC_NAMESPACE = "/isaac/eval_camera"
+    ROS_TOPIC_FRAMEID = "eval_camera"
+
+    keys = og.Controller.Keys
+    (ros_camera_graph, _, _, _) = og.Controller.edit(
+        {"graph_path": "/ROS2_CameraGraphs/eval_camera", "evaluator_name": "execution"},
+        {
+            keys.CREATE_NODES: [
+                ("OnPlaybackTick", "omni.graph.action.OnPlaybackTick"),
+                ("CameraInfoPublish", "isaacsim.ros2.bridge.ROS2CameraInfoHelper"),
+                ("RenderProduct", "isaacsim.core.nodes.IsaacCreateRenderProduct"),
+                ("RunOnce", "isaacsim.core.nodes.OgnIsaacRunOneSimulationFrame"),
+                ("Context", "isaacsim.ros2.bridge.ROS2Context"),
+
+                ("RGBPublish", "isaacsim.ros2.bridge.ROS2CameraHelper"),
+                ("DepthPublish", "isaacsim.ros2.bridge.ROS2CameraHelper"),
+                ("SemanticPublish", "isaacsim.ros2.bridge.ROS2CameraHelper"),
+                ("Bbox2dTightPublish", "isaacsim.ros2.bridge.ROS2CameraHelper"),
+            ],
+            keys.CONNECT: [
+                ("OnPlaybackTick.outputs:tick", "RunOnce.inputs:execIn"),
+                ("RunOnce.outputs:step", "RenderProduct.inputs:execIn"),
+                ("RenderProduct.outputs:execOut", "CameraInfoPublish.inputs:execIn"),
+                ("RenderProduct.outputs:renderProductPath", "CameraInfoPublish.inputs:renderProductPath"),
+                ("Context.outputs:context", "CameraInfoPublish.inputs:context"),
+
+                ("RenderProduct.outputs:execOut", "RGBPublish.inputs:execIn"),
+                ("RenderProduct.outputs:renderProductPath", "RGBPublish.inputs:renderProductPath"),
+
+                ("RenderProduct.outputs:execOut", "DepthPublish.inputs:execIn"),
+                ("RenderProduct.outputs:renderProductPath", "DepthPublish.inputs:renderProductPath"),
+
+                ("RenderProduct.outputs:execOut", "SemanticPublish.inputs:execIn"),
+                ("RenderProduct.outputs:renderProductPath", "SemanticPublish.inputs:renderProductPath"),
+                ("Context.outputs:context", "SemanticPublish.inputs:context"),
+
+                ("RenderProduct.outputs:execOut", "Bbox2dTightPublish.inputs:execIn"),
+                ("RenderProduct.outputs:renderProductPath", "Bbox2dTightPublish.inputs:renderProductPath"),
+                ("Context.outputs:context", "Bbox2dTightPublish.inputs:context"),
+            ],
+            keys.SET_VALUES: [
+                # Render Product
+                ("RenderProduct.inputs:cameraPrim", camera_prim_path),
+                ("RenderProduct.inputs:height", 720),
+                ("RenderProduct.inputs:width", 1280),
+
+                # Publisher: Camera Info
+                ("CameraInfoPublish.inputs:topicName", "camera_info"),
+                ("CameraInfoPublish.inputs:frameId", ROS_TOPIC_FRAMEID),
+                ("CameraInfoPublish.inputs:nodeNamespace", ROS_TOPIC_NAMESPACE),
+                ("CameraInfoPublish.inputs:resetSimulationTimeOnStop", True),
+                
+                # Publisher: RGB
+                ("RGBPublish.inputs:type", "rgb"),
+                ("RGBPublish.inputs:nodeNamespace", ROS_TOPIC_NAMESPACE),
+                ("RGBPublish.inputs:topicName", "image_raw"),
+                ("RGBPublish.inputs:frameId", ROS_TOPIC_FRAMEID),
+                ("RGBPublish.inputs:resetSimulationTimeOnStop", True),
+
+                # Publisher: Depth
+                ("DepthPublish.inputs:type", "depth"),
+                ("DepthPublish.inputs:nodeNamespace", ROS_TOPIC_NAMESPACE),
+                ("DepthPublish.inputs:topicName", "depth"),
+                ("DepthPublish.inputs:frameId", ROS_TOPIC_FRAMEID),
+                ("DepthPublish.inputs:resetSimulationTimeOnStop", True),
+
+                # Publisher: Semantic Segmentation
+                ("SemanticPublish.inputs:topicName", "semantic_segmentation"),
+                ("SemanticPublish.inputs:type", "semantic_segmentation"),
+                ("SemanticPublish.inputs:frameId", ROS_TOPIC_FRAMEID),
+                ("SemanticPublish.inputs:nodeNamespace", ROS_TOPIC_NAMESPACE),
+                ("SemanticPublish.inputs:enableSemanticLabels", True),
+                ("SemanticPublish.inputs:resetSimulationTimeOnStop", True),
+
+                # Publisher: 2D Bounding Box Tight
+                ("Bbox2dTightPublish.inputs:topicName", "bbox_2d_tight"),
+                ("Bbox2dTightPublish.inputs:type", "bbox_2d_tight"),
+                ("Bbox2dTightPublish.inputs:resetSimulationTimeOnStop", True),
+                ("Bbox2dTightPublish.inputs:frameId", ROS_TOPIC_FRAMEID),
+                ("Bbox2dTightPublish.inputs:nodeNamespace", ROS_TOPIC_NAMESPACE),
+                ("Bbox2dTightPublish.inputs:enableSemanticLabels", True),
+            ],
+        },
+    )
 
 def set_initial_perspective_view(app: Any) -> None:
     if not INITIAL_VIEW_POSE:
@@ -757,7 +924,12 @@ def build_stage(
 
     resolved_head_placement = None
     head_prim_path = None
-    if task == "task3":
+    if task == "task1":
+        pass
+    elif task == "task2":
+        load_deformable_assets(stage)
+        setup_deformable_camera(stage)
+    elif task == "task3":
         (
             resolved_head_placement,
             head_position,
