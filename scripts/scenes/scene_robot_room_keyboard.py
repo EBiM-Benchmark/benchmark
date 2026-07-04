@@ -35,6 +35,17 @@ DEFAULT_BEAN_COUNT = 300
 DEFAULT_BEAN_DENSITY = 850.0
 BOWL_USD = asset_path("bowl2.usd")
 TASK3_BOWL_POSITION = (-4.3, -1.5, 0.74659)
+TASK3_HEAD_PLACEMENTS = {
+    "A": ((-2.8, 1.7, 0.74659), (0.0, 0.0, 270.0)),
+    "B": ((-2.4, 1.7, 0.74659), (0.0, 0.0, 270.0)),
+    "C": ((-2.0, 1.7, 0.74659), (0.0, 0.0, 270.0)),
+    "D": ((-1.6, 1.7, 0.74659), (0.0, 0.0, 270.0)),
+    "E": ((-1.35, 1.95, 0.74659), (0.0, 0.0, 0.0)),
+    "F": ((-1.6, 2.2, 0.74659), (0.0, 0.0, 90.0)),
+    "G": ((-2.0, 2.2, 0.74659), (0.0, 0.0, 90.0)),
+    "H": ((-2.4, 2.2, 0.74659), (0.0, 0.0, 90.0)),
+    "I": ((-2.8, 2.2, 0.74659), (0.0, 0.0, 90.0)),
+}
 INITIAL_VIEW_POSE = (
     (-8.12589, -3.29067, 2.79653),
     (73.13762, 0.0, -50.88313),
@@ -42,7 +53,7 @@ INITIAL_VIEW_POSE = (
 BEAN_PHYSICS = {
     "radius": 0.0025,
     "half_height": 0.0016,
-    "spawn_height": 0.01,
+    "spawn_height": 0.02,
     "spawn_wall_thickness": 0.016,
     "spawn_spacing_scale": 1.2,
     "friction": 0.55,
@@ -109,6 +120,12 @@ def parse_args() -> argparse.Namespace:
         type=float,
         default=None,
         help="Override the preset robot yaw in degrees.",
+    )
+    parser.add_argument(
+        "--head-placement",
+        type=head_placement_arg,
+        default="random",
+        help=("Task3 head placement: A-I, or random. Lowercase is accepted."),
     )
     parser.add_argument(
         "--autoplay",
@@ -179,6 +196,55 @@ def euler_xyz_to_quat(
     )
 
 
+def multiply_quats(
+    left: tuple[float, float, float, float],
+    right: tuple[float, float, float, float],
+) -> tuple[float, float, float, float]:
+    left_w, left_x, left_y, left_z = left
+    right_w, right_x, right_y, right_z = right
+    return (
+        left_w * right_w
+        - left_x * right_x
+        - left_y * right_y
+        - left_z * right_z,
+        left_w * right_x
+        + left_x * right_w
+        + left_y * right_z
+        - left_z * right_y,
+        left_w * right_y
+        - left_x * right_z
+        + left_y * right_w
+        + left_z * right_x,
+        left_w * right_z
+        + left_x * right_y
+        - left_y * right_x
+        + left_z * right_w,
+    )
+
+
+def axis_angle_to_quat(
+    axis: str,
+    angle_degrees: float,
+) -> tuple[float, float, float, float]:
+    half_angle = math.radians(angle_degrees) * 0.5
+    real = math.cos(half_angle)
+    imaginary = math.sin(half_angle)
+    if axis == "x":
+        return (real, imaginary, 0.0, 0.0)
+    if axis == "y":
+        return (real, 0.0, imaginary, 0.0)
+    return (real, 0.0, 0.0, imaginary)
+
+
+def usd_rotate_xyz_to_quat(
+    rotation_degrees: tuple[float, float, float],
+) -> tuple[float, float, float, float]:
+    x_rotation = axis_angle_to_quat("x", rotation_degrees[0])
+    y_rotation = axis_angle_to_quat("y", rotation_degrees[1])
+    z_rotation = axis_angle_to_quat("z", rotation_degrees[2])
+    return multiply_quats(multiply_quats(x_rotation, y_rotation), z_rotation)
+
+
 def resolve_robot_position(
     args: argparse.Namespace,
 ) -> tuple[float, float, float]:
@@ -194,6 +260,71 @@ def resolve_robot_yaw(args: argparse.Namespace) -> float:
     if args.robot_yaw is not None:
         return args.robot_yaw
     return TASK_ROBOT_POSES[args.task]["yaw"]
+
+
+def normalize_head_placement_name(selection: str) -> str:
+    normalized = selection.strip().upper()
+    if normalized == "RANDOM":
+        return "random"
+    if normalized in TASK3_HEAD_PLACEMENTS:
+        return normalized
+    allowed = ", ".join((*TASK3_HEAD_PLACEMENTS, "random"))
+    raise ValueError(f"Unknown head placement '{selection}'. Use: {allowed}")
+
+
+def head_placement_arg(selection: str) -> str:
+    try:
+        return normalize_head_placement_name(selection)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from exc
+
+
+def resolve_head_placement(
+    selection: str,
+) -> tuple[str, tuple[float, float, float], tuple[float, float, float, float]]:
+    normalized = normalize_head_placement_name(selection)
+    if normalized == "random":
+        normalized = random.choice(tuple(TASK3_HEAD_PLACEMENTS))
+
+    position, rotation_degrees = TASK3_HEAD_PLACEMENTS[normalized]
+    return normalized, position, usd_rotate_xyz_to_quat(rotation_degrees)
+
+
+def set_head_xform_orient(
+    prim: Any,
+    position: tuple[float, float, float],
+    orientation: tuple[float, float, float, float],
+) -> None:
+    from pxr import Gf as pxr_gf
+    from pxr import UsdGeom as pxr_usd_geom
+
+    Gf: Any = pxr_gf
+    UsdGeom: Any = pxr_usd_geom
+
+    xform = UsdGeom.Xformable(prim)
+    xform.ClearXformOpOrder()
+    for rotate_attr_name in (
+        "xformOp:rotateXYZ",
+        "xformOp:rotateX",
+        "xformOp:rotateY",
+        "xformOp:rotateZ",
+    ):
+        rotate_attr = prim.GetAttribute(rotate_attr_name)
+        if rotate_attr:
+            rotate_attr.Block()
+
+    translate_op = xform.AddTranslateOp(UsdGeom.XformOp.PrecisionDouble)
+    orient_op = xform.AddOrientOp(UsdGeom.XformOp.PrecisionFloat)
+    translate_op.Set(Gf.Vec3d(*position))
+    orient_op.Set(
+        Gf.Quatf(
+            orientation[0],
+            orientation[1],
+            orientation[2],
+            orientation[3],
+        )
+    )
+    xform.SetXformOpOrder([translate_op, orient_op], True)
 
 
 def configure_ros2_bridge_env(args: argparse.Namespace) -> None:
@@ -308,6 +439,28 @@ def reference_usd(
     if reset_asset_xform:
         set_xform(asset_prim, (0.0, 0.0, 0.0), (1.0, 0.0, 0.0, 0.0))
     return asset_prim
+
+
+def move_task3_head(
+    stage: Any,
+    room_asset_path: str,
+    position: tuple[float, float, float],
+    orientation: tuple[float, float, float, float],
+) -> str:
+    candidate_paths = (
+        f"{room_asset_path}/head",
+        f"{room_asset_path}/root/head",
+        "/root/head",
+    )
+    for prim_path in candidate_paths:
+        prim = stage.GetPrimAtPath(prim_path)
+        if prim and prim.IsValid():
+            set_head_xform_orient(prim, position, orientation)
+            return prim_path
+
+    raise RuntimeError(
+        "Could not find task3 head prim. Tried: " + ", ".join(candidate_paths)
+    )
 
 
 def create_preview_material(
@@ -561,6 +714,7 @@ def build_stage(
     robot_position: tuple[float, float, float],
     robot_rotation: tuple[float, float, float, float],
     robot_yaw: float,
+    head_placement: str,
 ) -> Any:
     import omni.usd
     from pxr import UsdGeom as pxr_usd_geom
@@ -587,7 +741,7 @@ def build_stage(
     stage.SetDefaultPrim(world.GetPrim())
     UsdGeom.Scope.Define(stage, "/World/Environment")
 
-    reference_usd(
+    room_asset_prim = reference_usd(
         stage,
         "/World/Environment/RobotRoom",
         room_path,
@@ -601,7 +755,20 @@ def build_stage(
         robot_rotation,
     )
 
+    resolved_head_placement = None
+    head_prim_path = None
     if task == "task3":
+        (
+            resolved_head_placement,
+            head_position,
+            head_orientation,
+        ) = resolve_head_placement(head_placement)
+        head_prim_path = move_task3_head(
+            stage,
+            str(room_asset_prim.GetPath()),
+            head_position,
+            head_orientation,
+        )
         add_coffee_beans(
             stage,
             count=DEFAULT_BEAN_COUNT,
@@ -630,6 +797,9 @@ def build_stage(
     )
     print(f"Robot yaw: {robot_yaw:.1f} deg")
     print(f"Coffee beans: {DEFAULT_BEAN_COUNT if task == 'task3' else 0}")
+    if resolved_head_placement and head_prim_path:
+        print(f"Head placement: {resolved_head_placement}")
+        print(f"Head prim: {head_prim_path}")
     return stage
 
 
@@ -668,6 +838,7 @@ def main() -> None:
             robot_position=robot_position,
             robot_rotation=yaw_to_quat(robot_yaw),
             robot_yaw=robot_yaw,
+            head_placement=args.head_placement,
         )
         enable_ros2_bridge(app, args)
 

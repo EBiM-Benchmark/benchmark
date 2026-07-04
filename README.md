@@ -253,7 +253,22 @@ preset, and opens the scene paused. Presets are `task1` at `(4.4, -2.5, 0.0)`,
 robot yaw is `90` degrees for `task1` and `-90` degrees for `task2`/`task3`.
 For `task3`, the launcher also adds 300 coffee bean rigid bodies to the bowl at
 `(-4.3, -1.5, 0.74659)` and sets the built-in Perspective viewport to
-`(-6.94158, 4.45737, 2.85191, 71.76099, 0.0, -136.55911)`.
+`(-8.12589, -3.29067, 2.79653, 73.13762, 0.0, -50.88313)`.
+
+#### Task3 Feeding Workflow
+
+Task3 is a four-stage feeding task:
+
+1. Table Setup: move the plate holding the bowl, cup, disk, and spoon from the
+   Kitchen Area to the Dining Area.
+2. Feed: scoop coffee beans from the bowl with the spoon, move the spoon to a
+   feeding position in front of the robot head, and hold that feeding position
+   for at least 3 seconds. After feeding is complete, return the coffee beans to
+   the bowl.
+3. Bean Recovery: transfer the coffee beans from the bowl into the designated
+   recycling container in the Kitchen Area.
+4. Clean Up: return all utensils to the Kitchen Area and place them inside the
+   designated sink region, marked by the black tap area.
 
 Launch the demo from the host:
 
@@ -275,6 +290,34 @@ You can still override the preset with `--robot-x`, `--robot-y`, and
 The first launch can spend time compiling Isaac/RTX shader caches before the
 scene becomes interactive. Click Play in the Isaac Sim GUI to start the
 timeline, or add `--autoplay` to start immediately.
+
+This launcher only composes the USD scene and starts the Isaac Sim timeline.
+It does not currently run an Isaac Lab control loop, attach a keyboard
+listener, or publish wheel/arm targets. If you click Play and the robot falls
+or the arm joints feel soft, that means the articulation is being simulated
+without a controller holding joint targets. Do not fix that by editing the
+Franka URDF first. Port the actuator configuration and per-step control loop
+from `scripts/deprecated/scene_robot_keyboard.py`, or add an equivalent
+ROS/OmniGraph articulation controller.
+
+The `--head-placement` option is only for the task3 head prop. Use `a` through
+`i` to select a fixed placement, or `random` to choose one automatically.
+Lowercase and uppercase letters are both accepted:
+
+```bash
+docker exec -it isaac-sim-5-1-0-workshop bash -lc \
+  'cd /workspace/EBiM_Challenge && python scripts/scenes/scene_robot_room_keyboard.py --task task3 --head-placement e'
+```
+
+For randomized task3 head placement:
+
+```bash
+docker exec -it isaac-sim-5-1-0-workshop bash -lc \
+  'cd /workspace/EBiM_Challenge && python scripts/scenes/scene_robot_room_keyboard.py --task task3 --head-placement random'
+```
+
+This option is unrelated to the keyboard `E` key used for rotation in the older
+keyboard-control demos.
 
 The script launches native Isaac Sim and forwards the task preset into Kit, so
 switching `--task task1`, `--task task2`, or `--task task3` changes the spawn
@@ -358,7 +401,7 @@ If GUI applications fail to open:
 ## Main Workshop Scripts
 
 ### Demo Scenes
-- `scripts/scenes/scene_robot_room_keyboard.py` — Isaac Sim launcher for the robot room scene with task-based mobile FR3 spawn presets. `task3` includes coffee beans in the bowl.
+- `scripts/scenes/scene_robot_room_keyboard.py` — Isaac Sim launcher for the robot room scene with task-based mobile FR3 spawn presets. `task3` includes coffee beans in the bowl. Despite the filename, this script currently loads the robot into the GUI but does not run live keyboard control.
 
 ### Utilities
 - `scripts/tools/inspect_usd.py` — print the prim hierarchy of a USD file.
@@ -538,7 +581,7 @@ The mobile base follows a diagonal steer-drive layout. Shared helper logic in `s
 - wheel velocity targets,
 - heading-hold compensation during translation.
 
-This is still a simulation convenience layer, not a production-grade mobile base controller.
+This is still a simulation convenience layer, not a production-grade mobile base controller. The active robot-room launcher does not yet call these helpers at runtime. The older `scripts/deprecated/scene_robot_keyboard.py` shows the required pattern: define Isaac Lab actuators, hold the arm/gripper joints with position targets every step, compute steering and wheel velocity targets from the pressed keys, write targets to the sim, and then step the simulation.
 
 ### Simulation Performance
 
