@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright (c) 2024-2026 Ziqi Fan
+# Copyright (c) 2026 The EBiM Benchmark Contributors
 # SPDX-License-Identifier: Apache-2.0
 
 """Thin client that triggers the eval service and prints the result.

@@ -1,4 +1,4 @@
-# Copyright (c) 2024-2026 Ziqi Fan
+# Copyright (c) 2026 The EBiM Benchmark Contributors
 # SPDX-License-Identifier: Apache-2.0
 
 """Keyboard and wheel-target helpers for the diagonal TMR steer-drive base."""

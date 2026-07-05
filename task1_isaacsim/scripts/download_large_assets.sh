@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Copyright (c) 2024-2026 Ziqi Fan
+# Copyright (c) 2026 The EBiM Benchmark Contributors
 # SPDX-License-Identifier: Apache-2.0
 #
 # Download the large Task 1 USD assets that are NOT stored in git (too large for
