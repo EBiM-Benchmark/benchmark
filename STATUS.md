@@ -22,7 +22,7 @@ Capabilities tracked per task/engine:
 
 ✅ = verified working in the current release. This matrix covers what is built and verified; the competition page lists all committed engines per task (e.g., Genesis for Task 2), which may not yet appear here.
 
-Note: evaluation code in this repository (e.g., the Task 2 scoring module and the vendored ManipulationNet client) is a development facilitator; official scoring follows the competition Rulebook v1.2 as published on the website.
+Note: evaluation code in this repository (e.g., the Task 2 scoring module and the vendored ManipulationNet client) is a development facilitator; official scoring follows the official rules and scoring published on the competition page (https://ebim-benchmark.github.io/competition.html#tasks).
 
 ## Capability × track matrix
 
