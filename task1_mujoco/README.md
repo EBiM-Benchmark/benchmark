@@ -8,56 +8,46 @@
 > `2houyuhang/feature/mujoco-teleop-publishers`); once merged there, the
 > copy here can be swapped for a submodule reference.
 
-# EBiM Benchmark Task 1 — Cable Management Simulation
+# EBiM Benchmark Task 1 — Cable Management Simulation (MuJoCo)
 
-A MuJoCo teleoperation environment for the ManipulationNet **cable_management**
-benchmark (Tier 2 board): a mobile dual-arm Franka FR3 platform with Robotiq
-2F-85 grippers routes a deformable cable across a fixture board. The simulator
-supports **keyboard, gamepad, VR, GELLO, and a unified ROS 2 teleop mode**
-and integrates the
-official ManipulationNet ROS 2 client for end-to-end evaluation — including a
-fixed overhead evidence camera, automatic tier skipping, client-driven fixture
+Task 1 teleoperates a mobile dual-arm Franka FR3 platform (Robotiq 2F-85
+grippers on a planar-drive base with a vertical spine) to route a deformable
+cable across a fixture board — the ManipulationNet **cable_management**
+benchmark (Tier 2). The simulator supports **keyboard, gamepad, VR, GELLO,
+and a unified ROS 2 teleop mode**, and integrates the official
+ManipulationNet ROS 2 client for end-to-end scored evaluation: fixed
+overhead evidence camera, automatic tier skipping, client-driven fixture
 randomization, and an in-scene one-time-code display.
 
-## Which path do I take?
+## How it works
 
-All commands below run from this directory (`task1_mujoco/` after cloning
-the benchmark repository — you already have everything, nothing else to
-download).
+Everything runs in a **single MuJoCo process** (`main.py`): robot, cable,
+board and physics live in one simulation — no separate worlds, no coupling
+layers. Every input device feeds the same control stack (grasp-aware
+scaling → smoothing → contact clamp → damped-least-squares IK → force-servo
+grasping), so the robot feels identical no matter which device you hold.
 
-| You want to... | Use | You need |
-|---|---|---|
-| **Drive the robot now** (keyboard / gamepad / VR), best performance and feel | **Path A — native**: `start.bat` (Windows) / `start.sh` (Ubuntu) | Miniconda (auto-installed by `start.sh`) |
-| **Run the scored ManipulationNet evaluation** | **Path B — eval stack**: `./eval.sh` | Docker only |
-| **Check the sim runs on your machine** without installing anything native | **Path C — Docker test**: `./docker-run.sh` | Docker only |
-| Use **GELLO hardware** or feed commands **over ROS 2 topics** | Path B's image + the [GELLO](#gello-official-ebim-competition-input-device) / [ros_teleop](#unified-ros-2-teleop---input-ros_teleop) sections | ROS 2 (included in the eval image) |
+There are two ways to run that process, for two different purposes:
 
-The typical participant journey is: **practice with Path A, score with
-Path B.** All paths run the same simulator and the same control stack — one
-physics configuration, one in-sim IK, identical feel.
+- **Native — for practice.** `start.bat` / `start.sh` run the sim directly
+  in a conda environment the launcher creates and maintains by itself.
+  Best performance and feel; all local devices (keyboard / gamepad / VR).
+  No ROS, no Docker — and no scoring.
+- **Docker — for the scored evaluation.** `eval.sh` runs the same sim in a
+  container that also carries ROS 2 Humble and the official ManipulationNet
+  client. The sim publishes the overhead evidence camera over ROS; the
+  client watches it, drives the session (tier skipping, fixture
+  randomization, one-time code) and records the scored video. **You drive
+  the containerized sim's viewer window with the keyboard.**
 
-### Input modes at a glance
+Practice natively until you are comfortable, then score in Docker —
+physics, controls and IK are identical on both sides.
 
-Every path launches the same entry point; pick the device with `--input`:
-
-| `--input` | Device needed | ROS 2? | Verified so far |
-|---|---|---|---|
-| `keyboard` (default) | none | no | Windows + Ubuntu with real keyboards (Linux needs X11/XWayland — forced automatically under Wayland) |
-| `gamepad` | any SDL-recognized pad (Xbox / PS / generic) | no | Windows with a real pad; Ubuntu pending (same SDL mapping, so the layout is identical) |
-| `vr` | OpenXR headset (Quest 2/3, Index, Vive) | no | Windows via Quest Link; Ubuntu via WiVRn pending |
-| `gello` | GELLO Duo hardware + the official publisher running | yes | topic contract with synthetic data; real hardware pending |
-| `ros_teleop` | any teleop publisher node (keyboard/gamepad publishers included in `teleop_ros2/`) | yes | end-to-end with the publishers' synthetic self-test (`--pattern`); real-device runs pending |
-
-"Pending" = implemented and passing automated / synthetic tests, but not yet
-validated by us on that platform or hardware — those combinations are in
-**community testing**. If you run one, a quick report (works / broken, plus
-the terminal log) via GitHub Issues helps every team.
-
-### Architecture
+## Architecture
 
 ```
- OPERATOR SIDE                                      SIMULATOR (this dir, main.py)
- ─────────────                                      ─────────────────────────────
+ OPERATOR SIDE                                      SIMULATOR (this repo, main.py)
+ ─────────────                                      ──────────────────────────────
  local devices (no ROS)
    keyboard / gamepad / OpenXR headset ───────────► --input keyboard|gamepad|vr
 
@@ -81,14 +71,49 @@ the terminal log) via GitHub Issues helps every team.
                         ──► fixture randomization, one-time code
 ```
 
-## Path A — native teleoperation
+## Directory layout
 
-### Windows (keyboard / gamepad / VR)
+```
+robotiq_duo_full_scene_minimal_core/   simulator (entry: main.py, code: teleop/)
+mnet_client-ros_2/                     official ManipulationNet ROS 2 client (vendored)
+teleop_ros2/                           ROS 2 teleop publisher packages (keyboard, gamepad)
+start.bat / start.sh                   native practice launchers (Windows / Ubuntu)
+eval.sh                                scored ManipulationNet evaluation (Docker + ROS 2)
+docker-run.sh                          ROS-free Docker teleop (installation-free practice)
+```
 
-1. Install [Miniconda](https://docs.conda.io/en/latest/miniconda.html)
-2. Double-click **`start.bat`** — the first run creates the conda environment
-   automatically (a few minutes), then the viewer opens. Later runs also
-   self-check the environment and install anything missing.
+## Prerequisites
+
+- **Native practice**: Miniconda on PATH (Windows: install it once;
+  Ubuntu: `start.sh` installs it for you). A GPU helps but is not required.
+- **Docker evaluation**: Docker Engine with Compose v2. **Scored runs need
+  native Linux** (or a 3D-accelerated VM) — WSL2's software rendering
+  cannot reach the evidence camera's required 25 fps; the client refuses
+  lower rates and the sim warns you within ~15 s. X11 for the viewer:
+  `xhost +local:docker` once per login session.
+- **VR only**: an OpenXR headset and runtime (see VR setup below).
+- **GELLO only**: the physical GELLO Duo plus the
+  [teleoperation](https://github.com/EBiM-Benchmark/teleoperation) repo's
+  publisher (see the GELLO section).
+
+No large-asset downloads and no container overlays: everything is in the
+repo, and each launcher bootstraps itself on first run (conda env / Docker
+image).
+
+## One-time setup
+
+```bash
+git clone --recurse-submodules https://github.com/EBiM-Benchmark/benchmark.git
+cd benchmark/task1_mujoco
+```
+
+(The submodules belong to the Isaac Sim task; this directory needs none of
+them and no extra downloads.) That's it — the launchers handle the rest on
+their first run.
+
+## Quick start — native practice (keyboard / gamepad / VR)
+
+Windows (after installing Miniconda, double-click `start.bat`, or):
 
 ```bat
 start.bat                      :: keyboard
@@ -97,14 +122,16 @@ start.bat --input vr           :: VR (see VR setup below)
 start.bat --no-viewer          :: headless self-check ("init/smoke ok")
 ```
 
-### Ubuntu (keyboard / gamepad / VR)
+Ubuntu:
 
 ```bash
-cd task1_mujoco                # this directory, inside your benchmark clone
-./start.sh                     # installs Miniconda if missing, creates the env
+./start.sh                     # keyboard
 ./start.sh --input gamepad
-./start.sh --input vr          # see VR setup below
+./start.sh --input vr
 ```
+
+The first run creates the `duo-teleop` conda env (a few minutes); later
+runs self-check the env (installing anything missing) and start in seconds.
 
 ### VR setup
 
@@ -119,25 +146,28 @@ Wear the headset (or cover the proximity sensor) when starting — the runtime
 reports the device unavailable otherwise. On Ubuntu an X11 session is
 required (the launcher forces XWayland automatically under Wayland).
 
-## Path B — ManipulationNet evaluation (Docker + ROS 2)
+**When you are comfortable driving the robot, move on to the scored run
+below — the simulator and controls there are identical.**
 
-Everything ROS-related is containerized: you only install Docker. On Ubuntu
-use Docker natively. On Windows, WSL2 + Docker Desktop runs the pipeline
-logic, but its software rendering cannot reach the evidence camera's required
-25 fps (the client refuses lower rates and the sim warns you after ~15 s) —
-**scored runs need native Linux** (or a 3D-accelerated VM).
+## Quick start — the scored evaluation (Docker), step by step
 
-Step by step:
-
-1. **Start the stack** — the first run builds the image from source
-   (one-time, several minutes):
+1. Once per login session (native Linux):
 
    ```bash
-   xhost +local:docker   # native Linux, once per login session
-   ./eval.sh sim         # terminal 1: simulator + eval bridge (viewer opens)
+   xhost +local:docker
    ```
 
-2. **Start the client** in a second terminal, pick `cable_management` →
+2. **Terminal 1 — simulator + eval bridge** (the first run builds the
+   image from source, several minutes):
+
+   ```bash
+   ./eval.sh sim
+   ```
+
+   A viewer window opens — **this is the robot you will drive**. Ready
+   when the log shows `[mnet] bridge up: camera ...`.
+
+3. **Terminal 2 — the official client**; pick `cable_management` →
    `local_test` in its menu:
 
    ```bash
@@ -145,56 +175,87 @@ Step by step:
    ```
 
    `mnet_client-ros_2/config/team_config.json` ships pre-filled for local
-   testing (no registration needed). Replace `team_unique_code` with your
-   real code only for an official `submission` run (attempts are
-   rate-limited — see the [mnet docs](https://mnet-client.readthedocs.io/)).
+   testing — no registration, nothing to edit.
 
-3. **Session flow**: tiers other than Tier 2 are skipped automatically → on
-   Tier 2 the board fixtures are randomized per the client's published
-   coordinates and the cable is re-laid → when the client shows the one-time
-   code, type `code <TEXT>` into the **simulator** terminal (it appears on
-   the plate next to the board, inside the evidence camera frame) → route
-   the cable → press `F` in the viewer to report completion → remaining
-   tiers auto-skip and the client finishes on its own.
+4. **Let the tiers advance**: tiers other than Tier 2 are skipped
+   automatically. When Tier 2 starts, the board fixtures rearrange
+   (randomized per the client's coordinates) and the cable is re-laid.
 
-4. **Results**: videos and logs land in
-   `robotiq_duo_full_scene_minimal_core/release/mnet_out/`. Scoring uses the
-   fixed ceiling evidence camera above the board, not your viewer.
+5. **Type the one-time code**: when the client prints it, switch to
+   **terminal 1** and type `code <TEXT>`. The code appears on the plate
+   next to the board, inside the evidence camera's frame.
 
-5. Done: `./eval.sh down`.
+6. **Do the task**: click into the viewer window and route the cable with
+   the keyboard — `7/8/9` select base/left/right, arrows move,
+   `G`/`V` close/open the gripper (full list under Controls below). When
+   done, press `F` in the viewer to report completion. Remaining tiers
+   auto-skip and the client finishes on its own.
 
-## Path C — cross-platform Docker test (no ROS)
+7. **Collect results**: video and logs are in
+   `robotiq_duo_full_scene_minimal_core/release/mnet_out/` — scoring uses
+   the fixed overhead evidence camera, not your viewer perspective. Shut
+   everything down with `./eval.sh down`.
 
-For verifying the sim behaves identically on Windows and Linux without
-installing conda/mujoco natively (a smaller, ROS-free image; see
-[RELEASE.md](robotiq_duo_full_scene_minimal_core/RELEASE.md) for how it
-compares to the eval image):
+For an **official submission**, run the client's `submission` mode instead
+of `local_test` and put your real `team_unique_code` into
+`mnet_client-ros_2/config/team_config.json` (attempts are rate-limited —
+see the [mnet docs](https://mnet-client.readthedocs.io/)).
+
+**Evaluating with other input devices**: the sim service defaults to the
+keyboard. On native-Linux Docker a gamepad works too — uncomment the
+`devices:` block in `release/compose.yaml`, then start the sim as:
+
+```bash
+docker compose -f robotiq_duo_full_scene_minimal_core/release/compose.yaml \
+  run --rm sim bash -lc "source /opt/ros/humble/setup.bash \
+  && source /ws/install/setup.bash && python3 main.py --input gamepad --mnet"
+```
+
+VR cannot run inside a container; a VR-scored run would require a native
+ROS 2 environment next to the native sim (not packaged — community
+testing).
+
+## Teleoperation options
+
+| Input | Launch | Needs | Verified so far |
+|---|---|---|---|
+| **Keyboard** (default) | `./start.sh`, or the eval sim window | nothing | Windows + Ubuntu with real keyboards (Linux needs X11/XWayland — forced automatically) |
+| **Gamepad** | `--input gamepad` | any SDL-recognized pad (Xbox / PS / generic) | Windows with a real pad; Ubuntu pending (same SDL mapping → identical layout) |
+| **VR** | `--input vr` (native only) | OpenXR headset + runtime | Windows via Quest Link; Ubuntu via WiVRn pending |
+| **GELLO** | `--input gello` (needs ROS 2) | GELLO Duo + official publisher running | topic contract with synthetic data; real hardware pending |
+| **ROS 2 topics** | `--input ros_teleop` (needs ROS 2) | a publisher node (two ship in `teleop_ros2/`) | end-to-end with the publishers' `--pattern` self-test; real devices pending |
+
+"Pending" = implemented and passing automated / synthetic tests, but not yet
+validated by us on that platform or hardware — those combinations are in
+**community testing**. If you run one, a quick report (works / broken, plus
+the terminal log) via GitHub Issues helps every team.
+
+## Docker teleop without ROS (installation-free practice)
+
+For driving the sim without installing conda/mujoco natively — and for
+verifying it behaves identically on Windows and Linux (a smaller, ROS-free
+image; see [RELEASE.md](robotiq_duo_full_scene_minimal_core/RELEASE.md) for
+how it compares to the eval image):
 
 ```bash
 ./docker-run.sh                    # keyboard (default)
-./docker-run.sh --input gamepad    # gamepad (native Linux only, see below)
+./docker-run.sh --input gamepad    # gamepad (native Linux only)
 ./docker-run.sh --no-viewer       # headless self-check
 ./docker-run.sh build              # rebuild the image only
 ```
 
 Two things cannot work inside any container, by nature of what they need:
-
-- **Gamepad** needs `/dev/input` passthrough, only available on native Linux
-  Docker (not WSL2) — uncomment the `devices:` line for the `runtime`
-  service in `robotiq_duo_full_scene_minimal_core/release/compose.yaml`.
-- **VR** needs direct host device/driver access — use Path A for VR.
-
-Native Linux needs `xhost +local:docker` once per session, same as Path B.
+**gamepad** requires `/dev/input` passthrough (native Linux Docker only —
+uncomment the `devices:` line in `release/compose.yaml`), and **VR**
+requires direct host device/driver access — practice VR natively.
 
 ## Prebuilt image (planned — not published yet)
 
-Paths B and C currently **build** the Docker image from this directory (that
-is why you clone the repository first). Once the image is published to a
-container registry, cloning becomes optional: you will be able to
-`docker compose pull` a ready image using only `release/compose.dist.yaml`
-in an empty folder. Until that registry location is announced,
-`docker compose pull` has nothing to pull — use Paths B/C above, which build
-automatically.
+The Docker launchers currently **build** the image from this repo (that is
+why you clone first). Once the image is published to a container registry,
+cloning becomes optional: you will be able to `docker compose pull` a ready
+image using only `release/compose.dist.yaml` in an empty folder. Until that
+registry location is announced, `docker compose pull` has nothing to pull.
 
 ## Controls
 
@@ -292,7 +353,20 @@ keyboard/gamepad runs over ROS are in community testing — reports welcome.
 ./start.sh --display-code TEST1234        # preview the one-time-code plate
 ```
 
-Every mode also accepts `--help` for the full per-module option list.
+## Launcher reference
+
+`start.bat` / `start.sh` / `python main.py` accept the same flags:
+
+| Flag | Meaning |
+|---|---|
+| `--input keyboard\|gamepad\|vr\|gello\|ros_teleop` | input device (default: keyboard) |
+| `--mnet` | start the ManipulationNet eval bridge (needs ROS 2; `eval.sh sim` does this for you) |
+| `--no-viewer` | headless smoke test, exits after `init/smoke ok` |
+| `--randomize-board [--seed N]` | randomize fixtures offline (client's distribution) |
+| `--display-code TEXT` | preview the one-time-code plate |
+| `--profile` | print loop/control/physics/render timing once per second |
+| `--render-hz N` | cap the viewer refresh rate |
+| `--help` | the full per-mode option list |
 
 ## Troubleshooting
 
@@ -329,17 +403,6 @@ Every mode also accepts `--help` for the full per-module option list.
 - **No window from Docker on native Linux** — run `xhost +local:docker` once
   per session (WSL2 needs nothing; WSLg handles the display)
 - Scoring uses the overhead evidence camera, not your viewer perspective
-
-## Directory layout
-
-```
-robotiq_duo_full_scene_minimal_core/   simulator (entry: main.py, code: teleop/)
-mnet_client-ros_2/                     official ManipulationNet ROS 2 client (vendored)
-teleop_ros2/                           ROS 2 teleop publisher packages (keyboard, gamepad)
-start.bat / start.sh                   Path A: one-click native launchers (Windows / Ubuntu)
-eval.sh                                Path B: ManipulationNet evaluation stack (Docker + ROS 2)
-docker-run.sh                          Path C: cross-platform Docker test (no ROS)
-```
 
 ## License & attribution
 
