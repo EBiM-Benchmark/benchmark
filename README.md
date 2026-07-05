@@ -1,5 +1,7 @@
 # EBiM Challenge Repository
 
+**Current capability status: see [STATUS.md](STATUS.md)** — this is a developer preview; check what's usable before you build.
+
 This repository provides a workshop-focused environment for an international competition. The active workflow uses `assets/robot_room.usd` as the base scene and launches the mobile dual-arm robot through Isaac Sim. Older tabletop scene generators are kept only for reference.
 
 For the full developer workflow, see [`docs/developer_setup.md`](docs/developer_setup.md).
