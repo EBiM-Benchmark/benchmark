@@ -2,6 +2,16 @@
 
 **Current capability status: see [STATUS.md](STATUS.md)** — this is a developer preview; check what's usable before you build.
 
+## Competition tasks
+
+| Task | Engines | Where in this repo | Status |
+|---|---|---|---|
+| Task 1 — Cable Routing & Plugging | Isaac Sim, MuJoCo | [`task1_isaacsim/`](task1_isaacsim/), [`task1_mujoco/`](task1_mujoco/) | see [STATUS.md](STATUS.md) |
+| Task 2 — Deformable Material Handling (Thermal Pad Placement) | Isaac Sim (Genesis committed) | [`assets/task2_objects/`](assets/task2_objects/), [`scripts/evaluation/task2/`](scripts/evaluation/task2/) | see [STATUS.md](STATUS.md) |
+| Task 3 — Assisted Living & Feeding | Isaac Sim (MuJoCo committed) | Isaac Sim: [`scripts/scenes/scene_robot_room_keyboard.py`](scripts/scenes/scene_robot_room_keyboard.py), [`assets/robot_room.usd`](assets/robot_room.usd); MuJoCo: in development — see [STATUS.md](STATUS.md) | see [STATUS.md](STATUS.md) |
+
+Full rules and official scoring are on the competition page: https://ebim-benchmark.github.io/competition.html#tasks . The evaluation code in this repository is a development facilitator; official scoring follows the rules published there.
+
 This repository provides a workshop-focused environment for an international competition. The active workflow uses `assets/robot_room.usd` as the base scene and launches the mobile dual-arm robot through Isaac Sim. Older tabletop scene generators are kept only for reference.
 
 For the full developer workflow, see [`docs/developer_setup.md`](docs/developer_setup.md).
