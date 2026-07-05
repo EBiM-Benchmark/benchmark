@@ -26,7 +26,7 @@ EMBODIMENT=fr3duo_mobile bash task1_isaacsim/scripts/run_isaaclab_newton_teleop.
 ## Repository Layout
 
 ```text
-EBiM_Challenge/
+benchmark/
 ├── task1_isaacsim/              # Task 1: mobile FR3 Duo teleoperation (Isaac Lab + Newton)
 ├── assets/                      # USD assets and generated scene files
 │   └── tabletop_task_scene_DEMO # Scene with Commandable via ROS mobile_Fr3_duo

@@ -29,14 +29,14 @@ this repository). These files reproduce that setup.
 
 ```bash
 # 1. Clone Isaac Lab next to this repository, at the pinned commit.
-cd ..                                   # parent of EBiM_Challenge
+cd ..                                   # parent of the benchmark checkout
 git clone https://github.com/isaac-sim/IsaacLab.git
 git -C IsaacLab checkout 0916ea3c0f126821ef1783c7119d248834fc8d0b
 
-# 2. Apply this overlay (from the EBiM_Challenge repo root).
+# 2. Apply this overlay (from the benchmark repo root).
 task1_isaacsim/isaaclab_overlay/apply_overlay.sh            # auto-detects ../IsaacLab and this repo
 # or explicitly:
-task1_isaacsim/isaaclab_overlay/apply_overlay.sh /path/to/IsaacLab /path/to/EBiM_Challenge
+task1_isaacsim/isaaclab_overlay/apply_overlay.sh /path/to/IsaacLab /path/to/benchmark
 
 # 3. Build + start the ROS 2 Jazzy Isaac Lab container.
 cd ../IsaacLab
