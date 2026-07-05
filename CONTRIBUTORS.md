@@ -13,6 +13,8 @@ Guidelines for modifications:
 
 * Ziqi Fan
 
+> _**robot_lab** (created by Ziqi Fan) is the upstream project the EBiM Benchmark was scaffolded from; Ziqi Fan is credited here as the original upstream author, distinct from the EBiM Benchmark's own contributors._
+
 ## Contributors
 
 * [2houyuhang](https://github.com/2houyuhang)
