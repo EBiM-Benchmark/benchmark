@@ -37,7 +37,7 @@ variables and does not expand `${...}` values in the compose model.
 ## Repository Layout
 
 ```text
-EBiM_Challenge/
+benchmark/
 |-- assets/                     # USD assets and generated scenes
 |-- docker/                     # Dockerfile, compose stack, runtime env
 |-- docs/                       # Developer docs and images

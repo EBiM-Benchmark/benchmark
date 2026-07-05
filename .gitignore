@@ -57,3 +57,38 @@ task1_isaacsim/cable_world/assets/table_board_fixture/Assets/board_segment_upper
 # agent
 .claude/
 .codex
+
+# --- Org-standard additions (normalization pass) ---
+
+# Python tooling caches
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.ipynb_checkpoints/
+
+# Data — never commit large artifacts
+*.zip
+!assets/Aloha_mobile_fr3_duo.zip
+*.tar.gz
+*.h5
+*.hdf5
+*.parquet
+*.bag
+*.db3
+*.mcap
+
+# Models / checkpoints
+checkpoints/
+*.ckpt
+*.pt
+*.pth
+*.onnx
+
+# Secrets — defense in depth
+*.pem
+*.key
+*.env.*
+!.env.example
+!docker/.env.base
+!task1_isaacsim/isaaclab_overlay/.env.ros2_jazzy

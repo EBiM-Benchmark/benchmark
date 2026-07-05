@@ -1,26 +1,24 @@
-# Description
+## Summary
 
-Please include a summary of the change and which issue is fixed. Please also include relevant motivation and context.
-List any dependencies that are required for this change.
+<!-- What does this PR do, and why? One or two sentences. Link context/motivation. -->
 
-## Type of change
+## Related issues
 
-<!-- As you go through the list, delete the ones that are not applicable. -->
+<!-- Link issues this PR closes or relates to, e.g. "Closes #123". -->
 
-- Bug fix (non-breaking change which fixes an issue)
-- New feature (non-breaking change which adds functionality)
-- Breaking change (fix or feature that would cause existing functionality to not work as expected)
+## Changes
+
+<!-- Bullet the main changes. Call out anything reviewers should look at closely. -->
+
+## Testing
+
+<!-- How was this verified? Commands run, scenes launched, screenshots if visual. -->
 
 ## Checklist
 
 - [ ] I have run the [`pre-commit` checks](https://pre-commit.com/) with `pre-commit run --all-files`
 - [ ] My changes generate no new warnings
-- [ ] I have added my name to the `CONTRIBUTORS.md` or my name already exists there
-
-<!--
-As you go through the checklist above, you can mark something as done by putting an x character in it
-
-For example,
-- [x] I have done this task
-- [ ] I have not done this task
--->
+- [ ] Docs/READMEs updated where behavior or paths changed
+- [ ] No large binary assets added to git (use the documented external asset flow)
+- [ ] I have added my name to `CONTRIBUTORS.md` or my name already exists there
+- [ ] Labels and milestone set

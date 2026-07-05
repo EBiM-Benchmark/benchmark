@@ -7,7 +7,7 @@ set -euo pipefail
 # Task 1 launcher: mobile FR3 Duo teleoperation on Isaac Lab + Newton/MJWarp.
 #
 # Layout assumptions (see task1_isaacsim/README.md):
-#   * This repo (EBiM_Challenge) is bind-mounted into the Isaac Lab container at
+#   * This repo (benchmark) is bind-mounted into the Isaac Lab container at
 #     ${CONTAINER_REPO} (default /workspace/EBiM_Challenge), configured by the
 #     ros2_jazzy docker overlay in task1_isaacsim/isaaclab_overlay/.
 #   * A Newton-enabled Isaac Lab checkout lives at ${ISAACLAB_ROOT}.

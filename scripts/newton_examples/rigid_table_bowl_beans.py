@@ -711,7 +711,7 @@ def _resolve_assets_dir(raw_assets_dir: str | None) -> Path:
     script_path = Path(__file__).resolve()
     candidates.extend(
         [
-            cwd / "../EBiM_Challenge/assets",
+            cwd / "../benchmark/assets",
             cwd / "assets",
             script_path.parents[2] / "assets",
         ]

@@ -131,8 +131,8 @@ task1_isaacsim/
 ### 1. Clone this repo with submodules
 
 ```bash
-git clone --recurse-submodules <EBiM_Challenge-url>
-cd EBiM_Challenge
+git clone --recurse-submodules https://github.com/EBiM-Benchmark/benchmark.git
+cd benchmark
 ```
 
 ### 2. Download the large Task 1 assets (OneDrive)
@@ -163,7 +163,7 @@ This is **not** the repo's `docker/isaac-lab-2.3.2` profile. Full details in
 cd ..
 git clone https://github.com/isaac-sim/IsaacLab.git
 git -C IsaacLab checkout 0916ea3c0f126821ef1783c7119d248834fc8d0b
-cd EBiM_Challenge
+cd benchmark
 
 # Apply the overlay (auto-detects ../IsaacLab and this repo).
 task1_isaacsim/isaaclab_overlay/apply_overlay.sh
