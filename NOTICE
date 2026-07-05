@@ -1,0 +1,14 @@
+EBiM Benchmark
+Copyright 2026 The EBiM Organizing Committee
+
+This repository includes original work developed by The EBiM Organizing
+Committee (Copyright 2026), released under the Apache License, Version 2.0.
+
+It incorporates and derives from robot_lab
+(https://github.com/fan-ziqi/robot_lab), Copyright 2024-2026 Ziqi Fan,
+used under the Apache License, Version 2.0. The EBiM Benchmark was
+originally scaffolded from robot_lab.
+
+The task1_isaacsim/ directory adapts the franka_isaacSim prototype by
+Marian Körber (Agile Robots). See task1_isaacsim/NOTICE for the full
+attribution and terms; that text is not duplicated here.
