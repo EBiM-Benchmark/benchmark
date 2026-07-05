@@ -1,0 +1,7 @@
+# This subtree (Task 1: MuJoCo cable-management teleop + eval stack) is a
+# self-contained import from https://github.com/2houyuhang/EBiM_Benchmark_task1
+# with its own established line-length convention. Overriding line-length
+# here (ruff discovers the closest config file up the tree) avoids a
+# repo-wide reformat under the root pyproject.toml's line-length=79 while
+# keeping every other rule from the root config.
+line-length = 120

@@ -1,0 +1,3 @@
+[submodule "assets/block_arrangement"]
+	path = assets/block_arrangement
+	url = https://github.com/ManipulationNet/mnet_block_arrangement_example_instructions

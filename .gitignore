@@ -92,3 +92,8 @@ checkpoints/
 !.env.example
 !docker/.env.base
 !task1_isaacsim/isaaclab_overlay/.env.ros2_jazzy
+
+# task1_mujoco outputs
+task1_mujoco/robotiq_duo_full_scene_minimal_core/build/
+task1_mujoco/**/mnet_out/
+task1_mujoco/MUJOCO_LOG.TXT

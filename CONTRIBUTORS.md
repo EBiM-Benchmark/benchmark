@@ -15,6 +15,7 @@ Guidelines for modifications:
 
 ## Contributors
 
+* [2houyuhang](https://github.com/2houyuhang)
 * [Chengrui Zhu](https://github.com/chengruiz)
 * [DDT Robot](https://directdrive.com)
 * [Deep Robotics](https://www.deeprobotics.cn/en)

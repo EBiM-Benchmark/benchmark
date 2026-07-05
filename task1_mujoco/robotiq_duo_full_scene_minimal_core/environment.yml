@@ -1,0 +1,33 @@
+# Unified cross-platform environment (Windows / WSL2 / Linux) for the
+# Duo-FR3 cable-routing teleop. One file for every OS:
+#
+#   conda env create -f environment.yml
+#   conda activate duo-teleop
+#   python main.py --input keyboard|gamepad|vr
+#
+# VR extras (pyopenxr/PyOpenGL/openvr) are included everywhere; they are
+# harmless without a headset. The ManipulationNet eval bridge additionally
+# needs a sourced ROS 2 environment (rclpy) — use the Docker eval stack in
+# release/ or a native ROS 2 install for that.
+name: duo-teleop
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - pip
+  - pip:
+      # core simulation (versions match the development environment)
+      - mujoco==3.9.0
+      - numpy>=2,<3
+      - glfw==2.10.0
+      - pygame==2.6.1
+      - pillow>=10
+      # VR (OpenXR primary, SteamVR fallback)
+      - pyopenxr==1.1.5301
+      - PyOpenGL==3.1.10
+      - openvr==2.12.1401
+      # Linux only: raw X11 key-state polling for the keyboard driver (the
+      # viewer's key callback doesn't forward key-repeat, so held keys need
+      # to be read straight from the X server, the same role
+      # GetAsyncKeyState plays on Windows)
+      - python-xlib; sys_platform == "linux"

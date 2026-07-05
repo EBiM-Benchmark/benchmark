@@ -1,0 +1,60 @@
+# ManipulationNet eval stack: Ubuntu 22.04 + ROS 2 Humble + the simulator +
+# the official mnet client, in one image. Build from the REPO ROOT context:
+#
+#   docker compose -f robotiq_duo_full_scene_minimal_core/release/compose.yaml build
+#
+# GUI: the sim viewer opens on the host display via X11 (native Linux) or
+# WSLg (Windows/WSL2) — see compose.yaml.
+FROM ros:humble-ros-base-jammy
+
+# folder names inside the repo (override if the folders are ever renamed:
+# docker compose build --build-arg SIM_DIR=<name>). TELEOP_PKGS_DIR points
+# at wherever the two teleop publisher packages live - `teleop_ros2` in this
+# repo, `teleoperation/src` in the EBiM_Challenge layout (submodule of the
+# official teleoperation repo).
+ARG SIM_DIR=robotiq_duo_full_scene_minimal_core
+ARG MNET_DIR=mnet_client-ros_2
+ARG TELEOP_PKGS_DIR=teleop_ros2
+
+# ghcr links a pushed package to this repo's page (override with
+# --build-arg SOURCE_REPO=... when publishing under the competition org)
+ARG SOURCE_REPO=https://github.com/2houyuhang/EBiM_Benchmark_task1
+LABEL org.opencontainers.image.source=${SOURCE_REPO}
+LABEL org.opencontainers.image.description="EBiM task-1 cable management: MuJoCo teleop (keyboard/gamepad/VR/GELLO/ros_teleop) + ROS 2 + ManipulationNet eval client"
+LABEL org.opencontainers.image.licenses="Apache-2.0"
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3-pip \
+    python3-colcon-common-extensions \
+    ffmpeg \
+    libglfw3 \
+    libgl1 \
+    libglu1-mesa \
+    libegl1 \
+    ros-humble-cv-bridge \
+ && rm -rf /var/lib/apt/lists/*
+
+# numpy stays <2 here: the mnet client goes through Humble's cv_bridge,
+# whose compiled bindings predate the numpy 2 ABI
+RUN pip3 install --no-cache-dir \
+    mujoco==3.9.0 "numpy>=1.24,<2" glfw==2.10.0 pygame==2.6.1 pillow \
+    opencv-python "pydantic>=2,<3" "requests>=2.32" "tqdm>=4.67" \
+    pupil-apriltags pybullet python-xlib
+
+# ---- official mnet client + our teleop publishers (ROS 2 python packages) ----
+# publishers are copied per-package so TELEOP_PKGS_DIR can point at the
+# official teleoperation repo's src/ without pulling in its other packages
+WORKDIR /ws
+COPY ${MNET_DIR} /ws/src/mnet_client
+COPY ${TELEOP_PKGS_DIR}/keyboard_teleop_publisher /ws/src/teleop_ros2/keyboard_teleop_publisher
+COPY ${TELEOP_PKGS_DIR}/gamepad_teleop_publisher /ws/src/teleop_ros2/gamepad_teleop_publisher
+RUN . /opt/ros/humble/setup.sh && colcon build
+
+# ---- the simulator ----
+COPY ${SIM_DIR} /ws/sim
+RUN echo 'source /opt/ros/humble/setup.bash && source /ws/install/setup.bash' >> /root/.bashrc \
+ && install -m 755 /ws/sim/release/ebim /usr/local/bin/ebim
+
+WORKDIR /ws/sim
+CMD ["ebim", "help"]

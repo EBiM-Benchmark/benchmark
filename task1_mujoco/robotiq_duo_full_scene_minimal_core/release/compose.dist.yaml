@@ -1,0 +1,71 @@
+# DISTRIBUTION compose - for users who receive ONLY the published Docker
+# image (no source checkout, nothing to build). Everything runs inside the
+# image: the simulator (all input modes), ROS 2 Humble, the official mnet
+# evaluation client, and the keyboard/gamepad teleop publisher nodes.
+#
+# Usage (Linux, or Windows via a WSL2 terminal). This file ships INSIDE the
+# image, so nothing needs downloading - bootstrap with one command:
+#   mkdir ebim-task1 && cd ebim-task1        # any empty folder
+#   docker run --rm ghcr.io/2houyuhang/ebim-task1:latest ebim compose > compose.yaml
+#   docker compose up sim                    # simulator + eval bridge (GUI)
+#   docker compose run --rm client           # 2nd terminal: mnet client
+#   docker compose run --rm shell            # anything else (self-tests,
+#                                            #   gello / ros_teleop modes,
+#                                            #   teleop publisher nodes)
+#
+# Display: native Linux needs `xhost +local:docker` once per session; WSL2
+# needs nothing (WSLg). Host-side constraints that no container can lift:
+# gamepad needs native-Linux /dev/input (see the commented block), VR needs
+# direct host device access (run the sim natively for VR).
+#
+# Override the image (e.g. a specific version): EBIM_IMAGE=... docker compose ...
+services:
+  sim:
+    image: ${EBIM_IMAGE:-ghcr.io/2houyuhang/ebim-task1:latest}
+    network_mode: host
+    ipc: host
+    stdin_open: true     # 'code <TEXT>' one-time-code entry reads stdin
+    tty: true
+    environment:
+      - DISPLAY=${DISPLAY:-:0}
+      - MESA_D3D12_DEFAULT_ADAPTER_NAME=${MESA_D3D12_DEFAULT_ADAPTER_NAME:-}
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+    # gamepad passthrough (native Linux only):
+    # devices:
+    #   - /dev/input:/dev/input
+    command: ["ebim", "sim"]
+
+  client:
+    image: ${EBIM_IMAGE:-ghcr.io/2houyuhang/ebim-task1:latest}
+    network_mode: host
+    ipc: host
+    stdin_open: true
+    tty: true
+    volumes:
+      - ./mnet_out:/ws/out
+      # a working local-test team_config.json is baked into the image
+      # (TEST0000 placeholder - local_test needs no registration). For an
+      # OFFICIAL submission, put your real config next to this file and
+      # uncomment:
+      # - ./team_config.json:/ws/install/mnet_client/share/mnet_client/config/team_config.json:ro
+    command: ["ebim", "client"]
+
+  # open-ended entry: self-tests, other input modes, publisher nodes, e.g.
+  #   docker compose run --rm shell python3 main.py --no-viewer
+  #   docker compose run --rm shell python3 main.py --input ros_teleop
+  #   docker compose run --rm shell ros2 run keyboard_teleop_publisher keyboard_teleop_publisher
+  shell:
+    image: ${EBIM_IMAGE:-ghcr.io/2houyuhang/ebim-task1:latest}
+    network_mode: host
+    ipc: host
+    stdin_open: true
+    tty: true
+    environment:
+      - DISPLAY=${DISPLAY:-:0}
+      - MESA_D3D12_DEFAULT_ADAPTER_NAME=${MESA_D3D12_DEFAULT_ADAPTER_NAME:-}
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+    # `ebim` sources ROS then execs whatever follows (default: a shell)
+    entrypoint: ["ebim"]
+    command: ["shell"]

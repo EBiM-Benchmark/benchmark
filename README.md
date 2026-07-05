@@ -12,7 +12,8 @@ Newton / MJWarp backend, with an optional deformable-cable board-plugging world.
 Keyboard is the default mobile-base input; GELLO leader arms + USB foot pedal is
 the tested configuration. The teleoperation input devices come from the separate
 [`EBiM-Benchmark/teleoperation`](https://github.com/EBiM-Benchmark/teleoperation)
-repository. A MuJoCo variant (`task1_mujoco/`) is planned as a sibling directory.
+repository. The MuJoCo variant lives in [`task1_mujoco/`](task1_mujoco/README.md)
+(next section).
 
 See [`task1_isaacsim/README.md`](task1_isaacsim/README.md) for full setup and run
 instructions. Quick start (from the repo root, after the one-time setup):
@@ -23,11 +24,33 @@ EMBODIMENT=fr3duo_mobile bash task1_isaacsim/scripts/run_isaaclab_newton_teleop.
   --controller-mode position --with-keyboard-teleop
 ```
 
+## Task 1 — Cable Management (MuJoCo)
+
+[`task1_mujoco/`](task1_mujoco/README.md) contains the MuJoCo implementation of
+Task 1 for the ManipulationNet **cable_management** benchmark: a mobile
+dual-arm FR3 platform with Robotiq 2F-85 grippers routing a deformable cable
+across a fixture board. Five input modes (keyboard / gamepad / VR / GELLO /
+unified ROS 2 teleop), a single in-sim IK shared by all of them, and the
+official ManipulationNet client vendored for end-to-end scored evaluation.
+The directory is self-contained — native one-click launchers plus a Docker
+evaluation stack:
+
+```bash
+cd task1_mujoco
+./start.sh              # native teleoperation (Windows: double-click start.bat)
+./eval.sh sim           # scored ManipulationNet evaluation (Docker), terminal 1
+./eval.sh client        # terminal 2: official mnet client
+```
+
+See [`task1_mujoco/README.md`](task1_mujoco/README.md) for the full participant
+guide (paths, input modes, controls, troubleshooting).
+
 ## Repository Layout
 
 ```text
 benchmark/
 ├── task1_isaacsim/              # Task 1: mobile FR3 Duo teleoperation (Isaac Lab + Newton)
+├── task1_mujoco/                # Task 1: cable-management teleoperation + eval (MuJoCo)
 ├── assets/                      # USD assets and generated scene files
 │   └── tabletop_task_scene_DEMO # Scene with Commandable via ROS mobile_Fr3_duo
 ├── docker/                      # Docker Compose runtimes for Isaac Sim and Isaac Lab

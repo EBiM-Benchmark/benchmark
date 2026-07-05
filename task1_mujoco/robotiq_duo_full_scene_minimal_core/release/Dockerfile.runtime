@@ -1,0 +1,38 @@
+# General-purpose cross-platform runtime: the interactive teleop (keyboard /
+# gamepad; VR code is present but cannot function inside any container - it
+# needs direct host device/driver access) WITHOUT the ROS 2 / mnet client
+# stack. This is the "just run the sim identically on Windows and Linux"
+# image; for the ManipulationNet evaluation stack (ROS 2 + mnet client) use
+# Dockerfile.eval instead. Build from the REPO ROOT context:
+#
+#   docker compose -f robotiq_duo_full_scene_minimal_core/release/compose.yaml build runtime
+#
+# GUI: the sim viewer opens on the host display via X11 (native Linux) or
+# WSLg (Windows/WSL2) — see compose.yaml.
+FROM ubuntu:22.04
+
+# folder name inside the repo (override if ever renamed:
+# docker compose build --build-arg SIM_DIR=<name>)
+ARG SIM_DIR=robotiq_duo_full_scene_minimal_core
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 \
+    python3-pip \
+    libglfw3 \
+    libgl1 \
+    libglu1-mesa \
+    libegl1 \
+    libx11-6 \
+ && rm -rf /var/lib/apt/lists/*
+
+# versions match environment.yml exactly (no ROS/cv_bridge ABI constraint
+# here, so numpy stays on the same 2.x line as the native install)
+RUN pip3 install --no-cache-dir \
+    mujoco==3.9.0 "numpy>=2,<3" glfw==2.10.0 pygame==2.6.1 "pillow>=10" \
+    pyopenxr==1.1.5301 PyOpenGL==3.1.10 openvr==2.12.1401 python-xlib
+
+WORKDIR /ws/sim
+COPY ${SIM_DIR} /ws/sim
+
+CMD ["bash"]

@@ -1,0 +1,12 @@
+# docker build context = repo root; only the project folders go in
+*
+!robotiq_duo_full_scene_minimal_core/
+!mnet_client-ros_2/
+!teleop_ros2/
+robotiq_duo_full_scene_minimal_core/__pycache__/
+robotiq_duo_full_scene_minimal_core/teleop/__pycache__/
+robotiq_duo_full_scene_minimal_core/build/
+teleop_ros2/**/__pycache__/
+# heavy assets for benchmark tasks we do not run
+mnet_client-ros_2/assets/grasping_in_clutter/
+mnet_client-ros_2/assets/tabletop_manipulation/

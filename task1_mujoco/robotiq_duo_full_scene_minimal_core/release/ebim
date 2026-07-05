@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# In-image launcher: `ebim <command>` sources the ROS 2 environment and runs
+# the common entry points, so users never type the source/setup boilerplate.
+# Installed to /usr/local/bin/ebim by Dockerfile.eval.
+set -e
+source /opt/ros/humble/setup.bash
+source /ws/install/setup.bash
+cd /ws/sim
+
+case "${1:-help}" in
+    sim)     shift; exec python3 main.py --input keyboard --mnet "$@" ;;
+    client)  exec ros2 run mnet_client local_test ;;
+    submit)  exec ros2 run mnet_client submission ;;
+    smoke)   exec python3 main.py --no-viewer ;;
+    compose) exec cat /ws/sim/release/compose.dist.yaml ;;
+    shell)   exec bash ;;
+    help|--help|-h)
+        cat <<'H'
+usage: ebim <command>
+  sim [args]   simulator + eval bridge (keyboard; extra args pass through)
+  client       ManipulationNet local_test client (interactive)
+  submit       ManipulationNet OFFICIAL submission client (rate-limited!)
+  smoke        headless self-check ("init/smoke ok")
+  compose      print the distribution compose file (redirect it to a file:
+               docker run --rm <image> ebim compose > compose.yaml)
+  shell        interactive shell with ROS sourced
+  <anything>   run any command with ROS sourced, e.g.
+               ebim python3 main.py --input ros_teleop
+               ebim ros2 run keyboard_teleop_publisher keyboard_teleop_publisher
+H
+        ;;
+    *) exec "$@" ;;
+esac

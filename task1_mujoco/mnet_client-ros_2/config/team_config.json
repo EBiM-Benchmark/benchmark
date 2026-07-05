@@ -1,0 +1,8 @@
+{
+    "team_unique_code": "TEST0000",
+    "camera_image_topic": "/mujoco/camera/image_raw",
+    "camera_info_topic": "/mujoco/camera/camera_info",
+    "file_dir": "/ws/out",
+    "autonomy_level": 0,
+    "anonymous_submission": "DISABLE"
+}
