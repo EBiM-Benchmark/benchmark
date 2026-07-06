@@ -133,7 +133,7 @@ Task overview: four stages — Table Setup → Feed → Bean Recovery → Clean 
 The evaluation code in this repository (the Task 2 scoring module and the vendored ManipulationNet
 client) is a **development facilitator**; official scoring follows the official rules and scoring
 published on the **[competition page](https://ebim-benchmark.github.io/competition.html#tasks)**.
-<!-- Facilitator note reused verbatim from STATUS.md:25 and README.md:13. -->
+<!-- Facilitator note condensed (near-verbatim) from STATUS.md:25 + README.md:13. -->
 
 ## Submitting
 
@@ -162,8 +162,10 @@ explaining how to run it (source code is not required). The window closes **Aug 
 ## License & citation
 
 This repository is licensed under the **Apache License 2.0** — see [`LICENSE`](../LICENSE) and
-[`NOTICE`](../NOTICE) (dual attribution: EBiM Organizing Committee for original work; robot_lab /
-Ziqi Fan for adapted code).
+[`NOTICE`](../NOTICE) for the full attribution. Original work is © 2026 The EBiM Organizing Committee;
+the repository also incorporates robot_lab (Ziqi Fan), Isaac Lab, the franka_isaacSim prototype
+(Task 1 Isaac Sim), and the vendored ManipulationNet client (Task 1 MuJoCo).
+<!-- Attribution summary aligned with NOTICE on main (post PR #21/#24); NOTICE is authoritative. -->
 
 If you use the EBiM Benchmark in your work, please cite:
 
@@ -175,5 +177,7 @@ If you use the EBiM Benchmark in your work, please cite:
   howpublished = {\url{https://ebim-benchmark.github.io/competition.html}}
 }
 ```
-<!-- @Ju6276: confirm the official citation title + BibTeX key you want participants to use (and whether a
-     paper/DOI should replace this @misc entry before launch). -->
+<!-- @Ju6276: confirm the official citation title, author string, and BibTeX key (and whether a paper/DOI
+     should replace this @misc entry before launch). Author name is inconsistent across surfaces — the
+     website footer says "Workshop Organizers" while LICENSE/NOTICE say "The EBiM Organizing Committee";
+     pick the canonical one so the citation, NOTICE, and website agree. -->
