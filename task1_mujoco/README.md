@@ -48,7 +48,7 @@ physics, controls and IK are identical on both sides.
 
 | You want to... | Windows | Native Ubuntu |
 |---|---|---|
-| Practice — keyboard / gamepad / VR | ✅ `start.bat` | ✅ keyboard (`./start.sh`) · ⚠️ gamepad / VR untested |
+| Practice — keyboard / gamepad / VR | ✅ `start.bat` | ✅ keyboard + gamepad (`./start.sh`) · ⚠️ VR untested |
 | Scored eval — keyboard | ✅ native, no Docker ([appendix](#appendix--fully-docker-free-evaluation-windows-robostack)) | ⚠️ retest pending — `./eval.sh sim` + `client` |
 | Scored eval — gamepad | ✅ native ([appendix](#appendix--fully-docker-free-evaluation-windows-robostack)) | ⚠️ retest pending — `./eval.sh gamepad` + `client` |
 | Scored eval — VR | ⚠️ community testing (native, same appendix) | ⚠️ untested — native sim + Docker client ([recipe](#quick-start--the-scored-evaluation-docker-step-by-step)) |
