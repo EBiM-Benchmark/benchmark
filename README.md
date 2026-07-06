@@ -1,4 +1,4 @@
-# EBiM Challenge Repository
+# EBiM Benchmark
 
 **Current capability status: see [STATUS.md](STATUS.md)** — this is a developer preview; check what's usable before you build.
 
