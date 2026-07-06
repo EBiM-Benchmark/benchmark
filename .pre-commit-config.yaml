@@ -57,4 +57,4 @@ repos:
       - id: rst-directive-colons
       - id: rst-inline-touching-normal
 
-exclude: ^(source/robot_lab/robot_lab/third_party/|source/robot_lab/data/|scripts/deprecated/|scripts/manual_tests/|scripts/newton_examples/|assets/|DEMO/|docker/|.vscode/|.github/|task1_isaacsim/|task1_mujoco/)
+exclude: ^(scripts/deprecated/|scripts/manual_tests/|scripts/newton_examples/|assets/|DEMO/|docker/|.vscode/|.github/|task1_isaacsim/|task1_mujoco/)
