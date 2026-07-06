@@ -5,13 +5,13 @@ body:
 - type: markdown
   attributes:
     value: |
-      **Your help in making robot_lab better is greatly appreciated!**
+      **Your help in making the EBiM Benchmark better is greatly appreciated!**
 
       * Please ensure that:
-        * The issue hasn't already been reported by using the [issue search](https://github.com/fan-ziqi/robot_lab/search?q=is%3Aissue&type=issues).
+        * The issue hasn't already been reported by using the [issue search](https://github.com/EBiM-Benchmark/benchmark/issues).
         * The issue is not listed in the Isaac Lab's[Known Issues](https://isaac-sim.github.io/IsaacLab/main/source/refs/issues.html) documentation.
         * The issue is not listed in the Isaac Sim's [Known Issues](https://docs.isaacsim.omniverse.nvidia.com/latest/overview/known_issues.html) documentation.
-      * For questions, please consider [open a discussion](https://github.com/fan-ziqi/robot_lab/discussions).
+      * For questions, please consider [asking on our Discord](https://discord.gg/pGwRbMRjuH).
       <br>
 
 - type: textarea
