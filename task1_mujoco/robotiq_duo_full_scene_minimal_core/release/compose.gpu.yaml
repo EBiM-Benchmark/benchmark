@@ -1,0 +1,23 @@
+# NVIDIA GPU passthrough overlay — eval.sh merges this file automatically
+# when `docker info` reports an nvidia runtime (nvidia-container-toolkit
+# installed). Nothing to uncomment by hand.
+#
+# Kept separate from compose.yaml because this reservation syntax makes
+# every compose command fail on hosts WITHOUT the toolkit. Note that
+# `deploy:` only takes effect with `compose up` — `compose run` silently
+# ignores it (measured: GPU with `up`, ~3 fps llvmpipe with `run` on the
+# same host) — which is why eval.sh starts these services with `up -d`
+# and then attaches the terminal.
+services:
+  runtime:
+    deploy: &gpu
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+  sim:
+    deploy: *gpu
+  sim-gamepad:
+    deploy: *gpu

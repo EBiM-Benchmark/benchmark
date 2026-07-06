@@ -45,14 +45,9 @@ services:
     # gamepad: uncomment on native Linux (WSL2 has no /dev/input passthrough)
     # devices:
     #   - /dev/input:/dev/input
-    # native Linux + nvidia-container-toolkit: uncomment for GPU passthrough
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: all
-    #           capabilities: [gpu]
+    # GPU passthrough: see release/compose.gpu.yaml (eval.sh merges it
+    # automatically; for this practice service add it by hand:
+    #   docker compose -f .../compose.yaml -f .../compose.gpu.yaml up -d runtime)
     command: python3 main.py --input keyboard
 
   sim:
@@ -85,14 +80,8 @@ services:
     # gamepad: uncomment on native Linux (WSL2 has no /dev/input passthrough)
     # devices:
     #   - /dev/input:/dev/input
-    # native Linux + nvidia-container-toolkit: uncomment for GPU passthrough
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: all
-    #           capabilities: [gpu]
+    # GPU passthrough: release/compose.gpu.yaml — eval.sh merges it
+    # automatically when the NVIDIA container runtime is present
     command: >
       bash -lc "source /opt/ros/humble/setup.bash && source /ws/install/setup.bash
       && python3 main.py --input keyboard --mnet"
@@ -115,6 +104,8 @@ services:
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
     devices:
       - /dev/input:/dev/input
+    # GPU passthrough: release/compose.gpu.yaml — eval.sh merges it
+    # automatically when the NVIDIA container runtime is present
     command: >
       bash -lc "source /opt/ros/humble/setup.bash && source /ws/install/setup.bash
       && python3 main.py --input gamepad --mnet"

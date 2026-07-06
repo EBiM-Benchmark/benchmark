@@ -573,9 +573,13 @@ of `local_test` and put your real `team_unique_code` into
   has no X server.
 - **`[mnet] WARNING: evidence camera publishing at N fps`** — the camera process
   cannot reach the client's 25 fps minimum (it will refuse the session).
-  Typical cause: WSL2 or a container without GPU access. Run the eval on
-  native Linux, or enable the GPU blocks in `release/compose.yaml` — for
-  **both** the `sim` and `sim-gamepad` services (nvidia-container-toolkit).
+  Typical cause: WSL2 or a container without GPU access. On a Linux host
+  with nvidia-container-toolkit, `eval.sh` merges the GPU overlay
+  (`release/compose.gpu.yaml`) automatically — look for its
+  "NVIDIA container runtime detected" line at startup; if it's missing,
+  install the toolkit. (The overlay uses a `deploy:` reservation, which
+  only applies with `compose up` — that's why eval.sh starts the sim
+  detached and attaches your terminal for the `code <TEXT>` input.)
 - **Client reports low camera FPS while the sim shows none of the warnings
   above** — stale Fast DDS state from previous force-killed runs silently
   degrades delivery (the publisher runs at 30 fps, subscribers receive ~5).
