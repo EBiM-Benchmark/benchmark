@@ -12,13 +12,13 @@ project scaffolding and the shared development history remain from upstream.
 The people who built the current benchmark — task environments, evaluation,
 simulation, assets, and tooling. Listed alphabetically.
 
-* [Cecil Huang](https://github.com/cecilhuang)
 * [Herman Prawiro](https://github.com/hermanprawiro)
 * [Ju Dong](https://github.com/Ju6276)
-* [Paul Xue](https://github.com/rui325666)
+* [@rui325666](https://github.com/rui325666)
 * [Shang-Ching Liu](https://github.com/ShangQingLiu)
 * [Shiqun Qiguan](https://github.com/QGSQ)
 * [Wen-Yu Chien](https://github.com/leochien1110)
+* [Yu-Hsiang (Cecil) Huang](https://github.com/cecilhuang)
 * [Zhentao Gao](https://github.com/2houyuhang)
 
 ## Upstream project
