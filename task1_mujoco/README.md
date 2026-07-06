@@ -49,8 +49,8 @@ physics, controls and IK are identical on both sides.
 | You want to... | Windows | Native Ubuntu |
 |---|---|---|
 | Practice — keyboard / gamepad / VR | ✅ `start.bat` | ✅ keyboard + gamepad (`./start.sh`) · ⚠️ VR untested |
-| Scored eval — keyboard | ✅ native, no Docker ([appendix](#appendix--fully-docker-free-evaluation-windows-robostack)) | ⚠️ retest pending — `./eval.sh sim` + `client` |
-| Scored eval — gamepad | ✅ native ([appendix](#appendix--fully-docker-free-evaluation-windows-robostack)) | ⚠️ retest pending — `./eval.sh gamepad` + `client` |
+| Scored eval — keyboard | ✅ native, no Docker ([appendix](#appendix--fully-docker-free-evaluation-windows-robostack)) | ✅ `./eval.sh sim` + `client` (GPU host) |
+| Scored eval — gamepad | ✅ native ([appendix](#appendix--fully-docker-free-evaluation-windows-robostack)) | ✅ `./eval.sh gamepad` + `client` (GPU host) |
 | Scored eval — VR | ⚠️ community testing (native, same appendix) | ⚠️ untested — native sim + Docker client ([recipe](#quick-start--the-scored-evaluation-docker-step-by-step)) |
 | GELLO (needs ROS 2) | ⚠️ untested (RoboStack ROS 2 works, appendix) | ⚠️ untested — Docker image or natively ([appendix](#appendix--fully-docker-free-evaluation-ubuntu)) |
 | Eval without Docker at all | ✅ verified ([appendix](#appendix--fully-docker-free-evaluation-windows-robostack)) | ⚠️ possible ([appendix](#appendix--fully-docker-free-evaluation-ubuntu)) |
