@@ -9,6 +9,14 @@ It incorporates and derives from robot_lab
 used under the Apache License, Version 2.0. The EBiM Benchmark was
 originally scaffolded from robot_lab.
 
+This repository also incorporates portions of Isaac Lab
+(https://github.com/isaac-sim/IsaacLab), Copyright (c) 2022-2026 The
+Isaac Lab Project Developers, used under the BSD-3-Clause license.
+
 The task1_isaacsim/ directory adapts the franka_isaacSim prototype by
 Marian Körber (Agile Robots). See task1_isaacsim/NOTICE for the full
 attribution and terms; that text is not duplicated here.
+
+The task1_mujoco/ directory vendors the ManipulationNet client
+(https://manipulation-net.org), distributed under the Apache License,
+Version 2.0; see task1_mujoco/mnet_client-ros_2/LICENSE.
