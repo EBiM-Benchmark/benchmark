@@ -33,13 +33,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libglu1-mesa \
     libegl1 \
     ros-humble-cv-bridge \
+    python3-opencv \
  && rm -rf /var/lib/apt/lists/*
 
 # numpy stays <2 here: the mnet client goes through Humble's cv_bridge,
 # whose compiled bindings predate the numpy 2 ABI
+#
+# opencv comes from apt (above), matching the mnet client's own declared
+# rosdep (package.xml: python3-opencv) - NOT pip: PyPI's opencv-python wheel
+# never ships an H.264 encoder (licensing), so cv2.VideoWriter(*"avc1") - what
+# the client uses to record the scored session - fails with "Could not find
+# encoder for codec_id=27" the moment a run reaches that point. apt's build
+# links the system ffmpeg, which does carry libx264 on Ubuntu.
 RUN pip3 install --no-cache-dir \
     mujoco==3.9.0 "numpy>=1.24,<2" glfw==2.10.0 pygame==2.6.1 pillow \
-    opencv-python "pydantic>=2,<3" "requests>=2.32" "tqdm>=4.67" \
+    "pydantic>=2,<3" "requests>=2.32" "tqdm>=4.67" \
     pupil-apriltags pybullet python-xlib
 
 # ---- official mnet client + our teleop publishers (ROS 2 python packages) ----
