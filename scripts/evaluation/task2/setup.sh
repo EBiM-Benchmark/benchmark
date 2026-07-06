@@ -9,7 +9,7 @@ ENV_FILE="${SCRIPT_DIR}/.env"
 ENV_EXAMPLE="${SCRIPT_DIR}/.env.example"
 
 # Defaults mirror docker/.env.base.
-ISAAC_DOCKER_ROOT="${ISAAC_DOCKER_ROOT:-${HOME}/docker/iros-workshop}"
+ISAAC_DOCKER_ROOT="${ISAAC_DOCKER_ROOT:-${HOME}/docker/ebim-challenge}"
 HOST_UID="${HOST_UID:-$(id -u)}"
 HOST_GID="${HOST_GID:-$(id -g)}"
 
