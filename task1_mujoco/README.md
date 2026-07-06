@@ -439,9 +439,9 @@ Python — not the venv: `cv_bridge` needs `numpy<2`, which is why the two
 halves keep separate environments):
 
 ```bash
-sudo apt install ros-humble-ros-base ros-humble-cv-bridge \
+sudo apt install ros-humble-ros-base ros-humble-cv-bridge python3-opencv \
     python3-colcon-common-extensions python3-pip
-pip install "numpy>=1.24,<2" opencv-python "pydantic>=2,<3" requests tqdm \
+pip install "numpy>=1.24,<2" "pydantic>=2,<3" requests tqdm \
     pupil-apriltags pybullet
 mkdir -p ~/mnet_ws/src && ln -s "$(pwd)/mnet_client-ros_2" ~/mnet_ws/src/mnet_client
 ( cd ~/mnet_ws && source /opt/ros/humble/setup.bash && colcon build )
@@ -583,6 +583,16 @@ of `local_test` and put your real `team_unique_code` into
   shared-memory segments: `%TEMP%\fastrtps_*` on Windows (they are
   disk-backed — **a reboot does not remove them**), `/dev/shm/fastrtps_*`
   on Linux. The Windows appendix has a copy-paste cleanup.
+- **"Failed to open video writer" / "Could not find encoder for
+  codec_id=27"** (Linux, client) — the client records the session with
+  `cv2.VideoWriter(*"avc1")` (H.264), but PyPI's `opencv-python` wheel never
+  ships an H.264 encoder (licensing) and this failure isn't caught until the
+  point where a run tries to save video. Install the apt package
+  **`python3-opencv`** instead — it's what the client's own `package.xml`
+  declares (`python3-opencv` rosdep) and links the system `ffmpeg`, which
+  does carry `libx264` on Ubuntu. Do not `pip install opencv-python`
+  alongside it: pip's copy shadows the working apt one. Windows does not hit
+  this (OpenCV falls back to the OS's Media Foundation encoder there).
 - **`DLL load failed while importing _rclpy_pybind11`** (Windows,
   RoboStack) — another installed program's directory on `PATH` shadows
   RoboStack's DLLs with older same-named copies. Run everything through
