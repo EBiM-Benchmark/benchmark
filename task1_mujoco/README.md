@@ -252,7 +252,7 @@ community testing — reports welcome.
 | Input | Launch | Needs | Verified so far |
 |---|---|---|---|
 | **Keyboard** (default) | `./start.sh`, or the eval sim window | nothing | Windows + Ubuntu with real keyboards (Linux needs X11/XWayland — forced automatically) |
-| **Gamepad** | `--input gamepad` | any SDL-recognized pad (Xbox / PS / generic) | Windows with a real pad; Ubuntu pending (same SDL mapping → identical layout) |
+| **Gamepad** | `--input gamepad` | any SDL-recognized pad (Xbox / PS / generic) | Windows + Ubuntu with a real pad (same SDL mapping → identical layout) |
 | **VR** | `--input vr` (native only) | OpenXR headset + runtime | Windows via Quest Link; Ubuntu via WiVRn pending |
 | **GELLO** | `--input gello` (needs ROS 2) | GELLO Duo + official publisher running | topic contract with synthetic data; real hardware pending |
 | **ROS 2 topics** | `--input ros_teleop` (needs ROS 2) | a publisher node (two ship in `teleop_ros2/`) | end-to-end with the publishers' `--pattern` self-test; real devices pending |
@@ -462,9 +462,13 @@ Windows below) — reports welcome.
 
 ## Appendix — fully Docker-free evaluation (Windows, RoboStack)
 
-Verified end-to-end: scored session completed with the evidence camera at
-a constant 30 fps (the camera renders and publishes from its own process,
-so viewer load does not affect it). ROS 2 Humble on Windows comes from
+Verified end-to-end: with keyboard input, the vendored client's
+`local_test` scored a Tier2 session to completion (recorded evaluation
+video); gamepad input was confirmed working through the same client
+session. The evidence camera holds a constant 30 fps (measured over a 75 s
+run: 30.00 fps, max inter-frame gap 44.6 ms — the camera renders and
+publishes from its own process, so viewer load does not affect it). ROS 2
+Humble on Windows comes from
 [RoboStack](https://robostack.github.io/) — one conda env runs both halves:
 
 ```bat
@@ -508,6 +512,7 @@ Two Windows-specific fixes after building:
 
 ```bat
 ros_native.bat python robotiq_duo_full_scene_minimal_core\main.py --input keyboard --mnet
+:: or: --input gamepad
 ros_native.bat ros2 run mnet_client local_test
 ```
 
