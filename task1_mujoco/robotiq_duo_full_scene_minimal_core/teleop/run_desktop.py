@@ -231,6 +231,7 @@ def main(args) -> None:
     prof_control = 0.0
     prof_step = 0.0
     prof_render = 0.0
+    prof_mnet = 0.0
     prof_max_ncon = 0
 
     filtered_base_cmd = np.zeros(4, dtype=np.float64)
@@ -288,7 +289,18 @@ def main(args) -> None:
                 hx = joy.dpad_x()
 
                 if mode[0] == "base":
-                    base_cmd += np.array([-ly, lx, r2 - l2, -rx], dtype=np.float64)
+                    # stick in screen axes (up = into the screen, right =
+                    # screen-right) — same convention as the keyboard arrows,
+                    # so base driving matches what the operator sees
+                    bfwd, bleft = screen_to_base_local(
+                        viewer.cam,
+                        lx,
+                        -ly,
+                        data,
+                        session.base_body,
+                        args.robot_forward_axis,
+                    )
+                    base_cmd += np.array([bfwd, bleft, r2 - l2, -rx], dtype=np.float64)
                 else:
                     move = config.MOVE_SPEED * speed_scale[0]
                     rot = config.ROT_SPEED * speed_scale[0]
@@ -417,12 +429,14 @@ def main(args) -> None:
                     joy.pulse(amp)
 
             if mnet is not None:
+                mnet_start = time.perf_counter()
                 mnet.maybe_publish(data, viewer.cam)
                 cfg = mnet.consume_board_config()
                 if cfg is not None and getattr(args, "mnet_randomize", False):
                     from .mnet_board import apply_board_config
 
                     apply_board_config(session, cfg)
+                prof_mnet += time.perf_counter() - mnet_start
 
             if render_dt <= 0.0 or time.perf_counter() >= next_render:
                 render_start = time.perf_counter()
@@ -440,6 +454,7 @@ def main(args) -> None:
                     f"control={prof_control / max(prof_frames, 1) * 1000:6.2f}ms "
                     f"step={prof_step / max(prof_frames, 1) * 1000:6.2f}ms "
                     f"render={prof_render / max(prof_frames, 1) * 1000:6.2f}ms "
+                    f"mnet={prof_mnet / max(prof_frames, 1) * 1000:6.2f}ms "
                     f"ncon={prof_max_ncon:3d} mode={mode[0]} "
                     f"grasped={session.any_arm_grasped()} speed={speed_scale[0]:.2f}"
                 )
@@ -448,7 +463,7 @@ def main(args) -> None:
                 print(msg, flush=True)
                 prof_last = time.perf_counter()
                 prof_frames = 0
-                prof_control = prof_step = prof_render = 0.0
+                prof_control = prof_step = prof_render = prof_mnet = 0.0
                 prof_max_ncon = 0
             sleep = loop_dt - (time.perf_counter() - start)
             if sleep > 0:

@@ -100,9 +100,10 @@ def add_arm_args(parser: argparse.ArgumentParser) -> None:
     g.add_argument(
         "--arm-frame",
         choices=("base", "camera"),
-        default="base",
-        help="frame for arm stick/WASD translation: base = robot heading (stable, default), "
-        "camera = operator screen axes (mirror teleop)",
+        default="camera",
+        help="frame for arm stick/arrow translation: camera = operator screen axes "
+        "(matches the base and VR, default), base = robot heading (stable under "
+        "camera orbits)",
     )
 
 
