@@ -1,34 +1,29 @@
-# robot_lab Developers and Contributors
+# Contributors
 
-This is the official list of robot_lab Project developers and contributors.
+This repository is the **EBiM Benchmark** (Embodied Bimanual Manipulation
+Benchmark). It was initially scaffolded from the robot_lab project
+([fan-ziqi/robot_lab](https://github.com/fan-ziqi/robot_lab)) and has since
+been substantially rewritten. The task environments, evaluation harnesses, and
+simulation stacks (Isaac Sim / Newton and MuJoCo) are original EBiM work; only
+project scaffolding and the shared development history remain from upstream.
 
-To see the full list of contributors, please check the revision history in the source control.
+## EBiM Benchmark contributors
 
-Guidelines for modifications:
+The people who built the current benchmark — task environments, evaluation,
+simulation, assets, and tooling. Listed alphabetically.
 
-* Please keep the lists sorted alphabetically.
-* Names should be added to this file as: *individual names* or *organizations*.
+* [Herman Prawiro](https://github.com/hermanprawiro)
+* [Ju Dong](https://github.com/Ju6276)
+* [@rui325666](https://github.com/rui325666)
+* [Shang-Ching Liu](https://github.com/ShangQingLiu)
+* [Shiqun Qiguan](https://github.com/QGSQ)
+* [Wen-Yu Chien](https://github.com/leochien1110)
+* [Yu-Hsiang (Cecil) Huang](https://github.com/cecilhuang)
+* [Zhentao Gao](https://github.com/2houyuhang)
 
-## Developers
+## Upstream project
 
-* Ziqi Fan
-
-> _**robot_lab** (created by Ziqi Fan) is the upstream project the EBiM Benchmark was scaffolded from; Ziqi Fan is credited here as the original upstream author, distinct from the EBiM Benchmark's own contributors._
-
-## Contributors
-
-* [2houyuhang](https://github.com/2houyuhang)
-* [Chengrui Zhu](https://github.com/chengruiz)
-* [DDT Robot](https://directdrive.com)
-* [Deep Robotics](https://www.deeprobotics.cn/en)
-* [Magiclab](https://www.magiclab.top/)
-* [RoboParty](https://roboparty.cn/)
-* [WenYu Chien](https://github.com/leochien1110)
-* [Yankai Xiang](https://github.com/cmjang)
-* [Zhenbiao Huang](https://github.com/legubiao)
-* [Zhihao Liu](https://github.com/Luo1imasi)
-* [Zsibot](https://www.zsibot.com)
-
-## Acknowledgements
-
-* Shiyu Zhou
+This benchmark was initially scaffolded from
+[robot_lab](https://github.com/fan-ziqi/robot_lab) (© Ziqi Fan and
+contributors, Apache-2.0). See [LICENSE](LICENSE) and [NOTICE](NOTICE) for full
+attribution.
