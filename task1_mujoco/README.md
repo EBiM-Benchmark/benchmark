@@ -460,16 +460,19 @@ The session flow is identical to the Docker walkthrough. This Ubuntu recipe
 is community testing (the same two-halves stack is verified end-to-end on
 Windows below) — reports welcome.
 
-## Appendix — fully Docker-free evaluation (Windows, RoboStack)
+## Appendix — fully Docker-free evaluation (Windows, RoboStack), step by step
 
 Verified end-to-end: with keyboard input, the vendored client's
 `local_test` scored a Tier2 session to completion (recorded evaluation
 video); gamepad input was confirmed working through the same client
 session. The evidence camera holds a constant 30 fps (measured over a 75 s
 run: 30.00 fps, max inter-frame gap 44.6 ms — the camera renders and
-publishes from its own process, so viewer load does not affect it). ROS 2
-Humble on Windows comes from
-[RoboStack](https://robostack.github.io/) — one conda env runs both halves:
+publishes from its own process, so viewer load does not affect it).
+
+### One-time setup
+
+ROS 2 Humble on Windows comes from [RoboStack](https://robostack.github.io/)
+— one conda env runs both halves:
 
 ```bat
 conda create -n ros-humble --override-channels -c robostack-staging -c conda-forge ^
@@ -479,50 +482,87 @@ conda run -n ros-humble pip install mujoco==3.9.0 "numpy>=1.24,<2" glfw==2.10.0 
     opencv-python "pydantic>=2,<3" requests tqdm pupil-apriltags pybullet
 ```
 
-Every ROS command below goes through `ros_native.bat` (repo root). It exists
-because other installed software (base conda, Docker, Git) ships same-named
-older DLLs that shadow RoboStack's and break `rclpy` on import — the wrapper
-rebuilds a minimal `PATH`, applies the ROS env, and injects the shared-memory
-Fast DDS profile (`release/fastdds_shm.xml`; Windows UDP loopback cannot
-sustain reliable ~1 MB camera frames).
+Every ROS command from here on goes through `ros_native.bat` (repo root). It
+exists because other installed software (base conda, Docker, Git) ships
+same-named older DLLs that shadow RoboStack's and break `rclpy` on import —
+the wrapper rebuilds a minimal `PATH`, applies the ROS env, and injects the
+shared-memory Fast DDS profile (`release/fastdds_shm.xml`; Windows UDP
+loopback cannot sustain reliable ~1 MB camera frames).
 
-**1. Build the client once** (a real copy, not a junction — colcon fails
-through junctions):
+Build the client once (a real copy, not a junction — colcon fails through
+junctions):
 
 ```bat
 xcopy /E /I mnet_client-ros_2 ros_ws\src\mnet_client
 cd ros_ws & ..\ros_native.bat colcon build & cd ..
 ```
 
-Two Windows-specific fixes after building:
+Two Windows-specific fixes after building — do these once, and again after
+any rebuild of `ros_ws`:
 
-- `team_config.json` (`ros_ws\install\share\mnet_client\config\`): set
-  `file_dir` to a writable local directory. Edit it with a plain-text
-  editor or Python — PowerShell's `Out-File`/`Set-Content` writes a BOM
-  that breaks the client's JSON parsing.
-- The client polls the keyboard with `select.select()` on stdin, which is
-  POSIX-only and crashes on Windows (`WinError 10038`). Until upstream
-  ships a fix, guard those calls with `msvcrt.kbhit()` on Windows: 3 call
-  sites in `local_test_client.py` (built copy lives under
-  `ros_ws\install\Lib\site-packages\mnet_client\clients\`; re-apply after
-  any rebuild). `submission_client.py` polls the same way — apply the same
-  fix there before a real submission run.
+- **`file_dir`**: edit `ros_ws\install\share\mnet_client\config\team_config.json`
+  and point `file_dir` at a writable local directory (this is where results
+  land in step 7 below). Use a plain-text editor or Python — PowerShell's
+  `Out-File`/`Set-Content` writes a BOM that breaks the client's JSON
+  parsing.
+- **stdin crash**: the client polls the keyboard with `select.select()`,
+  which is POSIX-only and crashes on Windows (`WinError 10038`). Until
+  upstream ships a fix, guard those calls with `msvcrt.kbhit()`: 3 call
+  sites in `local_test_client.py` (under
+  `ros_ws\install\Lib\site-packages\mnet_client\clients\`).
+  `submission_client.py` polls the same way — apply the same fix there
+  before a real submission run.
 
-**2. Run the eval** (two terminals, both via the wrapper):
+### Running the eval
 
-```bat
-ros_native.bat python robotiq_duo_full_scene_minimal_core\main.py --input keyboard --mnet
-:: or: --input gamepad
-ros_native.bat ros2 run mnet_client local_test
-```
+1. **Before every session** — clear leftovers from previously force-killed
+   runs; stale Fast DDS shared-memory segments silently degrade the camera
+   stream (see Troubleshooting):
 
-Before each run, clear leftovers from previous force-killed sessions —
-they silently degrade the camera stream (see Troubleshooting):
+   ```powershell
+   Get-Process python -EA 0 | ? { $_.Path -like '*ros-humble*' } | Stop-Process -Force
+   Remove-Item $env:TEMP\fastrtps_* -Force -EA 0
+   ```
 
-```powershell
-Get-Process python -EA 0 | ? { $_.Path -like '*ros-humble*' } | Stop-Process -Force
-Remove-Item $env:TEMP\fastrtps_* -Force -EA 0
-```
+2. **Terminal 1 — simulator + eval bridge**:
+
+   ```bat
+   ros_native.bat python robotiq_duo_full_scene_minimal_core\main.py --input keyboard --mnet
+   :: or: --input gamepad
+   ```
+
+   A viewer window opens — **this is the robot you will drive**. Ready when
+   the log shows `[mnet] bridge up: camera ...`.
+
+3. **Terminal 2 — the official client**; pick `cable_management` →
+   `local_test` in its menu:
+
+   ```bat
+   ros_native.bat ros2 run mnet_client local_test
+   ```
+
+4. **Let the tiers advance**: tiers other than Tier 2 are skipped
+   automatically. When Tier 2 starts, the board fixtures rearrange
+   (randomized per the client's coordinates) and the cable is re-laid.
+
+5. **Type the one-time code**: when the client prints it, switch to
+   **terminal 1** and type `code <TEXT>`. The code appears on the plate
+   next to the board, inside the evidence camera's frame.
+
+6. **Do the task**: click into the viewer window and route the cable
+   (keyboard or gamepad — full control list under Controls above). When
+   done, press `F` in the viewer to report completion. Remaining tiers
+   auto-skip and the client finishes on its own.
+
+7. **Collect results**: video and logs land in the `file_dir` you set in
+   `team_config.json` during setup — scoring uses the fixed overhead
+   evidence camera, not your viewer perspective. Close both terminal
+   windows (or Ctrl+C) to shut down; there is no `eval.sh down` step here.
+
+For an **official submission**, run the client's `submission` mode instead
+of `local_test` and put your real `team_unique_code` into
+`team_config.json` (attempts are rate-limited — see the
+[mnet docs](https://mnet-client.readthedocs.io/)).
 
 ## Troubleshooting
 
