@@ -170,14 +170,10 @@ the repository also incorporates robot_lab (Ziqi Fan), Isaac Lab, the franka_isa
 If you use the EBiM Benchmark in your work, please cite:
 
 ```bibtex
-@misc{ebim_benchmark_2026,
-  title        = {EBiM Benchmark: Toward a Globally Coordinated Benchmark for Real-World Embodied Bimanual Manipulation},
-  author       = {{EBiM Organizing Committee}},
-  year         = {2026},
-  howpublished = {\url{https://ebim-benchmark.github.io/competition.html}}
+@misc{ebim2026,
+  title  = {The EBiM Benchmark for Embodied Bimanual Manipulation},
+  author = {The EBiM Organizing Committee},
+  year   = {2026},
+  url    = {https://ebim-benchmark.github.io/}
 }
 ```
-<!-- @Ju6276: confirm the official citation title, author string, and BibTeX key (and whether a paper/DOI
-     should replace this @misc entry before launch). Author name is inconsistent across surfaces — the
-     website footer says "Workshop Organizers" while LICENSE/NOTICE say "The EBiM Organizing Committee";
-     pick the canonical one so the citation, NOTICE, and website agree. -->
