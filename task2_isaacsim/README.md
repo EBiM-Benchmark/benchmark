@@ -62,7 +62,7 @@ Two scenes are available via `--scene` (both use the same robot USD and ROS topi
 
 ```bash
 bash task2_isaacsim/scripts/run_isaacsim_teleop.sh \
-   --scene barebone
+   --scene barebone \
    --with-keyboard-teleop
 ```
 
@@ -81,7 +81,7 @@ The spine keyboard control is `Up/Down`, with GUI focused.
 ```bash
 bash task2_isaacsim/scripts/run_isaacsim_teleop.sh \
    --scene room \
-   --with-gello-teleop
+   --with-gello-teleop \
    --no-browser
 ```
 

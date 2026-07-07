@@ -13,6 +13,10 @@ fully isolated from the Isaac stack and started independently.
 ```bash
 # 0. (in the Isaac Sim container) launch the task2 scene WITH the ROS2 bridge
 python scripts/scenes/scene_robot_room_keyboard.py --task task2 --ros2-bridge fastdds
+# — or, to actually drive the robot, launch the teleoperable room scene from the
+#   host instead (also publishes the /isaac/eval_camera/* topics):
+#   bash task2_isaacsim/scripts/run_isaacsim_teleop.sh --scene room
+#   (see task2_isaacsim/README.md)
 
 # 1. one-time: create the persistent volume + .env (UID/GID baked in)
 bash scripts/evaluation/task2/setup.sh

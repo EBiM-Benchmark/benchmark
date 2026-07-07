@@ -35,7 +35,7 @@ Full rules and official scoring live on the **[competition page](https://ebim-be
 | Task | Engines | Where in this repo | Status |
 |---|---|---|---|
 | Task 1 — Cable Routing & Plugging | Isaac Sim, MuJoCo | [`task1_isaacsim/`](../task1_isaacsim/), [`task1_mujoco/`](../task1_mujoco/) | see [STATUS.md](../STATUS.md) |
-| Task 2 — Deformable Material Handling (Thermal Pad Placement) | Isaac Sim (Genesis committed) | [`assets/task2_objects/`](../assets/task2_objects/), [`scripts/evaluation/task2/`](../scripts/evaluation/task2/) | see [STATUS.md](../STATUS.md) |
+| Task 2 — Deformable Material Handling (Thermal Pad Placement) | Isaac Sim (Genesis committed) | [`task2_isaacsim/`](../task2_isaacsim/), [`assets/task2_objects/`](../assets/task2_objects/), [`scripts/evaluation/task2/`](../scripts/evaluation/task2/) | see [STATUS.md](../STATUS.md) |
 | Task 3 — Assisted Living & Feeding | Isaac Sim (MuJoCo committed) | Isaac Sim: [`scripts/scenes/scene_robot_room_keyboard.py`](../scripts/scenes/scene_robot_room_keyboard.py), [`assets/robot_room.usd`](../assets/robot_room.usd); MuJoCo: in development — see [STATUS.md](../STATUS.md) | see [STATUS.md](../STATUS.md) |
 
 Full rules and official scoring are on the competition page:
@@ -102,21 +102,29 @@ cd task1_mujoco
 
 ### Task 2 — Deformable Material Handling / Thermal Pad Placement (Isaac Sim)
 
-Full setup + run: **[`scripts/evaluation/task2/README.md`](../scripts/evaluation/task2/README.md)**
-(scene launch, eval container lifecycle, IoU metric, artifacts).
+Full setup + run: **[`task2_isaacsim/README.md`](../task2_isaacsim/README.md)** (prerequisites,
+scenes, input devices, architecture); scoring is in
+**[`scripts/evaluation/task2/README.md`](../scripts/evaluation/task2/README.md)**
+(eval container lifecycle, IoU metric, artifacts).
 
 ```bash
-# In the Isaac Sim container, launch the task2 scene WITH the ROS2 bridge:
-python scripts/scenes/scene_robot_room_keyboard.py --task task2 --ros2-bridge fastdds
+# From the repo root, with the Isaac Sim 5.1.0 container running and the robot
+# USD downloaded: launch the teleoperable room scene (publishes the eval-camera
+# topics) — keyboard base + browser arms, no special hardware:
+bash task2_isaacsim/scripts/run_isaacsim_teleop.sh \
+  --scene room \
+  --with-keyboard-teleop
 
-# One-time, then build + start the eval container and score the current frame:
+# Drive the pad placement (see task2_isaacsim/README.md for GELLO + pedal), then
+# score it — one-time setup, build + start the eval container, evaluate:
 bash scripts/evaluation/task2/setup.sh
 bash scripts/evaluation/task2/run.sh up
 bash scripts/evaluation/task2/run.sh evaluate
 ```
-<!-- (extracted from scripts/evaluation/task2/README.md:13-32 — verify) -->
-<!-- @hermanprawiro: confirm this is the participant entry sequence for Task 2, and what a participant
-     actually drives between scene-launch and `run.sh evaluate` (teleop path for the pad placement). -->
+<!-- (extracted from task2_isaacsim/README.md Quickstart + scripts/evaluation/task2/README.md:13-32) -->
+<!-- Resolved on feature/task2_teleop: the teleop path between scene-launch and `run.sh evaluate`
+     is task2_isaacsim/ (keyboard/browser or GELLO + foot pedal). -->
+
 
 ### Task 3 — Assisted Living & Feeding (Isaac Sim)
 
