@@ -19,7 +19,8 @@ def add_common_bridge_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--franka-root",
         default="/workspace/EBiM_Challenge/task1_isaacsim",
-        help="Task 1 root (containing assets/embodiments) inside the container.",
+        help="Task 1 root (containing assets/embodiments) inside the "
+        "container.",
     )
     parser.add_argument(
         "--disable-browser-command-topics",
@@ -31,7 +32,8 @@ def add_common_bridge_args(parser: argparse.ArgumentParser) -> None:
         "--pedal-linear-speed",
         type=float,
         default=0.5,
-        help="Base lateral translation speed in m/s used for pedal A/B commands.",
+        help="Base lateral translation speed in m/s used for pedal A/B "
+        "commands.",
     )
     parser.add_argument(
         "--pedal-angular-speed",
@@ -43,31 +45,36 @@ def add_common_bridge_args(parser: argparse.ArgumentParser) -> None:
         "--pedal-timeout",
         type=float,
         default=1.0,
-        help="Seconds without a new /pedal/state message before forcing the base command to NONE.",
+        help="Seconds without a new /pedal/state message before forcing "
+        "the base command to NONE.",
     )
     parser.add_argument(
         "--spine-keyboard-control",
         action=argparse.BooleanOptionalAction,
         default=True,
-        help="Use keyboard Up/Down arrows to command franka_spine_vertical_joint height.",
+        help="Use keyboard Up/Down arrows to command "
+        "franka_spine_vertical_joint height.",
     )
     parser.add_argument(
         "--spine-keyboard-step",
         type=float,
         default=0.01,
-        help="Height target increment in meters for each Up/Down key press or repeat.",
+        help="Height target increment in meters for each Up/Down key "
+        "press or repeat.",
     )
     parser.add_argument(
         "--spine-keyboard-min",
         type=float,
         default=-0.05,
-        help="Minimum franka_spine_vertical_joint target in meters for keyboard control.",
+        help="Minimum franka_spine_vertical_joint target in meters for "
+        "keyboard control.",
     )
     parser.add_argument(
         "--spine-keyboard-max",
         type=float,
         default=0.50,
-        help="Maximum franka_spine_vertical_joint target in meters for keyboard control.",
+        help="Maximum franka_spine_vertical_joint target in meters for "
+        "keyboard control.",
     )
     parser.add_argument("--physics-hz", type=float, default=240.0)
     parser.add_argument("--render-hz", type=float, default=60.0)
@@ -75,14 +82,16 @@ def add_common_bridge_args(parser: argparse.ArgumentParser) -> None:
         "--configure-base-drives",
         action=argparse.BooleanOptionalAction,
         default=True,
-        help="Author Task 1 actuator gains on the base drives (steer 500/50, wheel 0/5). "
+        help="Author Task 1 actuator gains on the base drives "
+        "(steer 500/50, wheel 0/5). "
         "Wheel joints need zero position stiffness for velocity control.",
     )
     parser.add_argument(
         "--apply-gripper-coupled-targets",
         action=argparse.BooleanOptionalAction,
         default=False,
-        help="Also command the coupled Robotiq linkage joints (driver target x multiplier). "
+        help="Also command the coupled Robotiq linkage joints "
+        "(driver target x multiplier). "
         "Not needed for the default robot USD: its linkage joints carry "
         "PhysxMimicJointAPI, so PhysX couples them to the driver natively.",
     )
@@ -91,7 +100,8 @@ def add_common_bridge_args(parser: argparse.ArgumentParser) -> None:
         action=argparse.BooleanOptionalAction,
         default=True,
         help="Deactivate OmniGraph action graphs embedded in the robot USD "
-        "(ROS_JointStates / Steer_joint_Controller); they duplicate this bridge "
+        "(ROS_JointStates / Steer_joint_Controller); they duplicate this "
+        "bridge "
         "and their script node crashes plain Isaac Sim.",
     )
     parser.add_argument("--headless", action="store_true")

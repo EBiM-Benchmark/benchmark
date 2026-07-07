@@ -1,8 +1,8 @@
 # Task 2 — Mobile FR3 Duo Teleoperation (Isaac Sim 5.1.0 / PhysX)
 
-## Overview 
+## Overview
 
-Teleoperation of the mobile FR3 Duo for Task 2 (deformable thermal pad placement) 
+Teleoperation of the mobile FR3 Duo for Task 2 (deformable thermal pad placement)
 in **Isaac Sim 5.1.0 (PhysX)**, because the thermal pad asset uses `PhysxDeformableBodyAPI`, which requires PhysX GPU deformables.
 
 ### Objectives
@@ -30,7 +30,7 @@ Detailed evaluation calculation can be found in the [Task 2 evaluation stack](..
    `isaac-sim-5-1-0-workshop`; override with `ISAACSIM_CONTAINER`). The
    container needs no ROS 2 install — the bridge uses the ROS 2 jazzy
    libraries bundled with Isaac Sim's `isaacsim.ros2.bridge` extension.
-   Start the container (from root directory) with: 
+   Start the container (from root directory) with:
    ```bash
    docker compose --env-file docker/.env.base -f docker/docker-compose.yaml \
    --profile isaac-sim-5.1.0 up -d
@@ -63,7 +63,7 @@ Two scenes are available via `--scene` (both use the same robot USD and ROS topi
 ```bash
 bash task2_isaacsim/scripts/run_isaacsim_teleop.sh \
    --scene barebone
-   --with-keyboard-teleop 
+   --with-keyboard-teleop
 ```
 
 Then, in the teleoperation ROS 2 environment on the host, start the keyboard
@@ -96,7 +96,7 @@ ros2 run pedal_state_publisher pedal_state_publisher
 ## Architecture
 
 Same pipeline as Task 1, only the last stage (the simulator process) differs.
-See [task1_isaacsim/README.md](../task1_isaacsim/README.md#architecture) for 
+See [task1_isaacsim/README.md](../task1_isaacsim/README.md#architecture) for
 the documentation. The stages are:
 
 - **Host device publishers** (EBiM `teleoperation` repo, on the host) publish:
@@ -105,7 +105,7 @@ the documentation. The stages are:
   - `/{left,right}/gripper/gripper_client/target_gripper_width_percent`
   (`std_msgs/Float32`).
 - **Teleop adapters** (`task2_teleop_adapters`, `ros:jazzy-ros-base`) remap
-  device topics: 
+  device topics:
   - `keyboard_to_base.py` turns `/keyboard/state` into
   `/pedal/state` base-driving tokens
   - `gello_to_bridge.py` turns the GELLO
@@ -115,7 +115,7 @@ the documentation. The stages are:
   the no-hardware alternative: it publishes the same `/bridge/*` command
   topics from browser sliders.
 - **Republisher and position controller** move commands from `/bridge/*` to
-  `/isaac/*`: 
+  `/isaac/*`:
   - `ros_joint_republisher` (`task2_ros_republisher`) handles the
   grippers with open/close calibration
   - `joint_position_controller`
@@ -123,13 +123,13 @@ the documentation. The stages are:
   joint commands.
 - **Scene script** (`scene_room.py` or `scene_barebone.py`, run with
   `/isaac-sim/python.sh` inside `isaac-sim-5-1-0-workshop` container).
-  
+
   It subscribes to:
   - `/isaac/{left,right}_joint_commands`
   - `/isaac/{left,right}_robotiq_joint_commands`
   - `/isaac/browser/*` variants
   - `/pedal/state` (swerve base)
-  
+
   It publishes:
   - `/isaac/{left,right}_joint_states`
   - `/isaac/{left,right}_robotiq_joint_states` at 60 Hz, plus — room scene only —

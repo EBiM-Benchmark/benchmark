@@ -8,21 +8,24 @@ isaacsim.ros2.bridge extension has been enabled.
 
 The joint names, gripper coupling, and topic layout are reused from Task 1
 (task1_isaacsim/scripts/isaac_bridge_constants.py); the swerve-base and spine
-control logic is ported from task1_isaacsim/scripts/isaaclab_fr3duo_newton_bridge.py.
+control logic is ported from
+task1_isaacsim/scripts/isaaclab_fr3duo_newton_bridge.py.
 """
 
 from __future__ import annotations
 
 import math
 import sys
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Iterable, List
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 # Reuse the Task 1 shared constants (joint names, gripper coupling, defaults).
 sys.path.insert(0, str(_REPO_ROOT / "task1_isaacsim" / "scripts"))
 
+import numpy as np  # noqa: E402
+import rclpy  # noqa: E402
 from isaac_bridge_constants import (  # noqa: E402
     LEFT_GRIPPER_COUPLED_JOINT_MULTIPLIERS,
     LEFT_GRIPPER_DRIVER_JOINT,
@@ -31,18 +34,14 @@ from isaac_bridge_constants import (  # noqa: E402
     RIGHT_GRIPPER_DRIVER_JOINT,
     RIGHT_JOINTS,
 )
-
-import numpy as np  # noqa: E402
-import omni.usd  # noqa: E402
-from pxr import Gf, UsdGeom, UsdLux, UsdPhysics  # noqa: E402
-
-from isaacsim.core.prims import SingleArticulation  # noqa: E402
-from isaacsim.core.utils.types import ArticulationAction  # noqa: E402
-
-import rclpy  # noqa: E402
 from rclpy.node import Node  # noqa: E402
 from sensor_msgs.msg import JointState  # noqa: E402
 from std_msgs.msg import String  # noqa: E402
+
+import omni.usd  # noqa: E402
+from isaacsim.core.prims import SingleArticulation  # noqa: E402
+from isaacsim.core.utils.types import ArticulationAction  # noqa: E402
+from pxr import Gf, UsdGeom, UsdLux, UsdPhysics  # noqa: E402
 
 try:
     import yaml
@@ -95,19 +94,32 @@ DRIVE_MODULES = (
 class JointGroup:
     label: str
     state_topic: str
-    command_topics: List[str]
-    requested_names: List[str]
+    command_topics: list[str]
+    requested_names: list[str]
 
 
-def _command_topics(primary_topic: str, browser_topic: str, include_browser: bool) -> List[str]:
+def _command_topics(
+    primary_topic: str, browser_topic: str, include_browser: bool
+) -> list[str]:
     topics = [primary_topic]
     if include_browser:
         topics.append(browser_topic)
     return topics
 
 
-def _load_joint_groups(franka_root: Path, embodiment: str, *, include_browser_commands: bool = True) -> List[JointGroup]:
-    contract_path = franka_root / "assets" / "embodiments" / embodiment / "data_contract.yaml"
+def _load_joint_groups(
+    franka_root: Path,
+    embodiment: str,
+    *,
+    include_browser_commands: bool = True,
+) -> list[JointGroup]:
+    contract_path = (
+        franka_root
+        / "assets"
+        / "embodiments"
+        / embodiment
+        / "data_contract.yaml"
+    )
     left_names = list(LEFT_JOINTS)
     right_names = list(RIGHT_JOINTS)
 
@@ -116,32 +128,52 @@ def _load_joint_groups(franka_root: Path, embodiment: str, *, include_browser_co
             contract = yaml.safe_load(f) or {}
         state = contract.get("state_structure", {})
         arms = state.get("arms", {})
-        left_names = list(arms.get("left", {}).get("joint_names") or left_names)
-        right_names = list(arms.get("right", {}).get("joint_names") or right_names)
+        left_names = list(
+            arms.get("left", {}).get("joint_names") or left_names
+        )
+        right_names = list(
+            arms.get("right", {}).get("joint_names") or right_names
+        )
 
     return [
         JointGroup(
             label="left_arm",
             state_topic="/isaac/left_joint_states",
-            command_topics=_command_topics("/isaac/left_joint_commands", "/isaac/browser/left_joint_commands", include_browser_commands),
+            command_topics=_command_topics(
+                "/isaac/left_joint_commands",
+                "/isaac/browser/left_joint_commands",
+                include_browser_commands,
+            ),
             requested_names=left_names,
         ),
         JointGroup(
             label="right_arm",
             state_topic="/isaac/right_joint_states",
-            command_topics=_command_topics("/isaac/right_joint_commands", "/isaac/browser/right_joint_commands", include_browser_commands),
+            command_topics=_command_topics(
+                "/isaac/right_joint_commands",
+                "/isaac/browser/right_joint_commands",
+                include_browser_commands,
+            ),
             requested_names=right_names,
         ),
         JointGroup(
             label="left_gripper",
             state_topic="/isaac/left_robotiq_joint_states",
-            command_topics=_command_topics("/isaac/left_robotiq_joint_commands", "/isaac/browser/left_robotiq_joint_commands", include_browser_commands),
+            command_topics=_command_topics(
+                "/isaac/left_robotiq_joint_commands",
+                "/isaac/browser/left_robotiq_joint_commands",
+                include_browser_commands,
+            ),
             requested_names=[LEFT_GRIPPER_DRIVER_JOINT],
         ),
         JointGroup(
             label="right_gripper",
             state_topic="/isaac/right_robotiq_joint_states",
-            command_topics=_command_topics("/isaac/right_robotiq_joint_commands", "/isaac/browser/right_robotiq_joint_commands", include_browser_commands),
+            command_topics=_command_topics(
+                "/isaac/right_robotiq_joint_commands",
+                "/isaac/browser/right_robotiq_joint_commands",
+                include_browser_commands,
+            ),
             requested_names=[RIGHT_GRIPPER_DRIVER_JOINT],
         ),
     ]
@@ -172,16 +204,18 @@ def _candidate_joint_names(name: str) -> Iterable[str]:
         yield name[:-6]
 
 
-def _resolve_joint_index(requested_name: str, actual_by_name: Dict[str, int]):
+def _resolve_joint_index(requested_name: str, actual_by_name: dict[str, int]):
     for candidate in _candidate_joint_names(requested_name):
         if candidate in actual_by_name:
             return actual_by_name[candidate]
     return None
 
 
-def _resolve_group_indices(groups: List[JointGroup], actual_names: List[str]) -> Dict[str, Dict[str, int]]:
+def _resolve_group_indices(
+    groups: list[JointGroup], actual_names: list[str]
+) -> dict[str, dict[str, int]]:
     actual_by_name = {name: idx for idx, name in enumerate(actual_names)}
-    resolved: Dict[str, Dict[str, int]] = {}
+    resolved: dict[str, dict[str, int]] = {}
     for group in groups:
         group_map = {}
         for requested_name in group.requested_names:
@@ -193,20 +227,21 @@ def _resolve_group_indices(groups: List[JointGroup], actual_names: List[str]) ->
 
 
 def _resolve_coupled_indices(
-    groups: List[JointGroup],
-    group_indices: Dict[str, Dict[str, int]],
-    actual_names: List[str],
+    groups: list[JointGroup],
+    group_indices: dict[str, dict[str, int]],
+    actual_names: list[str],
     *,
     include_robotiq_coupled: bool,
-) -> Dict[str, Dict[int, float]]:
-    """Map gripper group label -> {dof index: multiplier} for joints that must follow the driver."""
+) -> dict[str, dict[int, float]]:
+    """Map gripper group label -> {dof index: multiplier} for joints that
+    must follow the driver."""
     actual_by_name = {name: idx for idx, name in enumerate(actual_names)}
-    resolved: Dict[str, Dict[int, float]] = {}
+    resolved: dict[str, dict[int, float]] = {}
     for group in groups:
         multipliers = GRIPPER_COUPLED_MULTIPLIERS.get(group.label)
         if multipliers is None:
             continue
-        index_map: Dict[int, float] = {}
+        index_map: dict[int, float] = {}
         if include_robotiq_coupled:
             for joint_name, multiplier in multipliers.items():
                 joint_index = _resolve_joint_index(joint_name, actual_by_name)
@@ -214,7 +249,9 @@ def _resolve_coupled_indices(
                     index_map[joint_index] = float(multiplier)
         # Franka hand grippers have no mimic API: finger_joint2 carries its own
         # drive and must mirror the driver (finger_joint1).
-        driver_index = group_indices.get(group.label, {}).get(group.requested_names[0])
+        driver_index = group_indices.get(group.label, {}).get(
+            group.requested_names[0]
+        )
         if driver_index is not None:
             driver_actual = actual_names[driver_index]
             if driver_actual.endswith("finger_joint1"):
@@ -234,11 +271,18 @@ def _iter_prims_under(root_prim):
 def _fix_single_articulation_root(robot_prim_path: str) -> None:
     stage = omni.usd.get_context().get_stage()
     if stage is None:
-        print("Warning: cannot patch articulation roots: no USD stage", file=sys.stderr)
+        print(
+            "Warning: cannot patch articulation roots: no USD stage",
+            file=sys.stderr,
+        )
         return
     robot_prim = stage.GetPrimAtPath(robot_prim_path)
     if not robot_prim.IsValid():
-        print(f"Warning: cannot patch articulation roots: robot prim not found: {robot_prim_path}", file=sys.stderr)
+        print(
+            "Warning: cannot patch articulation roots: "
+            f"robot prim not found: {robot_prim_path}",
+            file=sys.stderr,
+        )
         return
 
     root_prims = [
@@ -250,7 +294,10 @@ def _fix_single_articulation_root(robot_prim_path: str) -> None:
         return
 
     keep_prim = None
-    for preferred_path in (f"{robot_prim_path}/base", f"{robot_prim_path}/base_link"):
+    for preferred_path in (
+        f"{robot_prim_path}/base",
+        f"{robot_prim_path}/base_link",
+    ):
         candidate = stage.GetPrimAtPath(preferred_path)
         if candidate in root_prims:
             keep_prim = candidate
@@ -298,7 +345,8 @@ def _find_articulation_root_path(robot_prim_path: str) -> str:
 
 
 def _find_physics_scene_path():
-    """Return the path of an existing PhysicsScene prim on the stage, if any."""
+    """Return the path of an existing PhysicsScene prim on the stage, if
+    any."""
     stage = omni.usd.get_context().get_stage()
     if stage is None:
         return None
@@ -314,7 +362,9 @@ def _joint_drive(prim):
     return UsdPhysics.DriveAPI.Apply(prim, "angular")
 
 
-def _set_drive_gains(prim, *, stiffness: float, damping: float, max_force: float) -> None:
+def _set_drive_gains(
+    prim, *, stiffness: float, damping: float, max_force: float
+) -> None:
     drive = _joint_drive(prim)
     drive.CreateStiffnessAttr().Set(float(stiffness))
     drive.CreateDampingAttr().Set(float(damping))
@@ -322,11 +372,16 @@ def _set_drive_gains(prim, *, stiffness: float, damping: float, max_force: float
 
 
 def _configure_drives(robot_prim_path: str, gains_by_joint_name) -> None:
-    """Author drive gains on joints selected by name; gains_by_joint_name(name) -> dict or None."""
+    """Author drive gains on joints selected by name;
+    gains_by_joint_name(name) -> dict or None."""
     stage = omni.usd.get_context().get_stage()
     robot_prim = stage.GetPrimAtPath(robot_prim_path)
     if not robot_prim.IsValid():
-        print(f"Warning: cannot configure drives: robot prim not found: {robot_prim_path}", file=sys.stderr)
+        print(
+            "Warning: cannot configure drives: "
+            f"robot prim not found: {robot_prim_path}",
+            file=sys.stderr,
+        )
         return
     configured = []
     for prim in _iter_prims_under(robot_prim):
@@ -351,7 +406,9 @@ def _base_drive_gains(joint_name: str):
     return None
 
 
-def _find_drive_joint_ids(joint_names: List[str]) -> tuple[List[int], List[int]]:
+def _find_drive_joint_ids(
+    joint_names: list[str],
+) -> tuple[list[int], list[int]]:
     name_to_id = {name: idx for idx, name in enumerate(joint_names)}
     missing = [
         joint_name
@@ -379,7 +436,7 @@ def _steering_alignment_scale(error: float) -> float:
 
 def _compute_drive_targets(
     joint_positions: np.ndarray,
-    steering_ids: List[int],
+    steering_ids: list[int],
     vx: float,
     vy: float,
     wz: float,
@@ -401,7 +458,9 @@ def _compute_drive_targets(
     if max_speed_mps > max_speed_mps_allowed:
         speed_scale = max_speed_mps_allowed / max_speed_mps
 
-    for module_index, (wheel_vx, wheel_vy, speed_mps) in enumerate(wheel_vectors):
+    for module_index, (wheel_vx, wheel_vy, speed_mps) in enumerate(
+        wheel_vectors
+    ):
         wheel_vx *= speed_scale
         wheel_vy *= speed_scale
         speed_mps *= speed_scale
@@ -418,14 +477,26 @@ def _compute_drive_targets(
         steering_delta = flipped_delta if use_flipped else direct_delta
 
         steering_targets[module_index] = current_angle + steering_delta
-        wheel_speed = (speed_mps / WHEEL_RADIUS_M) * _steering_alignment_scale(abs(steering_delta))
-        drive_targets[module_index] = -wheel_speed if use_flipped else wheel_speed
+        wheel_speed = (speed_mps / WHEEL_RADIUS_M) * _steering_alignment_scale(
+            abs(steering_delta)
+        )
+        drive_targets[module_index] = (
+            -wheel_speed if use_flipped else wheel_speed
+        )
 
     return steering_targets, drive_targets
 
 
 class SpineKeyboardController:
-    def __init__(self, robot: SingleArticulation, joint_names: List[str], *, step_m: float, min_m: float, max_m: float):
+    def __init__(
+        self,
+        robot: SingleArticulation,
+        joint_names: list[str],
+        *,
+        step_m: float,
+        min_m: float,
+        max_m: float,
+    ):
         self.robot = robot
         self.joint_name = "franka_spine_vertical_joint"
         self.joint_index = joint_names.index(self.joint_name)
@@ -451,15 +522,21 @@ class SpineKeyboardController:
             if app_window is None:
                 raise RuntimeError("No Omniverse app window found")
             self._keyboard = app_window.get_keyboard()
-            self._subscription = self._input.subscribe_to_keyboard_events(self._keyboard, self._on_keyboard_event)
+            self._subscription = self._input.subscribe_to_keyboard_events(
+                self._keyboard, self._on_keyboard_event
+            )
             print(
                 "Spine keyboard control enabled: Up/Down arrows command "
-                f"{self.joint_name}, step={self.step_m:.4f} m, range=[{self.min_m:.4f}, {self.max_m:.4f}] m",
+                f"{self.joint_name}, step={self.step_m:.4f} m, "
+                f"range=[{self.min_m:.4f}, {self.max_m:.4f}] m",
                 flush=True,
             )
         except Exception as exc:  # noqa: BLE001 - keyboard is optional in headless sessions
             self._carb_input = None
-            print(f"Warning: spine keyboard control unavailable: {exc}", file=sys.stderr)
+            print(
+                f"Warning: spine keyboard control unavailable: {exc}",
+                file=sys.stderr,
+            )
 
     @property
     def available(self) -> bool:
@@ -480,10 +557,14 @@ class SpineKeyboardController:
             return True
 
         key_name = str(getattr(event.input, "name", event.input)).upper()
-        if key_name in {"UP", "KEY_UP", "ARROW_UP"} or key_name.endswith("_UP"):
+        if key_name in {"UP", "KEY_UP", "ARROW_UP"} or key_name.endswith(
+            "_UP"
+        ):
             self._set_target(self.target + self.step_m)
             return True
-        if key_name in {"DOWN", "KEY_DOWN", "ARROW_DOWN"} or key_name.endswith("_DOWN"):
+        if key_name in {"DOWN", "KEY_DOWN", "ARROW_DOWN"} or key_name.endswith(
+            "_DOWN"
+        ):
             self._set_target(self.target - self.step_m)
             return True
         return True
@@ -498,14 +579,23 @@ class SpineKeyboardController:
 
 
 class IsaacSimRosBridge(Node):
-    def __init__(self, groups: List[JointGroup], *, node_name: str = "isaacsim_fr3duo_teleop_bridge"):
+    def __init__(
+        self,
+        groups: list[JointGroup],
+        *,
+        node_name: str = "isaacsim_fr3duo_teleop_bridge",
+    ):
         super().__init__(node_name)
         self.groups = groups
-        self.latest_commands: Dict[str, Dict[str, float]] = {group.label: {} for group in groups}
+        self.latest_commands: dict[str, dict[str, float]] = {
+            group.label: {} for group in groups
+        }
         self._latest_pedal_state = "NONE"
         self._latest_pedal_time_sec = None
         self._state_publishers = {
-            group.label: self.create_publisher(JointState, group.state_topic, 10)
+            group.label: self.create_publisher(
+                JointState, group.state_topic, 10
+            )
             for group in groups
         }
         self._command_subscriptions = []
@@ -514,7 +604,9 @@ class IsaacSimRosBridge(Node):
                 sub = self.create_subscription(
                     JointState,
                     topic,
-                    lambda msg, label=group.label: self._on_joint_command(label, msg),
+                    lambda msg, label=group.label: self._on_joint_command(
+                        label, msg
+                    ),
                     10,
                 )
                 self._command_subscriptions.append(sub)
@@ -524,7 +616,9 @@ class IsaacSimRosBridge(Node):
             self._on_pedal_state,
             10,
         )
-        self.get_logger().info("Isaac Sim ROS bridge listening on /isaac command topics")
+        self.get_logger().info(
+            "Isaac Sim ROS bridge listening on /isaac command topics"
+        )
 
     def _on_joint_command(self, label: str, msg: JointState):
         command = self.latest_commands[label]
@@ -548,12 +642,15 @@ class IsaacSimRosBridge(Node):
         if self._latest_pedal_time_sec is None:
             return 0.0, 0.0, 0.0
         now_sec = self.get_clock().now().nanoseconds * 1e-9
-        if timeout_sec >= 0.0 and now_sec - self._latest_pedal_time_sec > timeout_sec:
+        if (
+            timeout_sec >= 0.0
+            and now_sec - self._latest_pedal_time_sec > timeout_sec
+        ):
             self._latest_pedal_state = "NONE"
             return 0.0, 0.0, 0.0
         state = self._latest_pedal_state
-        # Forward/back tokens are emitted by keyboard_to_base.py (w/s keys); the
-        # foot pedal only produces the strafe/yaw tokens below.
+        # Forward/back tokens are emitted by keyboard_to_base.py (w/s
+        # keys); the foot pedal only produces the strafe/yaw tokens below.
         if state == "FWD":
             return linear_speed_mps, 0.0, 0.0
         if state == "BACK":
@@ -571,14 +668,16 @@ class IsaacSimRosBridge(Node):
     def apply_commands(
         self,
         robot: SingleArticulation,
-        group_indices: Dict[str, Dict[str, int]],
-        coupled_indices: Dict[str, Dict[int, float]],
+        group_indices: dict[str, dict[str, int]],
+        coupled_indices: dict[str, dict[int, float]],
     ):
-        targets: Dict[int, float] = {}
+        targets: dict[int, float] = {}
         for group in self.groups:
             resolved = group_indices.get(group.label, {})
             coupled = coupled_indices.get(group.label)
-            for requested_name, position in self.latest_commands[group.label].items():
+            for requested_name, position in self.latest_commands[
+                group.label
+            ].items():
                 joint_index = resolved.get(requested_name)
                 if joint_index is None:
                     continue
@@ -593,10 +692,16 @@ class IsaacSimRosBridge(Node):
         indices = np.array(sorted(targets), dtype=np.int64)
         positions = np.array([targets[i] for i in indices], dtype=np.float32)
         robot.get_articulation_controller().apply_action(
-            ArticulationAction(joint_positions=positions, joint_indices=indices)
+            ArticulationAction(
+                joint_positions=positions, joint_indices=indices
+            )
         )
 
-    def publish_states(self, robot: SingleArticulation, group_indices: Dict[str, Dict[str, int]]):
+    def publish_states(
+        self,
+        robot: SingleArticulation,
+        group_indices: dict[str, dict[str, int]],
+    ):
         joint_pos = robot.get_joint_positions()
         joint_vel = robot.get_joint_velocities()
 
@@ -608,7 +713,9 @@ class IsaacSimRosBridge(Node):
             positions = []
             velocities = []
             for requested_name in group.requested_names:
-                joint_index = group_indices.get(group.label, {}).get(requested_name)
+                joint_index = group_indices.get(group.label, {}).get(
+                    requested_name
+                )
                 if joint_index is None:
                     continue
                 names.append(requested_name)
@@ -630,14 +737,19 @@ def _add_dome_light(stage, prim_path: str = "/World/Light") -> None:
 def _place_objects(stage, prim_path: str, position, yaw_deg: float) -> None:
     prim = stage.GetPrimAtPath(prim_path)
     if not prim.IsValid():
-        print(f"Warning: objects prim not found for placement: {prim_path}", file=sys.stderr)
+        print(
+            f"Warning: objects prim not found for placement: {prim_path}",
+            file=sys.stderr,
+        )
         return
     xform_api = UsdGeom.XformCommonAPI(prim)
     xform_api.SetTranslate(Gf.Vec3d(*[float(v) for v in position]))
     xform_api.SetRotate(Gf.Vec3f(0.0, 0.0, float(yaw_deg)))
 
 
-def _apply_ready_pose(robot: SingleArticulation, actual_names: List[str]) -> None:
+def _apply_ready_pose(
+    robot: SingleArticulation, actual_names: list[str]
+) -> None:
     actual_by_name = {name: idx for idx, name in enumerate(actual_names)}
     indices = []
     positions = []
@@ -658,7 +770,8 @@ def _apply_ready_pose(robot: SingleArticulation, actual_names: List[str]) -> Non
 
 
 def prepare_robot_prim(robot_prim_path: str, args) -> None:
-    """USD-level fixes to run after referencing the robot, before world.reset()."""
+    """USD-level fixes to run after referencing the robot, before
+    world.reset()."""
     _fix_single_articulation_root(robot_prim_path)
     if args.disable_embedded_omnigraph:
         _deactivate_embedded_graphs(robot_prim_path)
@@ -666,10 +779,13 @@ def prepare_robot_prim(robot_prim_path: str, args) -> None:
         _configure_drives(robot_prim_path, _base_drive_gains)
 
 
-def setup_robot_control(robot: SingleArticulation, groups: List[JointGroup], args):
+def setup_robot_control(
+    robot: SingleArticulation, groups: list[JointGroup], args
+):
     """Resolve joint indices, apply the ready pose, and build the controllers.
 
-    Returns (group_indices, coupled_indices, steering_ids, drive_ids, spine_controller).
+    Returns (group_indices, coupled_indices, steering_ids, drive_ids,
+    spine_controller).
     """
     actual_joint_names = list(robot.dof_names)
     group_indices = _resolve_group_indices(groups, actual_joint_names)
@@ -686,7 +802,9 @@ def setup_robot_control(robot: SingleArticulation, groups: List[JointGroup], arg
         if name not in group_indices.get(group.label, {})
     ]
     if missing:
-        print("Warning: unresolved joints:", ", ".join(missing), file=sys.stderr)
+        print(
+            "Warning: unresolved joints:", ", ".join(missing), file=sys.stderr
+        )
     print("Actual joint names:", ", ".join(actual_joint_names))
 
     _apply_ready_pose(robot, actual_joint_names)
@@ -695,7 +813,8 @@ def setup_robot_control(robot: SingleArticulation, groups: List[JointGroup], arg
         steering_ids, drive_ids = _find_drive_joint_ids(actual_joint_names)
         print(
             "Pedal base control enabled: "
-            f"topic={PEDAL_STATE_TOPIC} steering_ids={steering_ids} drive_ids={drive_ids} "
+            f"topic={PEDAL_STATE_TOPIC} steering_ids={steering_ids} "
+            f"drive_ids={drive_ids} "
             f"linear_speed={args.pedal_linear_speed:.3f} m/s "
             f"angular_speed={args.pedal_angular_speed:.3f} rad/s "
             f"timeout={args.pedal_timeout:.3f} s"
@@ -715,16 +834,26 @@ def setup_robot_control(robot: SingleArticulation, groups: List[JointGroup], arg
                 max_m=args.spine_keyboard_max,
             )
         else:
-            print("Warning: spine keyboard control disabled: franka_spine_vertical_joint not found", file=sys.stderr)
+            print(
+                "Warning: spine keyboard control disabled: "
+                "franka_spine_vertical_joint not found",
+                file=sys.stderr,
+            )
 
-    return group_indices, coupled_indices, steering_ids, drive_ids, spine_keyboard_controller
+    return (
+        group_indices,
+        coupled_indices,
+        steering_ids,
+        drive_ids,
+        spine_keyboard_controller,
+    )
 
 
 def run_teleop_loop(
     simulation_app,
     world,
     robot: SingleArticulation,
-    groups: List[JointGroup],
+    groups: list[JointGroup],
     group_indices,
     coupled_indices,
     steering_ids,
@@ -739,7 +868,8 @@ def run_teleop_loop(
     force_render keeps rendering in headless sessions so render-product
     consumers (e.g. the task2 eval camera OmniGraph) still publish.
     """
-    # The ros2 bridge extension may already have initialized the default context.
+    # The ros2 bridge extension may already have initialized the default
+    # context.
     if not rclpy.ok():
         rclpy.init()
     node = IsaacSimRosBridge(groups)

@@ -39,8 +39,10 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--objects-usd-path",
-        default="/workspace/EBiM_Challenge/assets/task2_objects/task2_objects.usda",
-        help="Task 2 objects USD (RAM boards, target, deformable thermal pad).",
+        default="/workspace/EBiM_Challenge/assets/task2_objects/"
+        "task2_objects.usda",
+        help="Task 2 objects USD (RAM boards, target, deformable "
+        "thermal pad).",
     )
     parser.add_argument(
         "--objects-position",
@@ -54,7 +56,8 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         "--objects-yaw-deg",
         type=float,
         default=0.0,
-        help="World yaw rotation in degrees applied to the Task 2 objects root prim.",
+        help="World yaw rotation in degrees applied to the Task 2 objects "
+        "root prim.",
     )
     parser.add_argument("--robot-prim-path", default="/World/Robot")
     parser.add_argument("--objects-prim-path", default="/World/Task2Objects")
@@ -89,14 +92,13 @@ from isaacsim.core.utils.extensions import enable_extension  # noqa: E402
 enable_extension("isaacsim.ros2.bridge")
 simulation_app.update()
 
-import omni.usd  # noqa: E402
+import isaacsim_fr3duo_teleop_bridge_core as core  # noqa: E402
 
+import omni.usd  # noqa: E402
 from isaacsim.core.api import World  # noqa: E402
 from isaacsim.core.prims import SingleArticulation  # noqa: E402
 from isaacsim.core.utils.stage import add_reference_to_stage  # noqa: E402
 from isaacsim.core.utils.viewports import set_camera_view  # noqa: E402
-
-import isaacsim_fr3duo_teleop_bridge_core as core  # noqa: E402
 
 
 def main():
@@ -106,7 +108,9 @@ def main():
     if not usd_path.exists():
         raise FileNotFoundError(f"USD path does not exist: {usd_path}")
     if not objects_usd_path.exists():
-        raise FileNotFoundError(f"Objects USD path does not exist: {objects_usd_path}")
+        raise FileNotFoundError(
+            f"Objects USD path does not exist: {objects_usd_path}"
+        )
 
     groups = core._load_joint_groups(
         franka_root,
@@ -129,14 +133,24 @@ def main():
     core.prepare_robot_prim(args_cli.robot_prim_path, args_cli)
 
     add_reference_to_stage(str(objects_usd_path), args_cli.objects_prim_path)
-    core._place_objects(stage, args_cli.objects_prim_path, args_cli.objects_position, args_cli.objects_yaw_deg)
+    core._place_objects(
+        stage,
+        args_cli.objects_prim_path,
+        args_cli.objects_position,
+        args_cli.objects_yaw_deg,
+    )
 
     world.scene.add_default_ground_plane()
     core._add_dome_light(stage)
     if not args_cli.headless:
-        set_camera_view(eye=list(args_cli.camera_position), target=list(args_cli.camera_target))
+        set_camera_view(
+            eye=list(args_cli.camera_position),
+            target=list(args_cli.camera_target),
+        )
 
-    articulation_root_path = core._find_articulation_root_path(args_cli.robot_prim_path)
+    articulation_root_path = core._find_articulation_root_path(
+        args_cli.robot_prim_path
+    )
     robot = SingleArticulation(prim_path=articulation_root_path, name="robot")
     world.scene.add(robot)
     world.reset()

@@ -27,8 +27,9 @@ if str(_SCENES_DIR) not in sys.path:
 
 # Import-safe before SimulationApp: pxr/omni imports live inside its functions.
 import scene_robot_room_keyboard as room_scene  # noqa: E402
-
-from isaacsim_fr3duo_teleop_bridge_args import add_common_bridge_args  # noqa: E402
+from isaacsim_fr3duo_teleop_bridge_args import (
+    add_common_bridge_args,  # noqa: E402
+)
 
 DEFAULT_ROBOT_USD = (
     _REPO_ROOT
@@ -56,7 +57,8 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         "--task",
         choices=tuple(room_scene.TASK_ROBOT_POSES),
         default="task2",
-        help="Task preset used for the robot spawn position and scene content.",
+        help="Task preset used for the robot spawn position and scene "
+        "content.",
     )
     parser.add_argument(
         "--robot-x",
@@ -107,13 +109,12 @@ from isaacsim.core.utils.extensions import enable_extension  # noqa: E402
 enable_extension("isaacsim.ros2.bridge")
 simulation_app.update()
 
-import omni.kit.app  # noqa: E402
+import isaacsim_fr3duo_teleop_bridge_core as core  # noqa: E402
 
+import omni.kit.app  # noqa: E402
 from isaacsim.core.api import World  # noqa: E402
 from isaacsim.core.prims import SingleArticulation  # noqa: E402
 from isaacsim.core.utils.viewports import set_camera_view  # noqa: E402
-
-import isaacsim_fr3duo_teleop_bridge_core as core  # noqa: E402
 
 ROBOT_PRIM_PATH = "/World/Robot"
 TASK2_VIEW_EYE = (1.0, 2.5, 1.35)
