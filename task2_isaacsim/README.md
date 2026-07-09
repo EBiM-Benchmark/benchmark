@@ -3,31 +3,26 @@
 ## Overview
 
 Teleoperation of the mobile FR3 Duo for Task 2 (deformable thermal pad placement)
-in **Isaac Sim 5.1.0 (PhysX)**, because the thermal pad asset uses `PhysxDeformableBodyAPI`, which requires PhysX GPU deformables.
+in **Isaac Sim 5.1.0 (PhysX)**. This task requires PhysX GPU deformables, since the thermal pad asset uses `PhysxDeformableBodyAPI`.
 
 ### Objectives
 - Transport the highly deformable pad without damaging it.
 - Align and attach the pad onto the designated PCB target area.
 
-### Technical Challenges
-- The thermal pad is deformable (and attached to a liner), so manipulation requires contact-safe handling rather than rigid pick-and-place assumptions.
-- Isaac Sim Task 2 uses the CUDA torch backend for deformables, while Lula expects numpy inputs; teleop IK must bridge tensor/numpy safely.
-- The Aloha and Robotiq variants share FR3v2 arms but differ in gripper wiring (`single_joint` vs `drive_plus_mimic`), so gripper control must be config-driven.
-- Keyboard/pedal control is ROS2-based in this framework (`/keyboard/state`, `/pedal/state`, `/task2/keyboard/arm_jog`), not local `carb.input` polling in the launcher.
-- The bare scene launcher composes the stage only; a monolithic scene+control loop process is required to actually drive the robot.
-
 ### Scoring
 - **Primary:** valid-placement IoU — Pick Success × Placement Orientation Success × Placement IoU (0–1); wrong orientation scores 0.
-- **Tie-breaker:** completion time - the faster the better.
+- **Tie-breaker:** completion time — faster is better.
 
-Detailed evaluation calculation can be found in the [Task 2 evaluation stack](../scripts/evaluation/task2/README.md#evaluation-metric).
-
+The evaluation code in this repository ([Task 2 evaluation](../scripts/evaluation/task2/README.md#evaluation-metric)) is a **development facilitator**; official scoring follows the rules and scoring
+published on the **[competition page](https://ebim-benchmark.github.io/competition.html#tasks)**.
 
 ## Prerequisites
 
-1. **Isaac Sim 5.1.0 container running** with this repo bind-mounted at
+1. Linux host with a supported NVIDIA GPU + recent driver.
+2. Docker Engine with Docker Compose v2 and the NVIDIA Container Toolkit.
+3. **Isaac Sim 5.1.0 container running** with this repo bind-mounted at
    `/workspace/EBiM_Challenge` (default container name
-   `isaac-sim-5-1-0-workshop`; override with `ISAACSIM_CONTAINER`). The
+   `isaac-sim-5-1-0-workshop`). The
    container needs no ROS 2 install — the bridge uses the ROS 2 jazzy
    libraries bundled with Isaac Sim's `isaacsim.ros2.bridge` extension.
    Start the container (from root directory) with:
@@ -35,8 +30,30 @@ Detailed evaluation calculation can be found in the [Task 2 evaluation stack](..
    docker compose --env-file docker/.env.base -f docker/docker-compose.yaml \
    --profile isaac-sim-5.1.0 up -d
    ```
-2. **Robot USD downloaded**: run `task1_isaacsim/scripts/download_large_assets.sh` and ensure the robot USD is present at `task1_isaacsim/assets/Robotiq_2f_85_with_d405_mobile_fr3_duo_v0_2.usd`.
-3. **Teleop input devices** (keyboard / GELLO / pedal) publisher from the [`EBiM-Benchmark/teleoperation`](https://github.com/EBiM-Benchmark/teleoperation) repository on the host.
+4. **Robot USD downloaded**: run `task1_isaacsim/scripts/download_large_assets.sh` and ensure the robot USD is present at `task1_isaacsim/assets/Robotiq_2f_85_with_d405_mobile_fr3_duo_v0_2.usd`.
+5. **Teleop input device publishers** (keyboard / GELLO / pedal) from the [`EBiM-Benchmark/teleoperation`](https://github.com/EBiM-Benchmark/teleoperation) repository on the host.
+
+## Teleoperation
+
+This repository provides a **ROS 2 bridge** between the teleoperation input devices and the Isaac Sim 5.1.0 simulator.
+
+### Mobile base
+
+Mobile base teleoperation is supported via:
+- **Keyboard**: via `keyboard_state_publisher` from the [`EBiM-Benchmark/teleoperation`](https://github.com/EBiM-Benchmark/teleoperation) repository.
+- **USB foot pedal**: via `pedal_state_publisher` from the [`EBiM-Benchmark/teleoperation`](https://github.com/EBiM-Benchmark/teleoperation) repository.
+
+### Spine
+
+Robot vertical spine is controlled via:
+- **Keyboard**: Up/Down keys, with the Isaac Sim window focused.
+
+### Arms
+
+Dual arms teleoperation is supported via:
+- **Keyboard**: via RMPflow (Lula) policies, with the Isaac Sim window focused.
+- **GELLO**: via the `franka_gello_state_publisher` from the [`EBiM-Benchmark/teleoperation`](https://github.com/EBiM-Benchmark/teleoperation) repository.
+- **Web UI**: via the `task2_browser_controller` Docker Compose service (accessed via <http://localhost:8090>) in the helper stack. This is a no-hardware alternative to the GELLO arms: it controls the joint states directly from UI sliders.
 
 ## Quickstart
 
@@ -58,13 +75,64 @@ Two scenes are available via `--scene` (both use the same robot USD and ROS topi
 - `--scene room` (default): the full robot room from `scripts/scenes/scene_robot_room_keyboard.py --task task2`.
 - `--scene barebone`: barebone robot, ground plane, and task 2 objects.
 
-### Barebone (empty scene) with keyboard base + browser arms (no special hardware)
+### Barebone (empty scene) with keyboard arms and base (no special hardware)
 
 ```bash
 bash task2_isaacsim/scripts/run_isaacsim_teleop.sh \
    --scene barebone \
+   --with-keyboard-teleop \
+   --with-arm-keyboard-teleop \
+   --controller-mode none \
+   --no-republisher \
+   --no-browser
+```
+
+#### Base: Keyboard
+
+Then, in the teleoperation ROS 2 environment on the host, start the keyboard
+publisher and drive the base with `w/a/s/d` and rotate with `q/e`. The terminal window must have focus for the keyboard to work.
+
+```bash
+ros2 run keyboard_state_publisher keyboard_state_publisher
+```
+
+#### Arms: Keyboard
+
+While the Isaac Sim window has focus, drive the arms with the following keys:
+
+| Keys | Action |
+| --- | --- |
+| `W/S` `A/D` `Q/E` | LEFT arm: move TCP fwd/back, left/right, up/down |
+| `Z/X` `T/G` `C/V` | LEFT arm: roll / pitch / yaw |
+| `F` | LEFT gripper toggle |
+| `O/L` `K/;` `I/P` | RIGHT arm: move TCP fwd/back, left/right, up/down |
+| `N/M` `U/J` `,/.` | RIGHT arm: roll / pitch / yaw |
+| `'` | RIGHT gripper toggle |
+| `R` | reset both arm targets to the ready pose |
+
+This drives both arm end-effectors from the Isaac Sim window keyboard (with GUI focused) through per-arm RMPflow (Lula) policies. Targets are held in the robot base frame, so the arms ride along while the base drives and the keys always move the gripper relative to the robot's heading. Each arm has its own key cluster so both arms can move at once.
+
+Notes:
+- Conflicting bare-key viewport hotkeys (`F` frame selection, `Q/W/E/R`
+  transform tools, ...) are deregistered at startup.
+- Speeds are tunable via `-- --arm-teleop-linear-speed 0.18
+  --arm-teleop-angular-speed-deg 60`.
+- In `--headless` runs the teleop is disabled (with a warning) and ROS arm
+  commands stay active.
+
+#### Spine: Keyboard
+
+The spine keyboard control is `Up/Down`, with Isaac Sim GUI focused.
+
+### Room scene with keyboard base + web browser arms (no special hardware)
+
+```bash
+bash task2_isaacsim/scripts/run_isaacsim_teleop.sh \
+   --scene room \
    --with-keyboard-teleop
 ```
+
+#### Base: Keyboard
 
 Then, in the teleoperation ROS 2 environment on the host, start the keyboard
 publisher and drive the base with `w/a/s/d/q/e`:
@@ -73,10 +141,15 @@ publisher and drive the base with `w/a/s/d/q/e`:
 ros2 run keyboard_state_publisher keyboard_state_publisher
 ```
 
-Open the browser UI at <http://localhost:8090> to move the arms/grippers.
-The spine keyboard control is `Up/Down`, with GUI focused.
+#### Arms: Web UI
 
-### Room scene with GELLO arms
+Open the web UI at <http://localhost:8090> to directly control the joint state of the arms/grippers.
+
+#### Spine: Keyboard
+
+The spine keyboard control is `Up/Down`, with Isaac Sim GUI focused.
+
+### Room scene with foot pedal base + GELLO arms
 
 ```bash
 bash task2_isaacsim/scripts/run_isaacsim_teleop.sh \
@@ -85,13 +158,19 @@ bash task2_isaacsim/scripts/run_isaacsim_teleop.sh \
    --no-browser
 ```
 
+#### Base: Foot Pedal + Arms: GELLO
+
 On the host (teleoperation env): launch the GELLO publisher and the pedal
-publisher (see the teleoperation README):
+publisher (see the `teleoperation` repo README):
 
 ```bash
 ros2 launch franka_gello_state_publisher main.launch.py config_file:=franka_gello_duo.yaml
 ros2 run pedal_state_publisher pedal_state_publisher
 ```
+
+#### Spine: Keyboard
+
+The spine keyboard control is `Up/Down`, with Isaac Sim GUI focused.
 
 ## Architecture
 
@@ -159,7 +238,6 @@ Task-2-only pieces with no Task 1 counterpart: the scene composition
 (`assets/task2_objects/` deformable thermal pad + RAM boards; the robot room
 via `scripts/scenes/scene_robot_room_keyboard.py`), PhysX GPU-dynamics setup,
 and the `/isaac/eval_camera/*` publishers for the Task 2 evaluation stack.
-
 
 ## Notes
 

@@ -186,6 +186,7 @@ def main():
         steering_ids,
         drive_ids,
         spine_keyboard_controller,
+        arm_keyboard_teleop,
     ) = core.setup_robot_control(robot, groups, args_cli)
 
     core.run_teleop_loop(
@@ -198,6 +199,7 @@ def main():
         steering_ids,
         drive_ids,
         spine_keyboard_controller,
+        arm_keyboard_teleop,
         args_cli,
         # Keep rendering in headless sessions so the task2 eval camera
         # OmniGraph still publishes /isaac/eval_camera/*.

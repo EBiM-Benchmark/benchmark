@@ -40,7 +40,14 @@ from std_msgs.msg import String  # noqa: E402
 
 import omni.usd  # noqa: E402
 from isaacsim.core.prims import SingleArticulation  # noqa: E402
+from isaacsim.core.utils.rotations import rot_matrix_to_quat  # noqa: E402
 from isaacsim.core.utils.types import ArticulationAction  # noqa: E402
+from isaacsim.robot_motion.motion_generation.articulation_motion_policy import (  # noqa: E402, E501
+    ArticulationMotionPolicy,
+)
+from isaacsim.robot_motion.motion_generation.lula.motion_policies import (  # noqa: E402
+    RmpFlow,
+)
 from pxr import Gf, UsdGeom, UsdLux, UsdPhysics  # noqa: E402
 
 try:
@@ -73,6 +80,57 @@ ARM_READY_POSE = {
     "right_fr3v2_joint6": 1.5708,
     "right_fr3v2_joint7": 0.7854,
 }
+
+
+# Dual-arm keyboard teleop (RMPflow) assets. The Lula descriptors, URDF, and
+# RMPflow configs are adapted from the archived dual_arm_rmp_widget demo and
+# Isaac Sim's FR3 motion policy config; see the files for provenance notes.
+LULA_ASSETS_DIR = (
+    _REPO_ROOT / "task2_isaacsim" / "assets" / "lula" / "mobile_fr3_duo"
+)
+LULA_URDF_PATH = LULA_ASSETS_DIR / "mobile_fr3_duo_v0_2_lula.urdf"
+RMPFLOW_MAX_SUBSTEP_SIZE = 0.0034
+
+ARM_TELEOP_CONFIGS = {
+    "left": {
+        "robot_description_path": (
+            LULA_ASSETS_DIR / "left_arm_description.yaml"
+        ),
+        "rmpflow_config_path": (
+            LULA_ASSETS_DIR / "left_arm_rmpflow_config.yaml"
+        ),
+        "end_effector_frame_name": "left_tcp",
+        "arm_joint_names": tuple(LEFT_JOINTS),
+        "gripper_label": "left_gripper",
+        "gripper_driver_joint": LEFT_GRIPPER_DRIVER_JOINT,
+    },
+    "right": {
+        "robot_description_path": (
+            LULA_ASSETS_DIR / "right_arm_description.yaml"
+        ),
+        "rmpflow_config_path": (
+            LULA_ASSETS_DIR / "right_arm_rmpflow_config.yaml"
+        ),
+        "end_effector_frame_name": "right_tcp",
+        "arm_joint_names": tuple(RIGHT_JOINTS),
+        "gripper_label": "right_gripper",
+        "gripper_driver_joint": RIGHT_GRIPPER_DRIVER_JOINT,
+    },
+}
+
+ARM_TELEOP_CONTROLS_BANNER = """\
+Dual-arm keyboard teleop enabled (keys act in the Isaac Sim window; arm
+moves are in the robot base frame):
+  LEFT arm:
+    W/S A/D Q/E : move end effector (fwd/back, left/right, up/down)
+    Z/X T/G C/V : rotate end effector (roll / pitch / yaw)
+    F           : toggle gripper
+  RIGHT arm (same layout on the right half of the keyboard):
+    O/L K/; I/P : move end effector (fwd/back, left/right, up/down)
+    N/M U/J ,/. : rotate end effector (roll / pitch / yaw)
+    '           : toggle gripper
+  R           : reset both arm targets to the ready pose
+ROS arm/gripper commands are NOT applied while this teleop is active."""
 
 
 @dataclass(frozen=True)
@@ -487,6 +545,87 @@ def _compute_drive_targets(
     return steering_targets, drive_targets
 
 
+def _quat_mul(q1, q2):
+    """Hamilton product of two wxyz quaternions (q1 applied after q2)."""
+    w1, x1, y1, z1 = (float(v) for v in q1)
+    w2, x2, y2, z2 = (float(v) for v in q2)
+    return np.array(
+        [
+            w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2,
+            w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2,
+            w1 * y2 - x1 * z2 + y1 * w2 + z1 * x2,
+            w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2,
+        ]
+    )
+
+
+def _axis_angle_quat(axis, angle: float):
+    """wxyz quaternion for a rotation of ``angle`` rad about ``axis``."""
+    half = 0.5 * float(angle)
+    return np.array(
+        [math.cos(half), *(math.sin(half) * np.asarray(axis, dtype=float))]
+    )
+
+
+def _compose_world_pose(parent_pos, parent_quat, child_pos, child_quat):
+    """World pose of a child frame from the parent world pose and the
+    child's pose in the parent frame. Quaternions are wxyz numpy arrays."""
+
+    def _mat(pos, quat):
+        m = Gf.Matrix4d().SetRotate(
+            Gf.Quatd(
+                float(quat[0]), float(quat[1]), float(quat[2]), float(quat[3])
+            )
+        )
+        m.SetTranslateOnly(
+            Gf.Vec3d(float(pos[0]), float(pos[1]), float(pos[2]))
+        )
+        return m
+
+    world = _mat(child_pos, child_quat) * _mat(parent_pos, parent_quat)
+    translation = world.ExtractTranslation()
+    rotation = world.ExtractRotationQuat()
+    pos = np.array([translation[0], translation[1], translation[2]])
+    quat = np.array(
+        [
+            rotation.GetReal(),
+            rotation.GetImaginary()[0],
+            rotation.GetImaginary()[1],
+            rotation.GetImaginary()[2],
+        ]
+    )
+    return pos, quat
+
+
+def _disable_conflicting_kit_hotkeys(used_keys) -> None:
+    """Deregister Kit hotkeys bound to bare keys the teleop uses.
+
+    The Isaac Sim viewport binds plain keys (F = frame selection, Q/W/E/R =
+    transform tools, ...) that would fire while teleoperating with the
+    viewport focused. Only UNMODIFIED combinations on teleop keys are
+    removed; everything else survives -- modified combos (Ctrl+S), function
+    keys (F7 toggle UI, F11 fullscreen), Space (play/pause), Esc, Del. No-op
+    when the hotkey extension is not loaded (headless runs).
+    """
+    try:
+        import omni.kit.hotkeys.core as hotkeys_core  # noqa: PLC0415
+    except ImportError:
+        return
+    registry = hotkeys_core.get_hotkey_registry()
+    removed = []
+    for hotkey in list(registry.get_all_hotkeys()):
+        combo = hotkey.key_combination
+        if combo is None or combo.modifiers or combo.key not in used_keys:
+            continue
+        if registry.deregister_hotkey(hotkey):
+            removed.append(f"{combo.as_string}->{hotkey.action_id}")
+    if removed:
+        print(
+            f"Disabled {len(removed)} conflicting Kit hotkeys: "
+            f"{', '.join(removed)}"
+        )
+
+
 class SpineKeyboardController:
     def __init__(
         self,
@@ -576,6 +715,369 @@ class SpineKeyboardController:
                 joint_indices=np.array([self.joint_index]),
             )
         )
+
+
+class DualArmKeyboardTeleop:
+    """Keyboard end-effector teleop for both FR3 arms via dual RMPflow.
+
+    Ported from the archived dual_arm_rmp_widget demo: one RmpFlow per arm
+    (each Lula descriptor's cspace covers only that arm's seven joints),
+    wrapped in ArticulationMotionPolicy; the two per-arm actions are merged
+    by joint index into a single ArticulationAction each step.
+
+    Each arm's target pose is stored in the robot ROOT frame so it rides
+    along while the base drives; the solver base pose is re-set every step
+    from the live root pose plus the spine lift (the descriptors pin the
+    spine joint at zero, and only wheels/casters -- irrelevant to arm EE
+    kinematics -- sit below the spine, so lifting the whole URDF by the
+    live spine position reproduces the lifted arm mounts on a flat floor).
+
+    RmpFlow runs with ignore_robot_state_updates=True: it rolls out its own
+    smooth kinematic trajectory and the PhysX drives track it. Feeding the
+    PhysX-measured joint state back into the policy (the default) stalls it
+    in false equilibria decimeters from the target -- verified empirically;
+    the internal rollout tracks the same targets to millimeters, with the
+    simulated robot following within ~2 cm.
+    """
+
+    def __init__(
+        self,
+        robot: SingleArticulation,
+        joint_names: list[str],
+        group_indices: dict[str, dict[str, int]],
+        coupled_indices: dict[str, dict[int, float]],
+        args,
+    ):
+        self.robot = robot
+        self._physics_dt = 1.0 / max(float(args.physics_hz), 1.0)
+        self._linear_speed = float(args.arm_teleop_linear_speed)
+        self._angular_speed = math.radians(
+            float(args.arm_teleop_angular_speed_deg)
+        )
+        self._gripper_positions = {
+            True: float(args.arm_teleop_gripper_open),
+            False: float(args.arm_teleop_gripper_closed),
+        }
+
+        # RmpFlow binds articulation joints by URDF name, so the USD must
+        # use the exact URDF names (no _candidate_joint_names fuzzing).
+        missing = [
+            name
+            for config in ARM_TELEOP_CONFIGS.values()
+            for name in config["arm_joint_names"]
+            if name not in joint_names
+        ]
+        if missing:
+            raise RuntimeError(
+                "robot joint names do not match the Lula URDF, missing: "
+                + ", ".join(missing)
+            )
+
+        self._spine_index = (
+            joint_names.index("franka_spine_vertical_joint")
+            if "franka_spine_vertical_joint" in joint_names
+            else None
+        )
+
+        self._arms = {}
+        for arm_name, config in ARM_TELEOP_CONFIGS.items():
+            rmpflow = RmpFlow(
+                robot_description_path=str(config["robot_description_path"]),
+                urdf_path=str(LULA_URDF_PATH),
+                rmpflow_config_path=str(config["rmpflow_config_path"]),
+                end_effector_frame_name=config["end_effector_frame_name"],
+                maximum_substep_size=RMPFLOW_MAX_SUBSTEP_SIZE,
+                ignore_robot_state_updates=True,
+            )
+            policy = ArticulationMotionPolicy(robot, rmpflow, self._physics_dt)
+            self._arms[arm_name] = {
+                "rmpflow": rmpflow,
+                "policy": policy,
+                "gripper_driver_index": group_indices.get(
+                    config["gripper_label"], {}
+                ).get(config["gripper_driver_joint"]),
+                "gripper_coupled": dict(
+                    coupled_indices.get(config["gripper_label"], {})
+                ),
+                "gripper_open": True,
+            }
+        self._init_home_targets()
+
+        self._held = set()
+        self._reset_key = None
+        self._subscription = None
+        self._input = None
+        self._keyboard = None
+        try:
+            import carb.input  # noqa: PLC0415
+            import omni.appwindow  # noqa: PLC0415
+
+            self._carb_input = carb.input
+            self._build_key_maps(carb.input.KeyboardInput)
+            self._input = carb.input.acquire_input_interface()
+            app_window = omni.appwindow.get_default_app_window()
+            if app_window is None:
+                raise RuntimeError("No Omniverse app window found")
+            self._keyboard = app_window.get_keyboard()
+            self._subscription = self._input.subscribe_to_keyboard_events(
+                self._keyboard, self._on_keyboard_event
+            )
+            _disable_conflicting_kit_hotkeys(self._teleop_keys())
+            print(ARM_TELEOP_CONTROLS_BANNER, flush=True)
+        except Exception as exc:  # noqa: BLE001 - keyboard is optional in headless sessions
+            self._carb_input = None
+            print(
+                f"Warning: dual-arm keyboard teleop unavailable: {exc}",
+                file=sys.stderr,
+            )
+
+    @property
+    def available(self) -> bool:
+        return self._subscription is not None
+
+    def _build_key_maps(self, keyboard_input) -> None:
+        # Per-arm key clusters: (fwd, back, left, right, up, down),
+        # (roll+/-, pitch+/-, yaw+/-), gripper toggle. The right-arm
+        # cluster is the left-arm layout shifted onto the right half of
+        # the keyboard. Same bindings as examples/demo_teleop_aloha.py.
+        arm_keys = {
+            "left": (
+                (
+                    keyboard_input.W,
+                    keyboard_input.S,
+                    keyboard_input.A,
+                    keyboard_input.D,
+                    keyboard_input.Q,
+                    keyboard_input.E,
+                ),
+                (
+                    keyboard_input.Z,
+                    keyboard_input.X,
+                    keyboard_input.T,
+                    keyboard_input.G,
+                    keyboard_input.C,
+                    keyboard_input.V,
+                ),
+                keyboard_input.F,
+            ),
+            "right": (
+                (
+                    keyboard_input.O,
+                    keyboard_input.L,
+                    keyboard_input.K,
+                    keyboard_input.SEMICOLON,
+                    keyboard_input.I,
+                    keyboard_input.P,
+                ),
+                (
+                    keyboard_input.N,
+                    keyboard_input.M,
+                    keyboard_input.U,
+                    keyboard_input.J,
+                    keyboard_input.COMMA,
+                    keyboard_input.PERIOD,
+                ),
+                keyboard_input.APOSTROPHE,
+            ),
+        }
+        for arm_name, (linear, angular, gripper_key) in arm_keys.items():
+            fwd, back, left, right, up, down = linear
+            roll_p, roll_n, pitch_p, pitch_n, yaw_p, yaw_n = angular
+            arm = self._arms[arm_name]
+            arm["linear_map"] = {
+                fwd: np.array([+1.0, 0.0, 0.0]),
+                back: np.array([-1.0, 0.0, 0.0]),
+                left: np.array([0.0, +1.0, 0.0]),
+                right: np.array([0.0, -1.0, 0.0]),
+                up: np.array([0.0, 0.0, +1.0]),
+                down: np.array([0.0, 0.0, -1.0]),
+            }
+            arm["angular_map"] = {
+                roll_p: np.array([+1.0, 0.0, 0.0]),
+                roll_n: np.array([-1.0, 0.0, 0.0]),
+                pitch_p: np.array([0.0, +1.0, 0.0]),
+                pitch_n: np.array([0.0, -1.0, 0.0]),
+                yaw_p: np.array([0.0, 0.0, +1.0]),
+                yaw_n: np.array([0.0, 0.0, -1.0]),
+            }
+            arm["gripper_key"] = gripper_key
+        self._reset_key = keyboard_input.R
+
+    def _teleop_keys(self) -> set:
+        keys = {self._reset_key}
+        for arm in self._arms.values():
+            keys.update(arm["linear_map"])
+            keys.update(arm["angular_map"])
+            keys.add(arm["gripper_key"])
+        return keys
+
+    def _spine_lift(self, joint_positions) -> float:
+        if self._spine_index is None:
+            return 0.0
+        return float(joint_positions[self._spine_index])
+
+    def _init_home_targets(self) -> None:
+        """Initialize each arm's target from FK of the current joint state.
+
+        With the solver base at identity, RmpFlow FK yields the TCP pose in
+        the URDF-root frame with the spine at zero; adding the live spine
+        lift converts it to the robot ROOT frame the targets are stored in.
+        Starting from FK means the first commanded target coincides with
+        the actual TCP pose, so nothing jumps when the teleop engages.
+        """
+        spine = self._spine_lift(self.robot.get_joint_positions())
+        for arm in self._arms.values():
+            rmpflow = arm["rmpflow"]
+            rmpflow.set_robot_base_pose(
+                np.zeros(3), np.array([1.0, 0.0, 0.0, 0.0])
+            )
+            active_positions = (
+                arm["policy"].get_active_joints_subset().get_joint_positions()
+            )
+            position, rot_matrix = rmpflow.get_end_effector_pose(
+                active_positions
+            )
+            position = np.array(position, dtype=float)
+            position[2] += spine
+            arm["home_position"] = position
+            # Store the orientation as a quaternion: an euler round-trip
+            # is lossy near the flange's pitch singularity (the left arm's
+            # ready pose sits close to one, which sent RMPflow sideways).
+            arm["home_quat"] = rot_matrix_to_quat(rot_matrix)
+            arm["target_position"] = arm["home_position"].copy()
+            arm["target_quat"] = arm["home_quat"].copy()
+
+    def _on_keyboard_event(self, event, *args, **kwargs):
+        if self._carb_input is None:
+            return True
+        event_type = self._carb_input.KeyboardEventType
+        if event.type == event_type.KEY_PRESS:
+            self._held.add(event.input)
+            for arm_name, arm in self._arms.items():
+                if event.input == arm["gripper_key"]:
+                    arm["gripper_open"] = not arm["gripper_open"]
+                    state = "open" if arm["gripper_open"] else "closed"
+                    print(f"{arm_name} gripper: {state}", flush=True)
+            if event.input == self._reset_key:
+                for arm in self._arms.values():
+                    arm["target_position"] = arm["home_position"].copy()
+                    arm["target_quat"] = arm["home_quat"].copy()
+                print("Arm teleop targets reset to the ready pose", flush=True)
+        elif event.type == event_type.KEY_RELEASE:
+            self._held.discard(event.input)
+        return True
+
+    def _integrate_held_keys(self, frame_duration: float) -> None:
+        linear_step = self._linear_speed * frame_duration
+        angular_step = self._angular_speed * frame_duration
+        for key in list(self._held):
+            for arm in self._arms.values():
+                direction = arm["linear_map"].get(key)
+                if direction is not None:
+                    arm["target_position"] = (
+                        arm["target_position"] + direction * linear_step
+                    )
+                axis = arm["angular_map"].get(key)
+                if axis is not None:
+                    # Rotate about the robot-base axis (pre-multiply in the
+                    # parent frame).
+                    quat = _quat_mul(
+                        _axis_angle_quat(axis, angular_step),
+                        arm["target_quat"],
+                    )
+                    arm["target_quat"] = quat / np.linalg.norm(quat)
+
+    def _apply_gripper_targets(self, controller) -> None:
+        gripper_targets: dict[int, float] = {}
+        for arm in self._arms.values():
+            driver_index = arm["gripper_driver_index"]
+            if driver_index is None:
+                continue
+            position = self._gripper_positions[arm["gripper_open"]]
+            gripper_targets[driver_index] = position
+            for coupled_index, multiplier in arm["gripper_coupled"].items():
+                gripper_targets[coupled_index] = position * multiplier
+        if not gripper_targets:
+            return
+        indices = np.array(sorted(gripper_targets), dtype=np.int64)
+        controller.apply_action(
+            ArticulationAction(
+                joint_positions=np.array(
+                    [gripper_targets[i] for i in indices], dtype=np.float32
+                ),
+                joint_indices=indices,
+            )
+        )
+
+    def apply(self, frame_duration: float | None = None) -> None:
+        """Advance targets from held keys and apply one merged action.
+
+        frame_duration is the wall-clock period of one teleop loop
+        iteration: world.step(render=True) advances rendering_dt (several
+        physics steps), so the loop runs at render rate in GUI sessions and
+        at physics rate headless. Defaults to the physics dt.
+        """
+        if frame_duration is None:
+            frame_duration = self._physics_dt
+        self._integrate_held_keys(frame_duration)
+
+        joint_positions = self.robot.get_joint_positions()
+        root_pos, root_quat = self.robot.get_world_pose()
+        root_pos = np.array(root_pos, dtype=float)
+        root_quat = np.array(root_quat, dtype=float)
+        spine_offset = np.array([0.0, 0.0, self._spine_lift(joint_positions)])
+        base_pos, base_quat = _compose_world_pose(
+            root_pos,
+            root_quat,
+            spine_offset,
+            np.array([1.0, 0.0, 0.0, 0.0]),
+        )
+
+        positions: dict[int, float] = {}
+        velocities: dict[int, float] = {}
+        for arm in self._arms.values():
+            rmpflow = arm["rmpflow"]
+            rmpflow.set_robot_base_pose(base_pos, base_quat)
+            world_pos, world_quat = _compose_world_pose(
+                root_pos,
+                root_quat,
+                arm["target_position"],
+                arm["target_quat"],
+            )
+            rmpflow.set_end_effector_target(world_pos, world_quat)
+            # get_next_articulation_action steps the policy itself (the
+            # older .update() API is gone in Isaac Sim 5.x); with
+            # ignore_robot_state_updates=True it advances the internal
+            # rollout by frame_duration.
+            action = arm["policy"].get_next_articulation_action(frame_duration)
+            if action is None or action.joint_positions is None:
+                continue
+            action_velocities = action.joint_velocities
+            if action_velocities is None:
+                action_velocities = np.zeros_like(action.joint_positions)
+            for index, position, velocity in zip(
+                action.joint_indices,
+                action.joint_positions,
+                action_velocities,
+            ):
+                positions[int(index)] = float(position)
+                velocities[int(index)] = float(velocity)
+
+        controller = self.robot.get_articulation_controller()
+        if positions:
+            indices = np.array(sorted(positions), dtype=np.int64)
+            controller.apply_action(
+                ArticulationAction(
+                    joint_positions=np.array(
+                        [positions[i] for i in indices], dtype=np.float32
+                    ),
+                    joint_velocities=np.array(
+                        [velocities[i] for i in indices], dtype=np.float32
+                    ),
+                    joint_indices=indices,
+                )
+            )
+        self._apply_gripper_targets(controller)
 
 
 class IsaacSimRosBridge(Node):
@@ -785,7 +1287,7 @@ def setup_robot_control(
     """Resolve joint indices, apply the ready pose, and build the controllers.
 
     Returns (group_indices, coupled_indices, steering_ids, drive_ids,
-    spine_controller).
+    spine_controller, arm_keyboard_teleop).
     """
     actual_joint_names = list(robot.dof_names)
     group_indices = _resolve_group_indices(groups, actual_joint_names)
@@ -840,12 +1342,37 @@ def setup_robot_control(
                 file=sys.stderr,
             )
 
+    arm_keyboard_teleop = None
+    if args.arm_keyboard_teleop and args.headless:
+        # Kit still creates an app-window keyboard headless, so the teleop
+        # would "work" while silently blocking ROS arm commands.
+        print(
+            "Warning: dual-arm keyboard teleop disabled in headless "
+            "sessions; ROS arm commands stay active.",
+            file=sys.stderr,
+        )
+    elif args.arm_keyboard_teleop:
+        try:
+            arm_keyboard_teleop = DualArmKeyboardTeleop(
+                robot,
+                actual_joint_names,
+                group_indices,
+                coupled_indices,
+                args,
+            )
+        except Exception as exc:  # noqa: BLE001 - fall back to ROS commands
+            print(
+                f"Warning: dual-arm keyboard teleop disabled: {exc}",
+                file=sys.stderr,
+            )
+
     return (
         group_indices,
         coupled_indices,
         steering_ids,
         drive_ids,
         spine_keyboard_controller,
+        arm_keyboard_teleop,
     )
 
 
@@ -859,6 +1386,7 @@ def run_teleop_loop(
     steering_ids,
     drive_ids,
     spine_keyboard_controller,
+    arm_keyboard_teleop,
     args,
     *,
     force_render: bool = False,
@@ -875,11 +1403,28 @@ def run_teleop_loop(
     node = IsaacSimRosBridge(groups)
     publish_period = 1.0 / max(args.ros_publish_rate, 1.0)
     next_publish_time = 0.0
+    # When rendering, world.step advances one rendering_dt (several physics
+    # steps), so the loop iterates at render rate; headless-without-render
+    # iterates at physics rate.
+    rendering = force_render or not args.headless
+    loop_dt = (
+        1.0 / max(args.render_hz, 1.0)
+        if rendering
+        else 1.0 / max(args.physics_hz, 1.0)
+    )
 
     try:
         while simulation_app.is_running() and rclpy.ok():
             rclpy.spin_once(node, timeout_sec=0.0)
-            node.apply_commands(robot, group_indices, coupled_indices)
+            arm_teleop_active = (
+                arm_keyboard_teleop is not None
+                and arm_keyboard_teleop.available
+            )
+            # Exclusive arbitration: the keyboard teleop replaces the ROS
+            # arm and gripper commands (the only groups apply_commands
+            # handles); joint states are still published below.
+            if not arm_teleop_active:
+                node.apply_commands(robot, group_indices, coupled_indices)
             if steering_ids and drive_ids:
                 vx, vy, wz = node.pedal_base_twist(
                     args.pedal_linear_speed,
@@ -908,9 +1453,11 @@ def run_teleop_loop(
                 )
             if spine_keyboard_controller is not None:
                 spine_keyboard_controller.apply()
+            if arm_teleop_active:
+                arm_keyboard_teleop.apply(loop_dt)
             # With render=False each iteration advances a single physics_dt, so
             # headless keeps the fastest possible ROS command/state loop.
-            world.step(render=force_render or not args.headless)
+            world.step(render=rendering)
             now = node.get_clock().now().nanoseconds * 1e-9
             if now >= next_publish_time:
                 node.publish_states(robot, group_indices)

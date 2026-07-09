@@ -76,6 +76,41 @@ def add_common_bridge_args(parser: argparse.ArgumentParser) -> None:
         help="Maximum franka_spine_vertical_joint target in meters for "
         "keyboard control.",
     )
+    parser.add_argument(
+        "--arm-keyboard-teleop",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Drive both arm end effectors with the Kit-window keyboard "
+        "through dual RMPflow. While active, ROS arm and gripper "
+        "commands are NOT applied (joint states are still published).",
+    )
+    parser.add_argument(
+        "--arm-teleop-linear-speed",
+        type=float,
+        default=0.18,
+        help="End-effector translation speed in m/s while a move key is held.",
+    )
+    parser.add_argument(
+        "--arm-teleop-angular-speed-deg",
+        type=float,
+        default=60.0,
+        help="End-effector rotation speed in deg/s while a rotate key is "
+        "held.",
+    )
+    parser.add_argument(
+        "--arm-teleop-gripper-open",
+        type=float,
+        default=0.0,
+        help="Gripper driver joint position in radians for the open state "
+        "of the keyboard gripper toggle.",
+    )
+    parser.add_argument(
+        "--arm-teleop-gripper-closed",
+        type=float,
+        default=0.8,
+        help="Gripper driver joint position in radians for the closed "
+        "state of the keyboard gripper toggle.",
+    )
     parser.add_argument("--physics-hz", type=float, default=240.0)
     parser.add_argument("--render-hz", type=float, default=60.0)
     parser.add_argument(

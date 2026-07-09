@@ -35,6 +35,7 @@ EMBODIMENT="fr3duo_mobile"
 CONTROLLER_MODE="${CONTROLLER_MODE:-position}"
 WITH_KEYBOARD_TELEOP=false
 WITH_GELLO_TELEOP=false
+WITH_ARM_KEYBOARD_TELEOP=false
 WITH_BROWSER=true
 WITH_REPUBLISHER=true
 HEADLESS=false
@@ -58,6 +59,14 @@ Options:
   --with-keyboard-teleop     Start the keyboard->base teleop adapter (default input)
   --with-gello-teleop        Start the GELLO->bridge teleop adapter
   --with-gello-pedal-teleop  Alias of --with-gello-teleop (tested pedal+GELLO path)
+  --with-arm-keyboard-teleop Drive both arm end effectors from the Isaac Sim
+                             window keyboard via dual RMPflow. LEFT arm:
+                             W/S A/D Q/E move, Z/X T/G C/V rotate, F gripper.
+                             RIGHT arm: O/L K/; I/P move, N/M U/J ,/. rotate,
+                             ' gripper. R resets both targets. While active,
+                             ROS arm/gripper commands (browser/GELLO) are NOT
+                             applied. (Equivalent to passing
+                             '-- --arm-keyboard-teleop'.)
   --no-browser               Do not start browser_controller
   --no-republisher           Do not start ros_republisher
   --headless                 Run Isaac Sim without a visible Kit window
@@ -100,6 +109,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --with-gello-teleop|--with-gello-pedal-teleop)
       WITH_GELLO_TELEOP=true
+      shift
+      ;;
+    --with-arm-keyboard-teleop)
+      WITH_ARM_KEYBOARD_TELEOP=true
       shift
       ;;
     --no-browser)
@@ -196,6 +209,7 @@ fi
 echo "Embodiment:          ${EMBODIMENT}"
 echo "Controller mode:     ${CONTROLLER_MODE}"
 echo "Teleop adapters:     ${TELEOP_ADAPTERS:-<none>}"
+echo "Arm keyboard teleop: ${WITH_ARM_KEYBOARD_TELEOP}"
 
 if ! docker ps --format '{{.Names}}' | grep -qx "${ISAACSIM_CONTAINER}"; then
   cat >&2 <<EOF
@@ -255,6 +269,10 @@ fi
 
 if ! ${WITH_BROWSER}; then
   BRIDGE_ARGS+=("--disable-browser-command-topics")
+fi
+
+if ${WITH_ARM_KEYBOARD_TELEOP}; then
+  BRIDGE_ARGS+=("--arm-keyboard-teleop")
 fi
 
 if ${HEADLESS}; then
