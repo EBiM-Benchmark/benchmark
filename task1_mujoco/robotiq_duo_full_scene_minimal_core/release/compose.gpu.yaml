@@ -1,15 +1,23 @@
-# NVIDIA GPU passthrough overlay — eval.sh merges this file automatically
-# when `docker info` reports an nvidia runtime (nvidia-container-toolkit
-# installed). Nothing to uncomment by hand.
+# NVIDIA GPU passthrough overlay — eval.sh and docker-run.sh both merge
+# this file automatically when `docker info` reports an nvidia runtime
+# (nvidia-container-toolkit installed). Nothing to uncomment by hand.
 #
 # Kept separate from compose.yaml because this reservation syntax makes
-# every compose command fail on hosts WITHOUT the toolkit. Note that
-# `deploy:` only takes effect with `compose up` — `compose run` silently
-# ignores it (measured: GPU with `up`, ~3 fps llvmpipe with `run` on the
-# same host) — which is why eval.sh starts these services with `up -d`
-# and then attaches the terminal.
+# every compose command fail on hosts WITHOUT the toolkit.
+#
+# Two mechanisms, deliberately both present:
+# - `deploy:` reservations only take effect with `compose up` — `compose
+#   run` silently ignores them (measured: GPU with `up`, ~3 fps llvmpipe
+#   with `run` on the same host). eval.sh's sim/sim-gamepad services start
+#   with `up -d` + `docker attach`, so this is what they need.
+# - `runtime: nvidia` is a container-creation setting (same as `docker run
+#   --runtime nvidia`), so unlike `deploy:` it works with `compose run`
+#   too — and unlike the `--gpus` CLI flag it needs no Compose CLI version
+#   check. docker-run.sh's `runtime` service uses `compose run` (to pass
+#   through arbitrary "$@" input-device flags), so it needs this form.
 services:
   runtime:
+    runtime: nvidia
     deploy: &gpu
       resources:
         reservations:
