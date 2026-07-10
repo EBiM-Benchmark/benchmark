@@ -38,7 +38,10 @@ except Exception:
     sdl2_controller = None
 
 # semantic one-shot buttons; physical placement per backend:
-#   mode_base   = Share/Back          mode_left/right = L1 / R1
+#   mode_base   = Share/Back          mode_left/right = R1 / L1
+#   (operator-facing frame: the robot's own left arm sits on the
+#   operator's right when facing it, so the physically-left shoulder
+#   button selects the arm that appears on the operator's left)
 #   close/open  = Circle(B) / Cross(A)   help = Triangle(Y)
 #   speed_up/down = click left / right stick (same convention as VR)
 _EVENTS = (
@@ -89,8 +92,8 @@ class Gamepad:
                         self.message = f"{name} [SDL mapping: layout identical on every OS]"
                         self._btn_map = {
                             "mode_base": (pygame.CONTROLLER_BUTTON_BACK,),
-                            "mode_left": (pygame.CONTROLLER_BUTTON_LEFTSHOULDER,),
-                            "mode_right": (pygame.CONTROLLER_BUTTON_RIGHTSHOULDER,),
+                            "mode_left": (pygame.CONTROLLER_BUTTON_RIGHTSHOULDER,),
+                            "mode_right": (pygame.CONTROLLER_BUTTON_LEFTSHOULDER,),
                             "close": (pygame.CONTROLLER_BUTTON_B,),
                             "open": (pygame.CONTROLLER_BUTTON_A,),
                             "help": (pygame.CONTROLLER_BUTTON_Y,),
@@ -121,8 +124,8 @@ class Gamepad:
         self.message = f"{self._joy.get_name()} [raw indices, {layout} layout - verify]"
         self._btn_map = {
             "mode_base": (6,),
-            "mode_left": (9, 4),
-            "mode_right": (10, 5),
+            "mode_left": (10, 5),
+            "mode_right": (9, 4),
             "close": (1,),
             "open": (0,),
             "help": (3,),

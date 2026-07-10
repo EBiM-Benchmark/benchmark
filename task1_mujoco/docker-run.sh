@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
-# One-click cross-platform Docker test (Ubuntu / WSL2): the SAME image runs
-# identically on Windows (Docker Desktop + WSL2) and native Linux, without
-# needing ROS 2 or any native conda/mujoco install on the host at all.
+# One-click Docker test, native Linux: driving the sim without needing
+# ROS 2 or any native conda/mujoco install on the host at all.
 #   ./docker-run.sh                    # keyboard (default)
 #   ./docker-run.sh --input gamepad    # gamepad (native Linux only, see below)
 #   ./docker-run.sh --no-viewer        # headless self-check

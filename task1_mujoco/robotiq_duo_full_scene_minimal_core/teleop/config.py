@@ -222,19 +222,23 @@ GELLO_DATA_TIMEOUT = 0.5
 
 # USB foot pedal (reference repo's pedal_state_publisher): publishes the
 # combined pressed state as a plain string on /pedal/state - one of
-# "A", "B", "C", "A+C", "B+C", "NONE". In the GELLO workflow the pedal
-# drives the MOBILE BASE (GELLO occupies both hands). The state->motion
-# mapping below is OUR assumption (the reference publisher is deliberately
-# semantic-free); tuples are (local_x, local_y, spine, yaw) in the same
-# convention BaseDriver.drive takes. +yaw = turn right, matching the
-# keyboard End key. Adjust freely per rig/operator preference.
+# "A", "B", "C", "A+C", "B+C", "NONE" (A/B are mutually exclusive at the
+# hardware level, C only ever arrives combined with whichever of A/B was
+# already held, so those six are the only reachable states). In the GELLO
+# workflow the pedal drives the MOBILE BASE (GELLO occupies both hands).
+# The state->motion mapping below matches the reference repo's own
+# pedal_state_subscriber.py example (STATE_TO_ACTION: A=forward,
+# B=turn left, A+C=backward, B+C=turn right; C alone and NONE are left
+# unmapped there, so both go to no-motion here); tuples are
+# (local_x, local_y, spine, yaw) in the same convention BaseDriver.drive
+# takes. +yaw = turn right, matching the keyboard End key.
 PEDAL_STATE_TOPIC = "/pedal/state"
 PEDAL_BASE_COMMANDS = {
-    "A": (0.0, 0.0, 0.0, -1.0),  # A: turn left
-    "B": (0.0, 0.0, 0.0, +1.0),  # B: turn right
-    "C": (1.0, 0.0, 0.0, 0.0),  # C: forward
-    "A+C": (1.0, 0.0, 0.0, -1.0),  # forward-left arc
-    "B+C": (1.0, 0.0, 0.0, +1.0),  # forward-right arc
+    "A": (1.0, 0.0, 0.0, 0.0),  # forward
+    "B": (0.0, 0.0, 0.0, -1.0),  # turn left
+    "A+C": (-1.0, 0.0, 0.0, 0.0),  # backward
+    "B+C": (0.0, 0.0, 0.0, +1.0),  # turn right
+    "C": (0.0, 0.0, 0.0, 0.0),  # unmapped in the reference example
     "NONE": (0.0, 0.0, 0.0, 0.0),
 }
 PEDAL_DATA_TIMEOUT = 0.5

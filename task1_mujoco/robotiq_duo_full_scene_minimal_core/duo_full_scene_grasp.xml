@@ -190,16 +190,16 @@
   <worldbody>
     <geom name="floor" type="plane" pos="0 0 -0.76" size="15 15 0.02" rgba="0.82 0.82 0.82 1" friction="1.2 0.05 0.005" condim="3" />
     <body name="left_tcp_mocap_target" mocap="true" pos="0 0 0.35">
-      <geom name="left_tcp_mocap_target_geom" type="sphere" size="0.018" rgba="0.05 0.9 1.0 0.55" contype="0" conaffinity="0" group="0" />
-      <site name="left_tcp_mocap_target_x" type="box" size="0.035 0.002 0.002" rgba="0.05 0.9 1.0 0.9" group="0" />
-      <site name="left_tcp_mocap_target_y" type="box" size="0.002 0.035 0.002" rgba="0.05 0.9 1.0 0.9" group="0" />
-      <site name="left_tcp_mocap_target_z" type="box" size="0.002 0.002 0.035" rgba="0.05 0.9 1.0 0.9" group="0" />
+      <geom name="left_tcp_mocap_target_geom" type="sphere" size="0.018" rgba="0.05 0.9 1.0 0.55" contype="0" conaffinity="0" group="4" />
+      <site name="left_tcp_mocap_target_x" type="box" size="0.035 0.002 0.002" rgba="0.05 0.9 1.0 0.9" group="4" />
+      <site name="left_tcp_mocap_target_y" type="box" size="0.002 0.035 0.002" rgba="0.05 0.9 1.0 0.9" group="4" />
+      <site name="left_tcp_mocap_target_z" type="box" size="0.002 0.002 0.035" rgba="0.05 0.9 1.0 0.9" group="4" />
     </body>
     <body name="right_tcp_mocap_target" mocap="true" pos="0 0 0.35">
-      <geom name="right_tcp_mocap_target_geom" type="sphere" size="0.018" rgba="0.2 1.0 0.05 0.55" contype="0" conaffinity="0" group="0" />
-      <site name="right_tcp_mocap_target_x" type="box" size="0.035 0.002 0.002" rgba="0.2 1.0 0.05 0.9" group="0" />
-      <site name="right_tcp_mocap_target_y" type="box" size="0.002 0.035 0.002" rgba="0.2 1.0 0.05 0.9" group="0" />
-      <site name="right_tcp_mocap_target_z" type="box" size="0.002 0.002 0.035" rgba="0.2 1.0 0.05 0.9" group="0" />
+      <geom name="right_tcp_mocap_target_geom" type="sphere" size="0.018" rgba="0.2 1.0 0.05 0.55" contype="0" conaffinity="0" group="4" />
+      <site name="right_tcp_mocap_target_x" type="box" size="0.035 0.002 0.002" rgba="0.2 1.0 0.05 0.9" group="4" />
+      <site name="right_tcp_mocap_target_y" type="box" size="0.002 0.035 0.002" rgba="0.2 1.0 0.05 0.9" group="4" />
+      <site name="right_tcp_mocap_target_z" type="box" size="0.002 0.002 0.035" rgba="0.2 1.0 0.05 0.9" group="4" />
     </body>
     <body name="base_link" pos="0 1.30 -0.76" quat="0.7071068 0 0 -0.7071068">
       <joint name="base_planar_x" type="slide" axis="1 0 0" damping="0.25" armature="0.02" actuatorfrcrange="-50000 50000" />

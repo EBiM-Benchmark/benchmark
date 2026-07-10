@@ -18,6 +18,7 @@ IK-free by nature, not part of this Cartesian contract.
 from __future__ import annotations
 
 import math
+import sys
 import time
 
 import glfw
@@ -50,6 +51,14 @@ Unified ROS 2 teleop (--input ros_teleop)
 
 
 def main(args) -> None:
+    if sys.platform == "win32":
+        try:
+            import ctypes
+
+            ctypes.windll.winmm.timeBeginPeriod(1)
+        except Exception:
+            pass
+
     log(HELP)
     try:
         from .input_ros_teleop import RosTeleopBridge
