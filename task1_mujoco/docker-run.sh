@@ -18,6 +18,20 @@
 set -e
 cd "$(dirname "$0")"
 COMPOSE=(docker compose -f robotiq_duo_full_scene_minimal_core/release/compose.yaml)
+RUN_ARGS=()
+
+# NVIDIA container runtime present -> request GPU passthrough directly on
+# `run` via --gpus. compose.yaml's `deploy:` reservations (compose.gpu.yaml)
+# only take effect with `compose up`, not `run` (measured: ~3 fps llvmpipe
+# software rendering with `run` on a host that has a working GPU) - eval.sh
+# works around that by starting services with `up -d` + `docker attach`,
+# but this script needs `run` to pass through arbitrary "$@" input-device
+# flags, so --gpus (a run-time flag, not a compose.yaml directive) is used
+# here instead.
+if docker info --format '{{json .Runtimes}}' 2>/dev/null | grep -q nvidia; then
+    RUN_ARGS+=(--gpus all)
+    echo "[docker-run] NVIDIA container runtime detected - GPU passthrough enabled"
+fi
 
 # WSL2/WSLg only: steer Mesa's D3D12 translation layer to a discrete GPU
 # when present (the integrated GPU's OpenGL support can segfault mid-render)
@@ -42,5 +56,5 @@ fi
 case "${1:-}" in
     build) "${COMPOSE[@]}" build runtime ;;
     down)  "${COMPOSE[@]}" down ;;
-    *)     "${COMPOSE[@]}" run --rm runtime python3 main.py "$@" ;;
+    *)     "${COMPOSE[@]}" run --rm "${RUN_ARGS[@]}" runtime python3 main.py "$@" ;;
 esac
