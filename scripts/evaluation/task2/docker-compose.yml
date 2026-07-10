@@ -5,9 +5,14 @@
 #
 # The main docker/ stack (Isaac Sim/Lab) has no ROS2, so this service runs in its
 # own jazzy image. It shares the host network to see the Isaac Sim ROS2 bridge DDS
-# traffic. It runs on FastDDS (the base image default) and reads images over the
-# standard RTPS/UDP path, so it interoperates with Isaac on either --ros2-bridge
-# fastdds or cyclonedds with no DDS env tuning and ROS_DOMAIN_ID 0 on both sides.
+# traffic, and runs on FastDDS (the base image default), with ROS_DOMAIN_ID 0.
+#
+# FASTDDS_BUILTIN_TRANSPORTS=UDPv4 is REQUIRED: Isaac Sim and this container each
+# have their own private /dev/shm (IpcMode=private). FastDDS treats host-network
+# peers as same-host and would pick its shared-memory transport for data, which
+# cannot cross the private /dev/shm boundary -- discovery succeeds (topics appear)
+# but no samples are ever delivered. Forcing UDPv4 makes Isaac deliver frames over
+# the network path instead.
 #
 # Artifacts persist to a host bind mount under ${ISAAC_DOCKER_ROOT} (created by
 # setup.sh), mirroring how the main containers persist their caches/data.
@@ -23,12 +28,16 @@ services:
       # Build context is the repo root so the bind-mounted code matches the image layout.
       context: ../../..
       dockerfile: scripts/evaluation/task2/Dockerfile
-    image: eval-task2:iros2026-ebim
+    image: eval-task2:ebim2026
     container_name: eval_task2
     profiles: ["eval"]
     user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
     network_mode: host
     working_dir: /workspace
+    environment:
+      # Disable FastDDS shared-memory transport; force UDP so frames cross the
+      # Isaac<->eval container boundary (private /dev/shm). See header note.
+      FASTDDS_BUILTIN_TRANSPORTS: UDPv4
     command: >
       bash -lc "source /opt/ros/jazzy/setup.bash &&
       python3 /workspace/scripts/evaluation/task2/main.py --output-dir /output"
@@ -39,7 +48,7 @@ services:
         target: /workspace
       # Persistent artifact volume on the host.
       - type: bind
-        source: ${ISAAC_DOCKER_ROOT:-${HOME}/docker/iros-workshop}/eval-task2
+        source: ${ISAAC_DOCKER_ROOT:-${HOME}/docker/ebim-challenge}/eval-task2
         target: /output
     restart: unless-stopped
     tty: true

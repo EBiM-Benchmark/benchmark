@@ -25,7 +25,7 @@ bash scripts/evaluation/task2/run.sh status      # service + container health
 bash scripts/evaluation/task2/run.sh evaluate
 
 # 4. inspect artifacts on the host
-ls ~/docker/iros-workshop/eval-task2/evaluate/
+ls ~/docker/ebim-challenge/eval-task2/evaluate/
 
 # stop
 bash scripts/evaluation/task2/run.sh down
@@ -64,7 +64,7 @@ Artifacts persist to a **host bind mount** under `${ISAAC_DOCKER_ROOT}` — the 
 convention the main containers use for their caches/data:
 
 ```
-${ISAAC_DOCKER_ROOT}/eval-task2/evaluate/    # default: ~/docker/iros-workshop/eval-task2/evaluate/
+${ISAAC_DOCKER_ROOT}/eval-task2/evaluate/    # default: ~/docker/ebim-challenge/eval-task2/evaluate/
 ```
 
 Inside the container this is mounted at `/output`, and the service writes to
