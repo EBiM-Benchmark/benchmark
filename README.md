@@ -479,61 +479,98 @@ If GUI applications fail to open:
 - `scripts/manual_tests/test_table_cutlery.py` — validate table plus cutlery placement.
 - `scripts/manual_tests/test_table_letter.py` — validate table plus letter placement.
 
-### Manipulation tabletop_task_scene_DEMO
+### Keyboard Teleoperation  tabletop_task_scene_DEMO
 
-#### 1.1 Left Sideways Translation Test
+All keyboard teleoperation logic is fully integrated into the Action Graph within the USD file. You can control the robotic arms, grippers, and the waist vertical joint directly through your keyboard simply by switching to the viewpoint:
 
-The robot moves directly to the left without changing its heading.
+Instant Activation: Click the viewpoint in the viewport to immediately enable keyboard control.
+
+Unified Control: No external terminal scripts are required; the Action Graph handles all key mappings internally for seamless bimanual and chassis coordination.
+
+#### 1.1 Control the TMR Chassis Motion
+
+Run the keyboard teleop node to control the movement of the TMR omnidirectional chassis:
 
 ```bash
-ros2 topic pub --once /cmd_vel geometry_msgs/msg/Twist "{linear: {x: 0.0, y: 0.5, z: 0.0}, angular: {x: 0.0, y: 0.0, z: 0.0}}"
+ros2 run teleop_twist_keyboard teleop_twist_keyboard --ros-args -p holonomic:=true
 
 ```
 
-#### 1.2 Right Sideways Translation Test
 
-The robot moves directly to the right without changing its heading.
+#### 2.1 Grpper joints Control
 
-```bash
-ros2 topic pub --once /cmd_vel geometry_msgs/msg/Twist "{linear: {x: 0.0, y: -0.5, z: 0.0}, angular: {x: 0.0, y: 0.0, z: 0.0}}"
+Numpad 1 & 2: Control the right arm gripper (Open / Close).
 
-```
+Numpad 3 & 4: Control the left arm gripper (Open / Close).
 
-#### 1.3 Diagonal 45° Movement Test
+#### 2.2 Waist Vertical Control
 
-Tests the smoothness of x and y-axis velocity composition. The robot should translate linearly along the diagonal.
+Numpad 5: Raises the waist vertical joint by 0.1m (adjustable range: 0.0m to 0.85m).
 
-```bash
-ros2 topic pub --once /cmd_vel geometry_msgs/msg/Twist "{linear: {x: 0.5, y: 0.5, z: 0.0}, angular: {x: 0.0, y: 0.0, z: 0.0}}"
 
-```
-
-#### 1.4 "Drift" Movement Test (Translation + Rotation)
-
-The robot moves forward while translating sideways and rotating simultaneously. This tests the composite command logic.
-
-```bash
-ros2 topic pub /cmd_vel geometry_msgs/msg/Twist "{linear: {x: 0.3, y: 0.2, z: 0.0}, angular: {x: 0.0, y: 0.0, z: 0.4}}"
-
-```
-
-#### 2.1 Waist Vertical Control
-
-Raises the waist vertical joint to the 0.5m position.
-
-```bash
-ros2 topic pub --once /joint_command sensor_msgs/msg/JointState "{name: ['franka_spine_vertical_joint'], position: [0.5]}"
-
-```
 
 #### 2.2 Arm Joint Control
 
-Commands the left arm's joints (joint1 and joint2) to move to the specified positions.
+##### Right Arm Control (Viewed on the Left Side)
+* **Translation (X, Y):** Press `W` / `A` / `S` / `D` to move along the X and Y axes.
+* **Translation (Z):** Press `Q` / `E` to move up and down along the Z axis.
+* **Rotation:** Hold `Left Shift` + `W` / `A` / `S` / `D` / `Q` / `E` to rotate the end-effector around the respective axes.
+
+##### Left Arm Control (Viewed on the Right Side)
+* **Translation (X, Y):** Press `I` / `J` / `K` / `L` to move along the X and Y axes.
+* **Translation (Z):** Press `U` / `O` to move up and down along the Z axis.
+* **Rotation:** Hold `Left Shift` + `I` / `J` / `K` / `L` / `U` / `O` to rotate the end-effector around the respective axes.
+
+## LeRobot dataset recording
+The `DEMO/record.py` script automatically subscribes to the corresponding ROS 2 topics, synchronizes the multi-modal streams, and aggregates them into the structured dataset:
+
+* **State Data (States):**
+  * **Manipulators:** 14 joint positions and velocities across both arms (14 joints total).
+  * **End-Effectors:** Gripper poses for both left and right grippers.
+  * **Mobile Base:** Linear velocity and angular velocity of the chassis.
+* **Camera Views (Visual Inputs):**
+  * `camera_left`: Wrist camera mounted on the left gripper.
+  * `camera_right`: Wrist camera mounted on the right gripper.
+  * `camera_head`: Head-mounted camera.
+  * `camera_front`: Static observer/front camera.
+###  Environment Setup
+
+Before recording, you must set up the required virtual environment. Please follow the detailed installation guidelines available at:
+
+🔗 [lerobot_ros2 Environment Setup Guide](https://github.com/fiveages-sim/lerobot_ros2/tree/main)
+###  Dataset Recording Steps
+
+1. Ensure your virtual environment is activated and the required ROS 2 topics are active and publishing data.
+2. Navigate to the `DEMO` directory:
+   ```bash
+   cd IROS_Workshop/DEMO
+3. Execute the recording script:
+      ```bash
+   python record.py
+      
+ Recording Control via Terminal:
+  *  Enter `2`: Start recording the dataset.
+  *  Enter `3`: Stop recording and automatically save the episode.
+###  Dataset Visualization
+Once the recording is complete, you can inspect and replay the collected dataset using the visualize_dataset tool from LeRobot.
+#### Base Command
+   ```bash
+PYTHONPATH=submodules/lerobot/src python -m lerobot.scripts.visualize_dataset
+```
+#### Argument Descriptions:
+
+You can append the following arguments to specify the target dataset and subset:
+
+* `--repo-id`: The unique identifier/name of the dataset repository.
+* `--root`: The root directory path where your local datasets are stored.
+* `--episode-index`: Specifies which episode to visualize (e.g., `--episode-index 0` loads the first recorded episode).
+
+#### Complete Example:
 
 ```bash
-ros2 topic pub --once /joint_command sensor_msgs/msg/JointState "{name: ['left_fr3v2_joint1', 'left_fr3v2_joint2'], position: [0.5, -0.5]}"
-
+PYTHONPATH=submodules/lerobot/src python -m lerobot.scripts.visualize_dataset --root ./data --repo-id mobile_dual_arm_test --episode-index 0
 ```
+
 
 ## Running Scripts
 
