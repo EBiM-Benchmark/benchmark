@@ -1,5 +1,26 @@
 # EBiM Benchmark Task 1 — Cable Management Simulation (MuJoCo)
 
+**TL;DR — practice mode, copy-paste and run:**
+
+Windows:
+
+```bat
+git clone https://github.com/2houyuhang/EBiM_Benchmark_task1.git
+cd EBiM_Benchmark_task1
+start.bat
+```
+
+Ubuntu:
+
+```bash
+git clone https://github.com/2houyuhang/EBiM_Benchmark_task1.git
+cd EBiM_Benchmark_task1
+./start.sh
+```
+
+Keyboard by default; add `--input gamepad` or `--input vr` for other
+devices. Details, other input devices, and eval mode below.
+
 > **Eval mode is temporarily on hold.** This README currently documents
 > practice mode only (`--input keyboard|gamepad|vr|gello|ros_teleop`, no
 > `--mnet`); scored evaluation (`--mnet`, `local_test`/`submission`) is
