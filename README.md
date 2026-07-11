@@ -334,13 +334,64 @@ docker exec -it isaac-lab-2-3-2-workshop bash -lc \
   'cd /workspace/EBiM_Challenge && python scripts/scenes/scene_robot_room_keyboard.py --task task3'
 ```
 
-In the GUI, use `W/S` to move forward/back, `A/D` to strafe, and `Q/E` to
-rotate. `task3` enables keyboard control by default. To load the scene as a
-passive Isaac Sim viewer instead, pass `--no-keyboard-control`; in that mode,
-click Play in the Isaac Sim GUI or add `--autoplay` to start the timeline.
+Task3 starts in base mode. The keyboard controls are:
+
+- `1`: select base mode; `W/S` move forward/back, `A/D` strafe, and `Q/E` or
+  Left/Right Arrow rotate.
+- `2`: select the left arm; `3`: select the right arm.
+- In either arm mode, `W/S`, `A/D`, and `Q/E` translate the selected end
+  effector along robot-base X, Y, and Z. `I/K`, `J/L`, and `U/O` rotate it
+  about base-frame roll, pitch, and yaw.
+- `Z/X`: open/close the left gripper; `C/V`: open/close the right gripper.
+- `R/F`: raise/lower the spine. `Esc` or `Ctrl+C` exits.
+
+Mode keys are edge-triggered, while motion keys are continuous and scaled by
+simulation time. Cartesian targets are stored in the moving robot-base frame,
+so moving or rotating the mobile base carries both end-effector targets with
+it. Raising the spine also carries both targets vertically instead of forcing
+the arms to compensate.
+
+`task3` enables keyboard control by default. To load the scene as a passive
+Isaac Sim viewer instead, pass `--no-keyboard-control`; in that mode, click
+Play in the Isaac Sim GUI or add `--autoplay` to start the timeline.
 For real-time keyboard control, task3 coffee beans are static by default; pass
 `--dynamic-beans` to make them rigid bodies. Use `--stabilization-steps N` if
 you want to run warmup physics steps before enabling the keyboard loop.
+
+Isaac Sim remains the simulator and supplies the Lula motion-generation
+solvers. Isaac Lab owns scene stepping, measured joint state, and articulation
+actuator targets. A small raw-Lula bridge copies the first environment's
+current joint positions from the Isaac Lab CUDA tensor to a CPU NumPy warm
+start, slices each arm in exact cspace order, and maps solutions back to global
+joint indices. This avoids passing either CUDA tensors or an Isaac Lab
+`Articulation` through `ArticulationKinematicsSolver`. Dual-arm solver
+construction and portable configuration are adapted from
+[`EBiM-Benchmark/benchmark-archive`](https://github.com/EBiM-Benchmark/benchmark-archive),
+branch `Robotiq_DEMO` (commit `78c28ea`). The first version deliberately
+supports exactly one environment and keyboard input only.
+
+Each arm is solved independently. If one arm has no IK solution, its last
+valid joint target is retained while the other arm, grippers, spine, and base
+continue to operate; warnings are rate-limited. Persistent targets are seeded
+once from measured joint positions after stabilization, so the control loop
+does not restore the default arm pose every frame.
+
+Future ROS 2, GELLO, gripper, and foot-pedal integration belongs upstream of
+the simulator-independent `TeleopCommand` boundary. An adapter for the
+separate [`EBiM-Benchmark/teleoperation`](https://github.com/EBiM-Benchmark/teleoperation)
+repository can translate `/keyboard/state`, namespaced GELLO joint states,
+gripper values, and pedal state into that boundary without replacing target
+tracking, IK, joint composition, or the Isaac Sim/Isaac Lab runtime adapter.
+`TeleopCommand` already carries optional canonical seven-value left/right arm
+joint tuples for a direct GELLO-style source. A fresh absolute joint tuple has
+per-arm priority over Cartesian IK at the selective composer boundary, so one
+arm may use direct joints while the other uses IK. Every incoming direct tuple
+is clamped to that arm's configured articulation soft joint limits before it
+can be latched. Once a direct source owns an arm, stale or inactive input holds
+the last bounded direct target rather than silently falling back to an old
+Cartesian target. Future source arbitration must explicitly release that
+arm's direct ownership and reseed its Cartesian tracker before IK takeover;
+arbitration otherwise remains upstream of the winning command.
 
 #### Task3 Grading Unit Tests
 
@@ -773,7 +824,10 @@ The mobile base follows a diagonal steer-drive layout. Shared helper logic in `s
 - wheel velocity targets,
 - heading-hold compensation during translation.
 
-This is still a simulation convenience layer, not a production-grade mobile base controller. The active robot-room launcher does not yet call these helpers at runtime. The older `scripts/deprecated/scene_robot_keyboard.py` shows the required pattern: define Isaac Lab actuators, hold the arm/gripper joints with position targets every step, compute steering and wheel velocity targets from the pressed keys, write targets to the sim, and then step the simulation.
+This is still a simulation convenience layer, not a production-grade mobile
+base controller. The active Task3 robot-room launcher uses these helpers at
+runtime alongside selective dual-arm, gripper, and spine position targets.
+Physical-robot use still requires an external emergency stop and watchdog.
 
 ### Simulation Performance
 

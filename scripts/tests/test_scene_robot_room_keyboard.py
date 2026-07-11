@@ -7,6 +7,8 @@ import sys
 import types
 from pathlib import Path
 
+import pytest
+
 SCRIPT_PATH = (
     Path(__file__).resolve().parents[1]
     / "scenes"
@@ -83,6 +85,16 @@ def test_kit_keyboard_event_names_are_normalized():
         scene_keyboard.normalize_keyboard_event_input("KeyboardInput.W") == "w"
     )
     assert scene_keyboard.normalize_keyboard_event_input("ESCAPE") == "esc"
+    assert scene_keyboard.normalize_keyboard_event_input("KEY_1") == "1"
+    assert (
+        scene_keyboard.normalize_keyboard_event_input("KeyboardInput.KEY_2")
+        == "2"
+    )
+
+    class ModeKey:
+        name = "KEY_3"
+
+    assert scene_keyboard.normalize_keyboard_event_input(ModeKey()) == "3"
 
 
 def test_create_keyboard_teleop_prefers_kit_backend(monkeypatch):
@@ -134,3 +146,116 @@ def test_disable_robot_external_wrenches_resets_composers():
 
     assert robot.instantaneous_wrench_composer.reset_count == 1
     assert robot.permanent_wrench_composer.reset_count == 1
+
+
+def test_keyboard_dual_arm_control_rejects_multiple_environments():
+    with pytest.raises(RuntimeError, match="exactly one environment"):
+        scene_keyboard.require_single_teleop_environment(2)
+
+
+def test_motion_generation_extension_is_enabled_before_lula_loading():
+    calls = []
+
+    class ExtensionManager:
+        def is_extension_enabled(self, extension_name):
+            calls.append(("is_enabled", extension_name))
+            return False
+
+        def set_extension_enabled_immediate(self, extension_name, enabled):
+            calls.append(("enable", extension_name, enabled))
+            return True
+
+    scene_keyboard.enable_motion_generation_extension(ExtensionManager())
+
+    assert calls == [
+        ("is_enabled", "isaacsim.robot_motion.motion_generation"),
+        ("enable", "isaacsim.robot_motion.motion_generation", True),
+    ]
+
+
+def test_measured_position_targets_are_cloned_once():
+    import torch
+
+    measured = torch.tensor([[0.3, -0.4, 0.5]])
+    robot = types.SimpleNamespace(
+        data=types.SimpleNamespace(joint_pos=measured)
+    )
+
+    targets = scene_keyboard.measured_position_targets(robot)
+    measured[0, 0] = 9.0
+
+    assert torch.allclose(targets, torch.tensor([[0.3, -0.4, 0.5]]))
+    assert targets.data_ptr() != measured.data_ptr()
+
+
+def test_robot_root_world_pose_reads_first_environment():
+    import torch
+
+    robot = types.SimpleNamespace(
+        data=types.SimpleNamespace(
+            root_pos_w=torch.tensor([[1.0, 2.0, 0.3]]),
+            root_quat_w=torch.tensor([[0.5, 0.0, 0.0, -0.5]]),
+        )
+    )
+
+    position, orientation = scene_keyboard.robot_root_world_pose(robot)
+
+    assert position == pytest.approx((1.0, 2.0, 0.3))
+    assert orientation == pytest.approx((0.5, 0.0, 0.0, -0.5))
+
+
+def test_control_stage_configuration_omits_passive_viewer_robot_reference():
+    calls = []
+
+    def configure(*args, **kwargs):
+        calls.append((args, kwargs))
+
+    scene_keyboard.configure_keyboard_control_stage(
+        configure,
+        object(),
+        object(),
+        room_path=Path("room.usd"),
+        task="task3",
+        head_placement="A",
+        robot_position=(1.0, 2.0, 0.0),
+        robot_yaw=-90.0,
+        dynamic_beans=False,
+    )
+
+    assert calls[0][1]["robot_path"] is None
+    assert calls[0][1]["robot_position"] == (1.0, 2.0, 0.0)
+
+
+def test_application_cleanup_runs_when_setup_fails():
+    class App:
+        closed = False
+
+        def close(self):
+            self.closed = True
+
+    app = App()
+
+    with pytest.raises(RuntimeError, match="IK setup"):
+        scene_keyboard.run_with_app_cleanup(
+            app, lambda: (_ for _ in ()).throw(RuntimeError("IK setup"))
+        )
+
+    assert app.closed is True
+
+
+def test_direct_command_fails_clearly_without_articulation_soft_limits():
+    from teleop_commands import TeleopCommand
+
+    command = TeleopCommand(
+        timestamp=1.0,
+        source="gello",
+        active=True,
+        left_joint_positions=(0.0,) * 7,
+    )
+    robot = types.SimpleNamespace(data=types.SimpleNamespace())
+    groups = types.SimpleNamespace(
+        left_arm=tuple(range(7)), right_arm=tuple(range(7, 14))
+    )
+
+    with pytest.raises(RuntimeError, match="soft_joint_pos_limits"):
+        scene_keyboard.clamp_direct_joint_command(command, robot, groups)
