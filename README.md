@@ -306,7 +306,8 @@ places the mobile FR3 from a task preset. Presets are `task1` at
 `(4.4, -2.5, 0.0)`, `task2` at `(4.4, 2.6, 0.0)`, and `task3` at
 `(-4.6, 2.7, 0.0)`. The preset robot yaw is `90` degrees for `task1` and
 `-90` degrees for `task2`/`task3`. For `task3`, the launcher also adds 300
-coffee beans to the bowl at `(-4.3, -1.5, 0.74659)` and sets the built-in
+coffee beans to the bowl at `(-4.3, -1.467124258834126, 0.7542400587544876)`
+and sets the built-in
 Perspective viewport to
 `(-8.12589, -3.29067, 2.79653, 73.13762, 0.0, -50.88313)`.
 
@@ -340,6 +341,105 @@ click Play in the Isaac Sim GUI or add `--autoplay` to start the timeline.
 For real-time keyboard control, task3 coffee beans are static by default; pass
 `--dynamic-beans` to make them rigid bodies. Use `--stabilization-steps N` if
 you want to run warmup physics steps before enabling the keyboard loop.
+
+#### Task3 Grading Unit Tests
+
+The Task3 grading helpers live in `scripts/evaluation/task3/grading.py`, with
+direct unit tests in `scripts/evaluation/task3/tests/test_grading.py`. These
+tests validate the grading math for each stage; they do not launch the full
+Isaac Sim scene or run robot physics.
+
+Start the Isaac Lab container if it is not already running:
+
+```bash
+docker compose --env-file docker/.env.base -f docker/docker-compose.yaml \
+  --profile isaac-lab-2.3.2 up -d isaac-lab-2-3-2
+```
+
+Run all Task3 grading unit tests inside the container:
+
+```bash
+docker exec isaac-lab-2-3-2-workshop bash -lc \
+  'cd /workspace/EBiM_Challenge && python -B scripts/evaluation/task3/tests/test_grading.py'
+```
+
+Run a single stage by passing `stage1`, `stage2`, `stage3`, or `stage4`:
+
+```bash
+docker exec isaac-lab-2-3-2-workshop bash -lc \
+  'cd /workspace/EBiM_Challenge && python -B scripts/evaluation/task3/tests/test_grading.py stage1'
+
+docker exec isaac-lab-2-3-2-workshop bash -lc \
+  'cd /workspace/EBiM_Challenge && python -B scripts/evaluation/task3/tests/test_grading.py stage2'
+
+docker exec isaac-lab-2-3-2-workshop bash -lc \
+  'cd /workspace/EBiM_Challenge && python -B scripts/evaluation/task3/tests/test_grading.py stage3'
+
+docker exec isaac-lab-2-3-2-workshop bash -lc \
+  'cd /workspace/EBiM_Challenge && python -B scripts/evaluation/task3/tests/test_grading.py stage4'
+```
+
+#### Task3 Grading Integration Tests
+
+The integration runner launches a real Isaac Sim app, builds the Task3 robot
+room, drives live scene prims through stage-specific validation motions, lets
+the app update, and then grades the live stage. Use this when you want to
+confirm that the grading mechanism works against the actual USD scene.
+
+Run all four integration tests with the GUI enabled:
+
+```bash
+docker exec -it isaac-lab-2-3-2-workshop bash -lc \
+  'cd /workspace/EBiM_Challenge && exec python -B scripts/evaluation/task3/integration_test.py all'
+```
+
+GUI integration runs print the grade and then keep Isaac Sim open for
+inspection. Close the Isaac Sim window or press Ctrl+C in the terminal when you
+are done. Run the same tests without opening a GUI window when you want the
+runner to exit automatically:
+
+```bash
+docker exec isaac-lab-2-3-2-workshop bash -lc \
+  'cd /workspace/EBiM_Challenge && python -B scripts/evaluation/task3/integration_test.py --headless all'
+```
+
+Run a single GUI integration stage by passing `stage1`, `stage2`, `stage3`, or
+`stage4`:
+
+```bash
+docker exec -it isaac-lab-2-3-2-workshop bash -lc \
+  'cd /workspace/EBiM_Challenge && exec python -B scripts/evaluation/task3/integration_test.py stage1'
+```
+
+Add `--headless` to the single-stage command if you want it to shut down
+automatically after printing the result.
+
+Each integration stage prints one `STAGE_RESULT` JSON line with `score`,
+`max_score`, `passed`, and stage-specific measurements. For example, Stage 1
+prints utensil and bean dining-area counts, Stage 2 prints bean retention and
+hold-time details, Stage 3 prints the percentage of beans inside the recovery
+sphere, and Stage 4 prints sink-return counts. In the deterministic headless
+validation run, the stage grades were:
+
+```text
+stage1: 5/5
+stage2: 4/4
+stage3: 4/4
+stage4: 5/5
+```
+
+Stage 1 disables rigid bodies on the utensil set, keeps coffee beans rigid-body
+enabled but kinematic, then gradually translates the tray, bowl, spoon, plate,
+cup, and existing beans together into the Dining Area without rotating them,
+moving along y before x to avoid the wall. Stage 2 makes the spoon a kinematic
+rigid body, rotates it +90
+degrees around z to point toward the mouth, keeps the coffee beans as dynamic
+rigid bodies, moves the spoon to a pose 20 cm in front of the fake head, places
+five existing beans 1 cm above the spoon, moves the spoon forward 10 cm for
+three seconds, retracts 10 cm, and counts beans still on the spoon. Stage 3
+keeps beans dynamic and respawns them with the same bowl-style pattern used by
+`scene_robot_room_keyboard` above the recovery container. Stage 4 removes the
+coffee-bean scope before moving utensils to the sink boundary.
 
 To use a different room USD, pass `--room-usd`, for example:
 
