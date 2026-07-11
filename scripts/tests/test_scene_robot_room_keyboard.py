@@ -181,6 +181,50 @@ def test_measured_position_targets_are_cloned_once():
     assert targets.data_ptr() != measured.data_ptr()
 
 
+def test_reset_robot_to_default_state_writes_configured_state_into_physx():
+    import torch
+
+    calls = []
+    robot = types.SimpleNamespace(
+        data=types.SimpleNamespace(
+            default_root_state=torch.tensor(
+                [[1.0, 2.0, 0.3, 1.0, 0.0, 0.0, 0.0, 0.1, 0.2, 0.3, 0.0, 0.0, 0.0]]
+            ),
+            default_joint_pos=torch.tensor([[0.0, -1.5, 0.0, -2.2]]),
+            default_joint_vel=torch.zeros((1, 4)),
+        ),
+        write_root_pose_to_sim=lambda value: calls.append(("root_pose", value.clone())),
+        write_root_velocity_to_sim=lambda value: calls.append(("root_velocity", value.clone())),
+        write_joint_state_to_sim=lambda pos, vel: calls.append(
+            ("joint_state", pos.clone(), vel.clone())
+        ),
+        set_joint_position_target=lambda value: calls.append(
+            ("position_target", value.clone())
+        ),
+        set_joint_velocity_target=lambda value: calls.append(
+            ("velocity_target", value.clone())
+        ),
+    )
+
+    scene_keyboard.reset_robot_to_default_state(
+        robot, torch.tensor([[10.0, 20.0, 0.0]])
+    )
+
+    assert [call[0] for call in calls] == [
+        "root_pose",
+        "root_velocity",
+        "joint_state",
+        "position_target",
+        "velocity_target",
+    ]
+    assert torch.allclose(
+        calls[0][1],
+        torch.tensor([[11.0, 22.0, 0.3, 1.0, 0.0, 0.0, 0.0]]),
+    )
+    assert torch.equal(calls[2][1], robot.data.default_joint_pos)
+    assert torch.equal(calls[3][1], robot.data.default_joint_pos)
+
+
 def test_robot_root_world_pose_reads_first_environment():
     import torch
 

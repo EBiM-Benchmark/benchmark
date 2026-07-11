@@ -1,83 +1,52 @@
 # Copyright (c) 2026 The EBiM Benchmark Contributors
 # SPDX-License-Identifier: Apache-2.0
 
-"""Held-key mapping for mobile-base and dual-arm teleoperation."""
+"""Shared direct keyboard mapping for Task 3 mobile-base and dual-arm teleop."""
 
 from dataclasses import dataclass
-from enum import Enum
 import math
 
 from teleop_commands import PoseDelta, TeleopCommand
 
 
-LINEAR_SPEED_MPS = 0.5
-ANGULAR_SPEED_RADPS = 1.2
+LINEAR_SPEED_MPS = 0.25
+ANGULAR_SPEED_RADPS = 0.75
 TRANSLATION_RATE_MPS = 0.3
 ROTATION_RATE_RADPS = 0.8
-GRIPPER_SPEED_PER_SECOND = 0.5
-SPINE_SPEED_MPS = 0.1
-
-
-class ControlMode(str, Enum):
-    BASE = "base"
-    LEFT_ARM = "left_arm"
-    RIGHT_ARM = "right_arm"
 
 
 @dataclass(frozen=True)
 class KeyBinding:
     key: str
-    action: str
     description: str
-    modes: tuple[ControlMode, ...] = ()
-    value: float = 0.0
 
 
-_ARM_MODES = (ControlMode.LEFT_ARM, ControlMode.RIGHT_ARM)
 BINDINGS = (
-    KeyBinding("1", "mode_base", "select base mode"),
-    KeyBinding("2", "mode_left_arm", "select left-arm mode"),
-    KeyBinding("3", "mode_right_arm", "select right-arm mode"),
-    KeyBinding("w", "x", "base forward", (ControlMode.BASE,), 1.0),
-    KeyBinding("s", "x", "base backward", (ControlMode.BASE,), -1.0),
-    KeyBinding("a", "y", "base left", (ControlMode.BASE,), 1.0),
-    KeyBinding("d", "y", "base right", (ControlMode.BASE,), -1.0),
-    KeyBinding("q", "yaw", "base rotate left", (ControlMode.BASE,), 1.0),
-    KeyBinding("e", "yaw", "base rotate right", (ControlMode.BASE,), -1.0),
-    KeyBinding("left", "yaw", "base rotate left", (ControlMode.BASE,), 1.0),
-    KeyBinding("right", "yaw", "base rotate right", (ControlMode.BASE,), -1.0),
-    KeyBinding("w", "tx", "end effector +X", _ARM_MODES, 1.0),
-    KeyBinding("s", "tx", "end effector -X", _ARM_MODES, -1.0),
-    KeyBinding("a", "ty", "end effector +Y", _ARM_MODES, 1.0),
-    KeyBinding("d", "ty", "end effector -Y", _ARM_MODES, -1.0),
-    KeyBinding("q", "tz", "end effector +Z", _ARM_MODES, 1.0),
-    KeyBinding("e", "tz", "end effector -Z", _ARM_MODES, -1.0),
-    KeyBinding("i", "roll", "end effector +roll", _ARM_MODES, 1.0),
-    KeyBinding("k", "roll", "end effector -roll", _ARM_MODES, -1.0),
-    KeyBinding("j", "pitch", "end effector +pitch", _ARM_MODES, 1.0),
-    KeyBinding("l", "pitch", "end effector -pitch", _ARM_MODES, -1.0),
-    KeyBinding("u", "yaw_rotation", "end effector +yaw", _ARM_MODES, 1.0),
-    KeyBinding("o", "yaw_rotation", "end effector -yaw", _ARM_MODES, -1.0),
-    KeyBinding("z", "left_gripper", "open left gripper", value=1.0),
-    KeyBinding("x", "left_gripper", "close left gripper", value=-1.0),
-    KeyBinding("c", "right_gripper", "open right gripper", value=1.0),
-    KeyBinding("v", "right_gripper", "close right gripper", value=-1.0),
-    KeyBinding("r", "spine", "raise spine", value=1.0),
-    KeyBinding("f", "spine", "lower spine", value=-1.0),
+    KeyBinding("w/s", "left arm X+/-"),
+    KeyBinding("a/d", "left arm Y+/-"),
+    KeyBinding("q/e", "left arm Z-/+"),
+    KeyBinding("z/x", "left arm roll +/-"),
+    KeyBinding("t/g", "left arm pitch +/-"),
+    KeyBinding("c/v", "left arm yaw +/-"),
+    KeyBinding("f", "toggle left gripper"),
+    KeyBinding("o/l", "right arm X+/-"),
+    KeyBinding("k/;", "right arm Y+/-"),
+    KeyBinding("i/p", "right arm Z-/+"),
+    KeyBinding("n/m", "right arm roll +/-"),
+    KeyBinding("u/j", "right arm pitch +/-"),
+    KeyBinding(",/.", "right arm yaw +/-"),
+    KeyBinding("'", "toggle right gripper"),
+    KeyBinding("r", "reset both arm targets"),
+    KeyBinding("shift + h/n", "base forward/backward"),
+    KeyBinding("shift + b/m", "base left/right"),
+    KeyBinding("shift + g/j", "base rotate CCW/CW"),
 )
-
-_MODE_ACTIONS = {
-    "mode_base": ControlMode.BASE,
-    "mode_left_arm": ControlMode.LEFT_ARM,
-    "mode_right_arm": ControlMode.RIGHT_ARM,
-}
 
 
 class KeyboardTeleopMapper:
-    """Convert a held-key snapshot into one time-scaled command."""
+    """Convert held keys into the same Task 3 commands as plain Isaac Sim."""
 
-    def __init__(self, mode: ControlMode = ControlMode.BASE):
-        self.mode = mode
+    def __init__(self) -> None:
         self._previous_keys: set[str] = set()
 
     def map_keys(
@@ -90,89 +59,113 @@ class KeyboardTeleopMapper:
         if not math.isfinite(dt) or dt < 0.0:
             raise ValueError("dt must be finite and non-negative")
 
-        keys = {str(key).lower() for key in pressed_keys}
+        keys = {_normalize_key(key) for key in pressed_keys}
         pressed_edges = keys - self._previous_keys
-
-        selected_modes = [
-            _MODE_ACTIONS[binding.action]
-            for binding in BINDINGS
-            if binding.action in _MODE_ACTIONS
-            and binding.key in pressed_edges
-        ]
-        if len(selected_modes) > 1:
-            self._previous_keys = keys
-            return _command(timestamp=timestamp)
-
         self._previous_keys = keys
-        mode_changed = bool(selected_modes)
-        if mode_changed:
-            self.mode = selected_modes[0]
+        base_active = "shift" in keys
 
-        if mode_changed:
-            return _command(timestamp=timestamp)
-
-        actions: dict[str, float] = {}
-        for binding in BINDINGS:
-            if binding.key not in keys or binding.action in _MODE_ACTIONS:
-                continue
-            if binding.modes and self.mode not in binding.modes:
-                continue
-            actions[binding.action] = (
-                actions.get(binding.action, 0.0) + binding.value
-            )
-
-        base_twist = (0.0, 0.0, 0.0)
-        left_pose = PoseDelta.zero()
-        right_pose = PoseDelta.zero()
-        if self.mode is ControlMode.BASE:
-            base_twist = (
-                _unit(actions.get("x", 0.0)) * LINEAR_SPEED_MPS,
-                _unit(actions.get("y", 0.0)) * LINEAR_SPEED_MPS,
-                _unit(actions.get("yaw", 0.0)) * ANGULAR_SPEED_RADPS,
-            )
-        else:
-            pose_delta = PoseDelta(
-                translation=(
-                    actions.get("tx", 0.0) * TRANSLATION_RATE_MPS * dt,
-                    actions.get("ty", 0.0) * TRANSLATION_RATE_MPS * dt,
-                    actions.get("tz", 0.0) * TRANSLATION_RATE_MPS * dt,
-                ),
-                rotation_rpy=(
-                    actions.get("roll", 0.0) * ROTATION_RATE_RADPS * dt,
-                    actions.get("pitch", 0.0) * ROTATION_RATE_RADPS * dt,
-                    actions.get("yaw_rotation", 0.0)
-                    * ROTATION_RATE_RADPS
-                    * dt,
-                ),
-            )
-            if self.mode is ControlMode.LEFT_ARM:
-                left_pose = pose_delta
-            else:
-                right_pose = pose_delta
+        left_pose = _pose_delta(
+            keys,
+            dt,
+            translation_keys=("w", "s", "a", "d", "e", "q"),
+            rotation_keys=("z", "x", "t", "g", "c", "v"),
+            suppress=("g",) if base_active else (),
+        )
+        right_pose = _pose_delta(
+            keys,
+            dt,
+            translation_keys=("o", "l", "k", ";", "p", "i"),
+            rotation_keys=("n", "m", "u", "j", ",", "."),
+            suppress=("n", "m", "j") if base_active else (),
+        )
+        base_twist = _base_twist(keys) if base_active else (0.0, 0.0, 0.0)
 
         return _command(
             timestamp=timestamp,
             base_twist=base_twist,
             left_pose=left_pose,
             right_pose=right_pose,
-            left_gripper_delta=actions.get("left_gripper", 0.0)
-            * GRIPPER_SPEED_PER_SECOND
-            * dt,
-            right_gripper_delta=actions.get("right_gripper", 0.0)
-            * GRIPPER_SPEED_PER_SECOND
-            * dt,
-            spine_delta=actions.get("spine", 0.0) * SPINE_SPEED_MPS * dt,
+            reset_arms="r" in pressed_edges,
+            toggle_left_gripper="f" in pressed_edges,
+            toggle_right_gripper="'" in pressed_edges,
         )
 
 
 def control_help() -> str:
-    """Return help generated directly from the active binding table."""
-    lines = ["Task 3 keyboard controls:"]
-    lines.extend(
-        f"  {binding.key.upper()}: {binding.description}"
-        for binding in BINDINGS
-    )
+    """Return the exact direct-key layout shared with the RMPflow launcher."""
+    lines = [
+        "+---------------- TASK 3 KEYBOARD CONTROL PANEL ----------------+",
+        "| LEFT ARM:  [W/S] X+/- [A/D] Y+/- [Q/E] Z-/+                  |",
+        "|            [Z/X] Roll+/- [T/G] Pitch+/- [C/V] Yaw+/- [F] Grip |",
+        "| RIGHT ARM: [O/L] X+/- [K/;] Y+/- [I/P] Z-/+                  |",
+        "|            [N/M] Roll+/- [U/J] Pitch+/- [,/.] Yaw+/- ['] Grip |",
+        "|                                                                |",
+        "| Hold [SHIFT] for the mobile base (overlapping arm keys off):  |",
+        "| [H/N] Forward/Backward  [B/M] Left/Right  [G/J] Rotate CCW/CW |",
+        "| [R] Reset both arm targets                                    |",
+        "+----------------------------------------------------------------+",
+        "Binding reference:",
+    ]
+    lines.extend(f"  {binding.key.upper()}: {binding.description}" for binding in BINDINGS)
     return "\n".join(lines)
+
+
+def _pose_delta(
+    keys: set[str],
+    dt: float,
+    *,
+    translation_keys: tuple[str, str, str, str, str, str],
+    rotation_keys: tuple[str, str, str, str, str, str],
+    suppress: tuple[str, ...],
+) -> PoseDelta:
+    def axis(positive: str, negative: str) -> float:
+        if positive in suppress:
+            positive_active = False
+        else:
+            positive_active = positive in keys
+        if negative in suppress:
+            negative_active = False
+        else:
+            negative_active = negative in keys
+        return float(positive_active) - float(negative_active)
+
+    return PoseDelta(
+        translation=tuple(
+            axis(translation_keys[index], translation_keys[index + 1])
+            * TRANSLATION_RATE_MPS
+            * dt
+            for index in range(0, 6, 2)
+        ),
+        rotation_rpy=tuple(
+            axis(rotation_keys[index], rotation_keys[index + 1])
+            * ROTATION_RATE_RADPS
+            * dt
+            for index in range(0, 6, 2)
+        ),
+    )
+
+
+def _base_twist(keys: set[str]) -> tuple[float, float, float]:
+    return (
+        _axis(keys, "h", "n") * LINEAR_SPEED_MPS,
+        _axis(keys, "b", "m") * LINEAR_SPEED_MPS,
+        _axis(keys, "g", "j") * ANGULAR_SPEED_RADPS,
+    )
+
+
+def _axis(keys: set[str], positive: str, negative: str) -> float:
+    return float(positive in keys) - float(negative in keys)
+
+
+def _normalize_key(key: object) -> str:
+    aliases = {
+        "left_shift": "shift",
+        "right_shift": "shift",
+        "shift_l": "shift",
+        "shift_r": "shift",
+    }
+    normalized = str(key).lower()
+    return aliases.get(normalized, normalized)
 
 
 def _command(timestamp: float, **motion) -> TeleopCommand:
@@ -182,7 +175,3 @@ def _command(timestamp: float, **motion) -> TeleopCommand:
         active=True,
         **motion,
     )
-
-
-def _unit(value: float) -> float:
-    return max(-1.0, min(1.0, value))

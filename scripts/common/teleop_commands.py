@@ -37,6 +37,9 @@ class TeleopCommand:
     left_gripper_delta: float = 0.0
     right_gripper_delta: float = 0.0
     spine_delta: float = 0.0
+    reset_arms: bool = False
+    toggle_left_gripper: bool = False
+    toggle_right_gripper: bool = False
     left_joint_positions: JointPositions | None = None
     right_joint_positions: JointPositions | None = None
 

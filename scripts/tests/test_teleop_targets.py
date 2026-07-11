@@ -18,6 +18,7 @@ from teleop_targets import (
     compose_position_targets,
     discover_joint_groups,
     clamp_arm_joint_positions,
+    position_target_subset,
     pose_base_to_world,
     pose_world_to_base,
 )
@@ -89,6 +90,52 @@ def test_pose_tracker_clamps_positions_grippers_and_spine():
     assert result.left_gripper == 0.04
     assert result.right_gripper == 0.0
     assert result.spine == 0.85
+
+
+def test_pose_tracker_resets_arms_and_toggles_grippers():
+    initial = _targets()
+    tracker = CartesianTargetTracker(initial, limits=_limits())
+    expected_reset = tracker.targets
+    tracker.apply(
+        _command(
+            left_pose=PoseDelta(translation=(0.1, 0.0, 0.0)),
+            right_pose=PoseDelta(translation=(-0.1, 0.0, 0.0)),
+        )
+    )
+
+    result = tracker.apply(
+        _command(
+            reset_arms=True,
+            toggle_left_gripper=True,
+            toggle_right_gripper=True,
+        )
+    )
+
+    assert result.left == expected_reset.left
+    assert result.right == expected_reset.right
+    assert result.left_gripper == 0.04
+    assert result.right_gripper == 0.0
+
+
+def test_position_target_subset_excludes_base_steering_and_drive_joints():
+    import torch
+
+    names = _joint_names()
+    groups = discover_joint_groups(names)
+    full_targets = torch.arange(len(names), dtype=torch.float32).reshape(1, -1)
+
+    targets, joint_ids = position_target_subset(full_targets, groups)
+
+    expected_ids = (
+        groups.left_arm
+        + groups.right_arm
+        + groups.left_gripper
+        + groups.right_gripper
+        + groups.spine
+    )
+    assert joint_ids == expected_ids
+    assert torch.equal(targets, full_targets[:, list(expected_ids)])
+    assert not set(joint_ids) & set(groups.steering + groups.drive)
 
 
 def test_spine_motion_carries_both_base_relative_end_effector_targets():
