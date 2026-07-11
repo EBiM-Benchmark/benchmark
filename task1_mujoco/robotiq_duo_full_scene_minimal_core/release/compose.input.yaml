@@ -1,0 +1,8 @@
+# /dev/input passthrough overlay (gamepads) — docker-run.sh merges this file
+# automatically when the host has /dev/input (any native Linux). Kept
+# separate from compose.yaml because a `devices:` entry for a path the host
+# lacks aborts container start, and e.g. WSL2 has no /dev/input at all.
+services:
+  sim:
+    devices:
+      - /dev/input:/dev/input
