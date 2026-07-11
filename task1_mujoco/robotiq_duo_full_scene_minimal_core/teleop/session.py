@@ -168,11 +168,13 @@ class TeleopSession:
 
     def setup_viewer_cam(self, viewer, *, fallback_view: bool = True) -> None:
         """Shared passive-viewer setup: visibility groups + start camera.
-        Group 3 (collision geoms) stays hidden; group 5 holds the board's
-        visual meshes, which the viewer hides by default."""
+        Group 3 (collision geoms) and group 4 (TCP mocap-target debug
+        markers) stay hidden; group 5 holds the board's visual meshes,
+        which the viewer hides by default."""
         viewer.opt.geomgroup[0] = 1
         viewer.opt.geomgroup[1] = 1
         viewer.opt.geomgroup[3] = 0
+        viewer.opt.geomgroup[4] = 0
         viewer.opt.geomgroup[5] = 1
         if self.start_lookat is not None:
             viewer.cam.lookat[:] = self.start_lookat

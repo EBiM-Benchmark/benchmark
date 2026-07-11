@@ -113,8 +113,13 @@ def main(args) -> None:
             return
         mode[0] = new_mode
         for arm in arms.values():
-            hard_hold_arm(model, data, arm)
+            # seed BEFORE hold: q_ref is only refreshed on the active->idle
+            # transition (see the main loop below), so if this arm was
+            # switched away from mid-motion, q_ref is still stale (wherever
+            # it was when it last went idle). Holding first would snap the
+            # arm back to that stale anchor instead of freezing it in place.
             seed_arm(model, data, arm)
+            hard_hold_arm(model, data, arm)
         log(f"mode={new_mode}")
 
     def toggle_rotate(arm: Arm) -> None:
