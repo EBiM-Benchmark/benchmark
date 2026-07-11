@@ -10,12 +10,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "common"))
 from teleop_commands import PoseDelta, TeleopCommand
 from teleop_targets import (
     CartesianTargetTracker,
+    DirectJointTargetLatch,
     JointGroups,
     Pose,
     TargetLimits,
     TeleopTargets,
     compose_position_targets,
     discover_joint_groups,
+    clamp_arm_joint_positions,
     pose_base_to_world,
     pose_world_to_base,
 )
@@ -441,3 +443,67 @@ def test_composer_rejects_nonfinite_unowned_current_joint_without_mutation(bad):
         compose_position_targets(current, groups, left_arm=[0.1] * 7)
 
     assert torch.allclose(current, before, equal_nan=True)
+
+
+def test_direct_joint_latch_holds_last_target_when_later_command_is_stale():
+    latch = DirectJointTargetLatch()
+    direct = tuple(0.1 * index for index in range(7))
+    ik = type("IK", (), {"left": {name: 1.0 for name in LEFT_ARM}, "right": {}})()
+
+    first_left, _ = latch.select(
+        _command(left_joint_positions=direct), ik, LEFT_ARM, RIGHT_ARM
+    )
+    held_left, _ = latch.select(
+        TeleopCommand.stop(timestamp=2.0, source="gello"),
+        ik,
+        LEFT_ARM,
+        RIGHT_ARM,
+    )
+
+    assert first_left == direct
+    assert held_left == direct
+
+
+def test_direct_joint_latch_owns_each_arm_independently_and_release_restores_ik():
+    latch = DirectJointTargetLatch()
+    direct_left = (0.2,) * 7
+    ik = type(
+        "IK",
+        (),
+        {
+            "left": {name: 1.0 for name in LEFT_ARM},
+            "right": {name: 2.0 for name in RIGHT_ARM},
+        },
+    )()
+
+    left, right = latch.select(
+        _command(left_joint_positions=direct_left), ik, LEFT_ARM, RIGHT_ARM
+    )
+    latch.release("left")
+    released_left, released_right = latch.select(
+        _command(), ik, LEFT_ARM, RIGHT_ARM
+    )
+
+    assert left == direct_left
+    assert right == [2.0] * 7
+    assert released_left == [1.0] * 7
+    assert released_right == [2.0] * 7
+
+
+def test_direct_joint_positions_clamp_to_ordered_soft_limits():
+    result = clamp_arm_joint_positions(
+        (-2.0, -0.5, 0.0, 0.5, 2.0, 4.0, 9.0),
+        (-1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0),
+        (1.0, 1.0, 1.0, 1.0, 1.0, 3.0, 8.0),
+    )
+
+    assert result == (-1.0, -0.5, 0.0, 0.5, 1.0, 3.0, 8.0)
+
+
+@pytest.mark.parametrize(
+    ("lower", "upper"),
+    [((0.0,) * 6, (1.0,) * 7), ((0.0,) * 7, (1.0,) * 6), ((1.0,) * 7, (0.0,) * 7)],
+)
+def test_direct_joint_limit_validation_rejects_bad_shapes_or_order(lower, upper):
+    with pytest.raises(ValueError, match="seven finite ordered"):
+        clamp_arm_joint_positions((0.0,) * 7, lower, upper)

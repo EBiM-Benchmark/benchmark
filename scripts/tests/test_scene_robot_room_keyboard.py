@@ -81,6 +81,13 @@ def test_kit_keyboard_event_names_are_normalized():
     assert scene_keyboard.normalize_keyboard_event_input(KeyInput()) == "left"
     assert scene_keyboard.normalize_keyboard_event_input("KeyboardInput.W") == "w"
     assert scene_keyboard.normalize_keyboard_event_input("ESCAPE") == "esc"
+    assert scene_keyboard.normalize_keyboard_event_input("KEY_1") == "1"
+    assert scene_keyboard.normalize_keyboard_event_input("KeyboardInput.KEY_2") == "2"
+
+    class ModeKey:
+        name = "KEY_3"
+
+    assert scene_keyboard.normalize_keyboard_event_input(ModeKey()) == "3"
 
 
 def test_create_keyboard_teleop_prefers_kit_backend(monkeypatch):
@@ -207,3 +214,19 @@ def test_application_cleanup_runs_when_setup_fails():
         )
 
     assert app.closed is True
+
+
+def test_direct_command_fails_clearly_without_articulation_soft_limits():
+    from teleop_commands import TeleopCommand
+
+    command = TeleopCommand(
+        timestamp=1.0,
+        source="gello",
+        active=True,
+        left_joint_positions=(0.0,) * 7,
+    )
+    robot = types.SimpleNamespace(data=types.SimpleNamespace())
+    groups = types.SimpleNamespace(left_arm=tuple(range(7)), right_arm=tuple(range(7, 14)))
+
+    with pytest.raises(RuntimeError, match="soft_joint_pos_limits"):
+        scene_keyboard.clamp_direct_joint_command(command, robot, groups)

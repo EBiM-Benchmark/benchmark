@@ -8,6 +8,7 @@ import math
 
 
 Vector3 = tuple[float, float, float]
+JointPositions = tuple[float, float, float, float, float, float, float]
 ZERO_VECTOR: Vector3 = (0.0, 0.0, 0.0)
 
 
@@ -36,6 +37,27 @@ class TeleopCommand:
     left_gripper_delta: float = 0.0
     right_gripper_delta: float = 0.0
     spine_delta: float = 0.0
+    left_joint_positions: JointPositions | None = None
+    right_joint_positions: JointPositions | None = None
+
+    def __post_init__(self) -> None:
+        for field_name in ("left_joint_positions", "right_joint_positions"):
+            values = getattr(self, field_name)
+            if values is None:
+                continue
+            try:
+                canonical = tuple(float(value) for value in values)
+            except (TypeError, ValueError):
+                raise ValueError(
+                    f"{field_name} must contain exactly seven finite floats"
+                ) from None
+            if len(canonical) != 7 or not all(
+                math.isfinite(value) for value in canonical
+            ):
+                raise ValueError(
+                    f"{field_name} must contain exactly seven finite floats"
+                )
+            object.__setattr__(self, field_name, canonical)
 
     @classmethod
     def stop(cls, *, timestamp: float, source: str) -> "TeleopCommand":

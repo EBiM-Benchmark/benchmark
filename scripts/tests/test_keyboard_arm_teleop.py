@@ -34,6 +34,8 @@ def test_base_mode_preserves_mobile_wasd_qe_and_arrow_mappings():
     )
     assert command.left_pose == PoseDelta.zero()
     assert command.right_pose == PoseDelta.zero()
+    assert command.left_joint_positions is None
+    assert command.right_joint_positions is None
 
 
 def test_right_arrow_is_an_alias_without_doubling_rotation_speed():

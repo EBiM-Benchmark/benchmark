@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import replace
 import json
 import math
 import os
@@ -1267,6 +1268,46 @@ def robot_root_world_pose(
     return tuple(position), tuple(orientation)
 
 
+def clamp_direct_joint_command(command: Any, robot: Any, groups: Any) -> Any:
+    """Clamp present direct targets to the articulation's soft limits."""
+    if (
+        command.left_joint_positions is None
+        and command.right_joint_positions is None
+    ):
+        return command
+    limits = getattr(robot.data, "soft_joint_pos_limits", None)
+    if limits is None:
+        raise RuntimeError(
+            "Direct arm commands require robot.data.soft_joint_pos_limits"
+        )
+    required_ids = groups.left_arm + groups.right_arm
+    if (
+        limits.ndim != 3
+        or limits.shape[0] < 1
+        or limits.shape[2] != 2
+        or not required_ids
+        or limits.shape[1] <= max(required_ids)
+    ):
+        raise RuntimeError(
+            "robot.data.soft_joint_pos_limits must have shape (envs, joints, 2)"
+        )
+    from teleop_targets import clamp_arm_joint_positions
+
+    updates = {}
+    for side, values, joint_ids in (
+        ("left", command.left_joint_positions, groups.left_arm),
+        ("right", command.right_joint_positions, groups.right_arm),
+    ):
+        if values is None:
+            continue
+        lower = limits[0, list(joint_ids), 0].detach().cpu().tolist()
+        upper = limits[0, list(joint_ids), 1].detach().cpu().tolist()
+        updates[f"{side}_joint_positions"] = clamp_arm_joint_positions(
+            values, lower, upper
+        )
+    return replace(command, **updates)
+
+
 def configure_keyboard_control_stage(
     configure: Any,
     app: Any,
@@ -1391,6 +1432,9 @@ def normalize_keyboard_event_input(key_input: Any) -> str | None:
         "right_arrow": "right",
         "arrow_left": "left",
         "arrow_right": "right",
+        "key_1": "1",
+        "key_2": "2",
+        "key_3": "3",
     }
     return aliases.get(key_name, key_name)
 
@@ -1484,6 +1528,7 @@ def _run_keyboard_control_app(
     from teleop_commands import safe_command
     from teleop_targets import (
         CartesianTargetTracker,
+        DirectJointTargetLatch,
         Pose,
         TargetLimits,
         TeleopTargets,
@@ -1616,6 +1661,7 @@ def _run_keyboard_control_app(
         ),
     )
     mapper = KeyboardTeleopMapper()
+    direct_joint_latch = DirectJointTargetLatch()
     displayed_mode = mapper.mode
     print("Dual-arm Lula controller ready.", flush=True)
     print("Reading root yaw...", flush=True)
@@ -1640,6 +1686,7 @@ def _run_keyboard_control_app(
                 set(teleop.pressed), timestamp=now, dt=sim.cfg.dt
             )
             command = safe_command(command, now=now, timeout=0.25)
+            command = clamp_direct_joint_command(command, robot, joint_groups)
             if mapper.mode is not displayed_mode:
                 displayed_mode = mapper.mode
                 print(f"Control mode: {displayed_mode.value}", flush=True)
@@ -1671,15 +1718,11 @@ def _run_keyboard_control_app(
                 base_position=root_position,
                 base_orientation_wxyz=root_orientation,
             )
-            left_arm_targets = (
-                [ik_result.left[name] for name in LEFT_ARM_JOINTS]
-                if ik_result.left
-                else None
-            )
-            right_arm_targets = (
-                [ik_result.right[name] for name in RIGHT_ARM_JOINTS]
-                if ik_result.right
-                else None
+            left_arm_targets, right_arm_targets = direct_joint_latch.select(
+                command,
+                ik_result,
+                LEFT_ARM_JOINTS,
+                RIGHT_ARM_JOINTS,
             )
             position_targets = compose_position_targets(
                 position_targets,

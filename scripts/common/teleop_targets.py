@@ -207,6 +207,79 @@ class JointGroups:
     drive: tuple[int, ...]
 
 
+class DirectJointTargetLatch:
+    """Retain independent direct-joint ownership until explicitly released."""
+
+    def __init__(self) -> None:
+        self._targets: dict[str, tuple[float, ...] | None] = {
+            "left": None,
+            "right": None,
+        }
+
+    def release(self, side: str) -> None:
+        if side not in self._targets:
+            raise ValueError("side must be 'left' or 'right'")
+        self._targets[side] = None
+
+    def select(
+        self,
+        command: TeleopCommand,
+        ik_result,
+        left_joint_names: Sequence[str],
+        right_joint_names: Sequence[str],
+    ) -> tuple[Sequence[float] | None, Sequence[float] | None]:
+        if command.active:
+            if command.left_joint_positions is not None:
+                self._targets["left"] = command.left_joint_positions
+            if command.right_joint_positions is not None:
+                self._targets["right"] = command.right_joint_positions
+        return (
+            self._selected("left", ik_result.left, left_joint_names),
+            self._selected("right", ik_result.right, right_joint_names),
+        )
+
+    def _selected(
+        self, side: str, ik_targets, joint_names: Sequence[str]
+    ) -> Sequence[float] | None:
+        direct = self._targets[side]
+        if direct is not None:
+            return direct
+        if not ik_targets:
+            return None
+        return [ik_targets[name] for name in joint_names]
+
+
+def clamp_arm_joint_positions(
+    values: Sequence[float],
+    lower: Sequence[float],
+    upper: Sequence[float],
+) -> tuple[float, ...]:
+    """Clamp one canonical arm target to finite ordered soft limits."""
+    try:
+        values_tuple = tuple(float(value) for value in values)
+        lower_tuple = tuple(float(value) for value in lower)
+        upper_tuple = tuple(float(value) for value in upper)
+    except (TypeError, ValueError):
+        raise ValueError(
+            "arm values and limits must contain seven finite ordered values"
+        ) from None
+    if not (
+        len(values_tuple) == len(lower_tuple) == len(upper_tuple) == 7
+        and all(math.isfinite(value) for value in values_tuple)
+        and all(
+            math.isfinite(low) and math.isfinite(high) and low <= high
+            for low, high in zip(lower_tuple, upper_tuple)
+        )
+    ):
+        raise ValueError(
+            "arm values and limits must contain seven finite ordered values"
+        )
+    return tuple(
+        _clamp(value, low, high)
+        for value, low, high in zip(values_tuple, lower_tuple, upper_tuple)
+    )
+
+
 def discover_joint_groups(joint_names: Sequence[str]) -> JointGroups:
     """Discover required mobile FR3 Duo joints and reject ambiguity."""
     required_groups = (

@@ -25,6 +25,8 @@ def test_command_defaults_to_zero_motion_and_retains_metadata():
     assert command.left_gripper_delta == 0.0
     assert command.right_gripper_delta == 0.0
     assert command.spine_delta == 0.0
+    assert command.left_joint_positions is None
+    assert command.right_joint_positions is None
     assert command.timestamp == 2.5
     assert command.source == "keyboard"
     assert command.active is True
@@ -61,6 +63,8 @@ def test_inactive_stale_or_future_command_becomes_safe_stop(active, now):
         left_pose=PoseDelta(translation=(0.1, 0.0, 0.0)),
         left_gripper_delta=0.1,
         spine_delta=0.1,
+        left_joint_positions=(0.1,) * 7,
+        right_joint_positions=(0.2,) * 7,
     )
 
     safe = safe_command(command, now=now, timeout=0.5)
@@ -70,6 +74,34 @@ def test_inactive_stale_or_future_command_becomes_safe_stop(active, now):
         source=command.source,
     )
     assert safe.active is False
+    assert safe.left_joint_positions is None
+    assert safe.right_joint_positions is None
+
+
+def test_absolute_arm_joint_positions_are_canonical_immutable_tuples():
+    command = TeleopCommand(
+        timestamp=1.0,
+        source="gello",
+        active=True,
+        left_joint_positions=[0, 1, 2, 3, 4, 5, 6],
+    )
+
+    assert command.left_joint_positions == (0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0)
+    assert isinstance(command.left_joint_positions, tuple)
+
+
+@pytest.mark.parametrize(
+    "positions",
+    [(0.0,) * 6, (0.0,) * 8, (0.0, 0.0, 0.0, float("nan"), 0.0, 0.0, 0.0)],
+)
+def test_absolute_arm_joint_positions_require_seven_finite_values(positions):
+    with pytest.raises(ValueError, match="seven finite"):
+        TeleopCommand(
+            timestamp=1.0,
+            source="gello",
+            active=True,
+            right_joint_positions=positions,
+        )
 
 
 @pytest.mark.parametrize("timeout", [-0.1, float("nan"), float("inf")])

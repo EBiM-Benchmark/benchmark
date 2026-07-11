@@ -382,6 +382,16 @@ separate [`EBiM-Benchmark/teleoperation`](https://github.com/EBiM-Benchmark/tele
 repository can translate `/keyboard/state`, namespaced GELLO joint states,
 gripper values, and pedal state into that boundary without replacing target
 tracking, IK, joint composition, or the Isaac Sim/Isaac Lab runtime adapter.
+`TeleopCommand` already carries optional canonical seven-value left/right arm
+joint tuples for a direct GELLO-style source. A fresh absolute joint tuple has
+per-arm priority over Cartesian IK at the selective composer boundary, so one
+arm may use direct joints while the other uses IK. Every incoming direct tuple
+is clamped to that arm's configured articulation soft joint limits before it
+can be latched. Once a direct source owns an arm, stale or inactive input holds
+the last bounded direct target rather than silently falling back to an old
+Cartesian target. Future source arbitration must explicitly release that
+arm's direct ownership and reseed its Cartesian tracker before IK takeover;
+arbitration otherwise remains upstream of the winning command.
 
 #### Task3 Grading Unit Tests
 
