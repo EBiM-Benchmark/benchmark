@@ -4,6 +4,8 @@ import sys
 import types
 from pathlib import Path
 
+import pytest
+
 
 SCRIPT_PATH = (
     Path(__file__).resolve().parents[1]
@@ -130,3 +132,78 @@ def test_disable_robot_external_wrenches_resets_composers():
 
     assert robot.instantaneous_wrench_composer.reset_count == 1
     assert robot.permanent_wrench_composer.reset_count == 1
+
+
+def test_keyboard_dual_arm_control_rejects_multiple_environments():
+    with pytest.raises(RuntimeError, match="exactly one environment"):
+        scene_keyboard.require_single_teleop_environment(2)
+
+
+def test_measured_position_targets_are_cloned_once():
+    import torch
+
+    measured = torch.tensor([[0.3, -0.4, 0.5]])
+    robot = types.SimpleNamespace(
+        data=types.SimpleNamespace(joint_pos=measured)
+    )
+
+    targets = scene_keyboard.measured_position_targets(robot)
+    measured[0, 0] = 9.0
+
+    assert torch.allclose(targets, torch.tensor([[0.3, -0.4, 0.5]]))
+    assert targets.data_ptr() != measured.data_ptr()
+
+
+def test_robot_root_world_pose_reads_first_environment():
+    import torch
+
+    robot = types.SimpleNamespace(
+        data=types.SimpleNamespace(
+            root_pos_w=torch.tensor([[1.0, 2.0, 0.3]]),
+            root_quat_w=torch.tensor([[0.5, 0.0, 0.0, -0.5]]),
+        )
+    )
+
+    position, orientation = scene_keyboard.robot_root_world_pose(robot)
+
+    assert position == pytest.approx((1.0, 2.0, 0.3))
+    assert orientation == pytest.approx((0.5, 0.0, 0.0, -0.5))
+
+
+def test_control_stage_configuration_omits_passive_viewer_robot_reference():
+    calls = []
+
+    def configure(*args, **kwargs):
+        calls.append((args, kwargs))
+
+    scene_keyboard.configure_keyboard_control_stage(
+        configure,
+        object(),
+        object(),
+        room_path=Path("room.usd"),
+        task="task3",
+        head_placement="A",
+        robot_position=(1.0, 2.0, 0.0),
+        robot_yaw=-90.0,
+        dynamic_beans=False,
+    )
+
+    assert calls[0][1]["robot_path"] is None
+    assert calls[0][1]["robot_position"] == (1.0, 2.0, 0.0)
+
+
+def test_application_cleanup_runs_when_setup_fails():
+    class App:
+        closed = False
+
+        def close(self):
+            self.closed = True
+
+    app = App()
+
+    with pytest.raises(RuntimeError, match="IK setup"):
+        scene_keyboard.run_with_app_cleanup(
+            app, lambda: (_ for _ in ()).throw(RuntimeError("IK setup"))
+        )
+
+    assert app.closed is True

@@ -470,6 +470,132 @@ def test_factory_resolves_project_paths_and_builds_two_isaac_sim_solvers(tmp_pat
     ]
 
 
+def test_adapter_reads_current_end_effector_poses_as_normalized_wxyz():
+    from dual_arm_lula import DualArmLulaIK
+
+    class PoseSolver:
+        def __init__(self, position, rotation):
+            self.pose = (np.array(position), np.array(rotation))
+
+        def compute_end_effector_pose(self):
+            return self.pose
+
+    left = PoseSolver(
+        (0.5, 0.2, 0.8),
+        ((0.0, -1.0, 0.0), (1.0, 0.0, 0.0), (0.0, 0.0, 1.0)),
+    )
+    right = PoseSolver(
+        (0.5, -0.2, 0.8),
+        ((1.0, 0.0, 0.0), (0.0, -1.0, 0.0), (0.0, 0.0, -1.0)),
+    )
+    controller = DualArmLulaIK(left, right, _joint_names())
+
+    left_pose, right_pose = controller.current_end_effector_poses()
+
+    half = math.sqrt(0.5)
+    assert left_pose[0] == pytest.approx((0.5, 0.2, 0.8))
+    assert left_pose[1] == pytest.approx((half, 0.0, 0.0, half))
+    assert right_pose[0] == pytest.approx((0.5, -0.2, 0.8))
+    assert right_pose[1] == pytest.approx((0.0, 1.0, 0.0, 0.0))
+    assert np.linalg.norm(left_pose[1]) == pytest.approx(1.0)
+
+
+def test_raw_arm_bridge_uses_numpy_warm_start_in_exact_arm_order():
+    from dual_arm_lula import LEFT_ARM_JOINTS, RawLulaArmSolver
+
+    names = _joint_names()
+    current = np.arange(len(names), dtype=np.float32)
+
+    class RawSolver:
+        def __init__(self):
+            self.calls = []
+
+        def compute_inverse_kinematics(self, *args):
+            self.calls.append(args)
+            return np.arange(7, dtype=np.float64) + 0.25, True
+
+    raw = RawSolver()
+    bridge = RawLulaArmSolver(
+        raw, "left_fr3v2_hand_tcp", names, LEFT_ARM_JOINTS, lambda: current
+    )
+
+    action, succeeded = bridge.compute_inverse_kinematics(
+        (0.5, 0.2, 0.8), (1.0, 0.0, 0.0, 0.0)
+    )
+
+    frame, position, orientation, warm_start = raw.calls[0]
+    expected_indices = [names.index(name) for name in LEFT_ARM_JOINTS]
+    assert succeeded is True
+    assert frame == "left_fr3v2_hand_tcp"
+    assert isinstance(warm_start, np.ndarray)
+    assert warm_start.dtype == np.float64
+    assert warm_start == pytest.approx(current[expected_indices])
+    assert position.dtype == np.float64
+    assert orientation.dtype == np.float64
+    assert action.joint_indices.tolist() == expected_indices
+    assert action.joint_positions == pytest.approx(np.arange(7) + 0.25)
+
+
+def test_raw_arm_bridge_forward_kinematics_uses_same_warm_start_order():
+    from dual_arm_lula import RIGHT_ARM_JOINTS, RawLulaArmSolver
+
+    names = _joint_names()
+    current = np.arange(len(names), dtype=np.float64)
+
+    class RawSolver:
+        def __init__(self):
+            self.calls = []
+
+        def compute_forward_kinematics(self, frame, warm_start):
+            self.calls.append((frame, warm_start))
+            return np.array((1.0, 2.0, 3.0)), np.eye(3)
+
+    raw = RawSolver()
+    bridge = RawLulaArmSolver(
+        raw, "right_fr3v2_hand_tcp", names, RIGHT_ARM_JOINTS, lambda: current
+    )
+
+    position, rotation = bridge.compute_end_effector_pose()
+
+    expected = current[[names.index(name) for name in RIGHT_ARM_JOINTS]]
+    assert raw.calls[0][0] == "right_fr3v2_hand_tcp"
+    assert raw.calls[0][1] == pytest.approx(expected)
+    assert position == pytest.approx((1.0, 2.0, 3.0))
+    assert rotation == pytest.approx(np.eye(3))
+
+
+def test_current_fk_synchronizes_spawn_pose_and_adds_tilted_spine_offset():
+    from dual_arm_lula import DualArmLulaIK
+
+    class PoseSolver:
+        def compute_end_effector_pose(self):
+            return np.array((5.0, 6.0, 1.0)), np.eye(3)
+
+    left_raw = FakeRawLulaSolver()
+    right_raw = FakeRawLulaSolver()
+    controller = DualArmLulaIK(
+        PoseSolver(),
+        PoseSolver(),
+        _joint_names(),
+        left_lula_solver=left_raw,
+        right_lula_solver=right_raw,
+    )
+    half = math.sqrt(0.5)
+
+    left, right = controller.current_end_effector_poses(
+        base_position=(4.0, 5.0, 0.2),
+        base_orientation_wxyz=(half, 0.0, half, 0.0),
+        spine_position=0.4,
+    )
+
+    assert left_raw.base_pose_calls[0][0] == pytest.approx((4.0, 5.0, 0.2))
+    assert right_raw.base_pose_calls[0][1] == pytest.approx(
+        (half, 0.0, half, 0.0)
+    )
+    assert left[0] == pytest.approx((5.4, 6.0, 1.0))
+    assert right[0] == pytest.approx((5.4, 6.0, 1.0))
+
+
 def test_repository_lula_configs_match_current_franka_hand_urdf():
     root = Path(__file__).resolve().parents[2]
     config_dir = root / "scripts" / "config" / "task3_teleop"
@@ -484,8 +610,7 @@ def test_repository_lula_configs_match_current_franka_hand_urdf():
         text = config_path.read_text()
         config = yaml.safe_load(text)
         defaults = config["default_q"]
-        assert defaults[3] == -2.2
-        assert defaults[5] == 2.2
+        assert defaults == [0.0, -1.5, 0.0, -2.2, 0.0, 1.5, 0.785]
         for index in range(1, 8):
             joint = f"{side}_fr3v2_joint{index}"
             assert f"- {joint}" in text
@@ -499,6 +624,50 @@ def test_repository_lula_configs_match_current_franka_hand_urdf():
         assert "NVIDIA CORPORATION" not in text
         assert "EBiM Benchmark Contributors" in text
         assert "Robotiq_DEMO commit 78c28ea" in text
+
+
+def test_lula_configs_classify_every_movable_urdf_joint_once():
+    root = Path(__file__).resolve().parents[2]
+    config_dir = root / "scripts" / "config" / "task3_teleop"
+    urdf_root = ET.parse(
+        config_dir / "mobile_fr3_duo_v0_2_franka_hand.urdf"
+    ).getroot()
+    movable = {
+        joint.attrib["name"]: joint
+        for joint in urdf_root.findall("joint")
+        if joint.attrib["type"] != "fixed"
+    }
+    home = [0.0, -1.5, 0.0, -2.2, 0.0, 1.5, 0.785]
+
+    for side, opposite in (("left", "right"), ("right", "left")):
+        config = yaml.safe_load(
+            (config_dir / f"{side}_arm_description.yaml").read_text()
+        )
+        cspace = config["cspace"]
+        rules = config["cspace_to_urdf_rules"]
+        rule_names = [rule["name"] for rule in rules]
+
+        assert len(cspace) == len(set(cspace))
+        assert len(rule_names) == len(set(rule_names))
+        assert set(cspace).isdisjoint(rule_names)
+        assert set(cspace) | set(rule_names) == set(movable)
+        assert config["default_q"] == home
+
+        rule_values = {}
+        for rule in rules:
+            assert rule["rule"] == "fixed"
+            value = float(rule["value"])
+            assert math.isfinite(value)
+            rule_values[rule["name"]] = value
+            limit = movable[rule["name"]].find("limit")
+            if limit is not None and "lower" in limit.attrib:
+                assert float(limit.attrib["lower"]) <= value
+                assert value <= float(limit.attrib["upper"])
+
+        assert [
+            rule_values[f"{opposite}_fr3v2_joint{index}"]
+            for index in range(1, 8)
+        ] == home
 
 
 def test_tracked_lula_urdf_contains_only_portable_kinematics():

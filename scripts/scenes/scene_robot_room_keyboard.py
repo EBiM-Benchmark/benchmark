@@ -12,6 +12,7 @@ import math
 import os
 import random
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -1243,6 +1244,46 @@ def disable_robot_external_wrenches(robot: Any) -> None:
             composer.reset()
 
 
+def require_single_teleop_environment(num_envs: int) -> None:
+    """Lula's Core articulation wrapper controls one Task 3 robot."""
+    if num_envs != 1:
+        raise RuntimeError(
+            "Keyboard dual-arm IK requires exactly one environment; "
+            f"received num_envs={num_envs}."
+        )
+
+
+def measured_position_targets(robot: Any) -> Any:
+    """Snapshot measured joints once as persistent position targets."""
+    return robot.data.joint_pos.detach().clone()
+
+
+def robot_root_world_pose(
+    robot: Any,
+) -> tuple[tuple[float, ...], tuple[float, ...]]:
+    """Read the first environment's root pose in Isaac Lab wxyz order."""
+    position = robot.data.root_pos_w[0].detach().cpu().tolist()
+    orientation = robot.data.root_quat_w[0].detach().cpu().tolist()
+    return tuple(position), tuple(orientation)
+
+
+def configure_keyboard_control_stage(
+    configure: Any,
+    app: Any,
+    stage: Any,
+    **kwargs: Any,
+) -> Any:
+    """Configure room props only; InteractiveScene owns the sole robot."""
+    return configure(app, stage, robot_path=None, **kwargs)
+
+
+def run_with_app_cleanup(app: Any, callback: Any) -> Any:
+    try:
+        return callback()
+    finally:
+        app.close()
+
+
 class PynputKeyboardTeleop:
     def __init__(self, keyboard_module: Any) -> None:
         self._keyboard = keyboard_module
@@ -1374,15 +1415,11 @@ def create_keyboard_teleop() -> Any:
         return KitKeyboardTeleop(carb.input, omni.appwindow)
 
 
-def print_keyboard_control_help() -> None:
+def print_keyboard_control_help(control_help: str, mode: Any) -> None:
     print("\n" + "=" * 80)
-    print("Keyboard robot control enabled")
+    print(f"Keyboard robot control enabled (mode: {mode.value})")
     print("=" * 80)
-    print("Controls:")
-    print("  W/S     forward/back")
-    print("  A/D     strafe left/right")
-    print("  Q/E     rotate left/right")
-    print("  Left/Right arrows also rotate")
+    print(control_help)
     print("  ESC     stop keyboard listener and exit")
     print("  Ctrl+C  exit")
     print("Tip: the listener is global, so the viewport does not need focus.\n")
@@ -1398,7 +1435,7 @@ def run_keyboard_control(
     robot_yaw: float,
 ) -> None:
     configure_ros2_bridge_env(args)
-
+    require_single_teleop_environment(args.num_envs)
     try:
         from isaaclab.app import AppLauncher
     except ImportError as exc:
@@ -1407,19 +1444,59 @@ def run_keyboard_control(
             "Run this in the isaac-lab Docker profile, or pass "
             "--no-keyboard-control to use the passive Isaac Sim viewer."
         ) from exc
-
     app_launcher = AppLauncher({"headless": args.headless})
     simulation_app = app_launcher.app
+    run_with_app_cleanup(
+        simulation_app,
+        lambda: _run_keyboard_control_app(
+            args,
+            simulation_app=simulation_app,
+            room_path=room_path,
+            robot_path=robot_path,
+            robot_position=robot_position,
+            robot_rotation=robot_rotation,
+            robot_yaw=robot_yaw,
+        ),
+    )
+
+
+def _run_keyboard_control_app(
+    args: argparse.Namespace,
+    *,
+    simulation_app: Any,
+    room_path: Path,
+    robot_path: Path,
+    robot_position: tuple[float, float, float],
+    robot_rotation: tuple[float, float, float, float],
+    robot_yaw: float,
+) -> None:
 
     import isaaclab.sim as sim_utils
     from isaaclab.scene import InteractiveScene
     from isaaclab.sim import SimulationContext
 
+    from dual_arm_lula import (
+        LEFT_ARM_JOINTS,
+        RIGHT_ARM_JOINTS,
+        create_raw_dual_arm_lula,
+    )
+    from keyboard_arm_teleop import KeyboardTeleopMapper, control_help
+    from teleop_commands import safe_command
+    from teleop_targets import (
+        CartesianTargetTracker,
+        Pose,
+        TargetLimits,
+        TeleopTargets,
+        compose_position_targets,
+        discover_joint_groups,
+        pose_base_to_world,
+        pose_world_to_base,
+    )
+
     from tmr_base_control import (
         compensate_yaw_rate,
         compute_drive_targets,
         find_drive_joint_ids,
-        get_keyboard_twist,
         get_root_yaw,
     )
 
@@ -1434,13 +1511,13 @@ def run_keyboard_control(
     sim = SimulationContext(sim_cfg)
     print("SimulationContext ready.", flush=True)
     print("Configuring robot room stage...", flush=True)
-    configure_robot_room_stage(
+    configure_keyboard_control_stage(
+        configure_robot_room_stage,
         simulation_app,
         sim.stage,
         room_path=room_path,
         task=args.task,
         head_placement=args.head_placement,
-        robot_path=robot_path,
         robot_position=robot_position,
         robot_yaw=robot_yaw,
         dynamic_beans=args.dynamic_beans,
@@ -1470,9 +1547,9 @@ def run_keyboard_control(
     robot = scene["robot"]
     print(f"Robot joints ({len(robot.joint_names)}): {robot.joint_names}", flush=True)
     stabilization_steps = max(0, args.stabilization_steps)
+    stabilization_targets = robot.data.default_joint_pos.clone()
     for index in range(stabilization_steps):
-        joint_pos_targets = robot.data.default_joint_pos.clone()
-        robot.set_joint_position_target(joint_pos_targets)
+        robot.set_joint_position_target(stabilization_targets)
         disable_robot_external_wrenches(robot)
         scene.write_data_to_sim()
         sim.step()
@@ -1486,22 +1563,88 @@ def run_keyboard_control(
     print("Finding drive joint ids...", flush=True)
     steering_indices, drive_indices = find_drive_joint_ids(robot.joint_names)
     print("Drive joint ids ready.", flush=True)
+    joint_groups = discover_joint_groups(robot.joint_names)
+    position_targets = measured_position_targets(robot)
+
+    print("Creating raw Lula NumPy joint-state bridge...", flush=True)
+    dual_arm_ik = create_raw_dual_arm_lula(
+        robot.joint_names,
+        lambda: robot.data.joint_pos[0].detach().cpu().numpy(),
+    )
+    root_position, root_orientation = robot_root_world_pose(robot)
+    initial_spine = float(
+        position_targets[0, joint_groups.spine[0]].item()
+    )
+    left_world_values, right_world_values = (
+        dual_arm_ik.current_end_effector_poses(
+            root_position,
+            root_orientation,
+            initial_spine,
+        )
+    )
+    left_relative = pose_world_to_base(
+        Pose(tuple(left_world_values[0]), tuple(left_world_values[1])),
+        root_position,
+        root_orientation,
+    )
+    right_relative = pose_world_to_base(
+        Pose(tuple(right_world_values[0]), tuple(right_world_values[1])),
+        root_position,
+        root_orientation,
+    )
+    initial_left_gripper = float(
+        position_targets[0, joint_groups.left_gripper[0]].item()
+    )
+    initial_right_gripper = float(
+        position_targets[0, joint_groups.right_gripper[0]].item()
+    )
+    tracker = CartesianTargetTracker(
+        TeleopTargets(
+            left=left_relative,
+            right=right_relative,
+            left_gripper=initial_left_gripper,
+            right_gripper=initial_right_gripper,
+            spine=initial_spine,
+        ),
+        limits=TargetLimits(
+            position_min=(-1.5, -1.5, -0.5),
+            position_max=(1.5, 1.5, 2.5),
+            gripper_min=0.0,
+            gripper_max=0.04,
+            spine_min=0.0,
+            spine_max=0.85,
+        ),
+    )
+    mapper = KeyboardTeleopMapper()
+    displayed_mode = mapper.mode
+    print("Dual-arm Lula controller ready.", flush=True)
     print("Reading root yaw...", flush=True)
     heading_hold_yaw = get_root_yaw(robot)
     print("Root yaw ready.", flush=True)
     print("Creating keyboard teleop backend...", flush=True)
     teleop = create_keyboard_teleop()
     print("Keyboard teleop backend ready.", flush=True)
-    teleop.start()
-    print("Keyboard teleop listener started.", flush=True)
     print(f"Active steering joints: {steering_indices}", flush=True)
     print(f"Active drive joints: {drive_indices}", flush=True)
-    print_keyboard_control_help()
+    print_keyboard_control_help(control_help(), mapper.mode)
 
     count = 0
+    listener_started = False
     try:
+        teleop.start()
+        listener_started = True
+        print("Keyboard teleop listener started.", flush=True)
         while simulation_app.is_running() and not teleop.stop_requested:
-            vx, vy, wz_cmd = get_keyboard_twist(teleop.pressed)
+            now = time.monotonic()
+            command = mapper.map_keys(
+                set(teleop.pressed), timestamp=now, dt=sim.cfg.dt
+            )
+            command = safe_command(command, now=now, timeout=0.25)
+            if mapper.mode is not displayed_mode:
+                displayed_mode = mapper.mode
+                print(f"Control mode: {displayed_mode.value}", flush=True)
+
+            vx, vy, wz_cmd = command.base_twist
             wz, heading_hold_yaw = compensate_yaw_rate(
                 robot,
                 vx,
@@ -1511,8 +1654,43 @@ def run_keyboard_control(
                 manual_rotation=abs(wz_cmd) > 1.0e-4,
             )
 
-            arm_gripper_pos_targets = robot.data.default_joint_pos.clone()
-            robot.set_joint_position_target(arm_gripper_pos_targets)
+            targets = tracker.apply(command)
+            root_position, root_orientation = robot_root_world_pose(robot)
+            left_world = pose_base_to_world(
+                targets.left, root_position, root_orientation
+            )
+            right_world = pose_base_to_world(
+                targets.right, root_position, root_orientation
+            )
+            ik_result = dual_arm_ik.solve(
+                left_world.position,
+                right_world.position,
+                left_world.orientation_wxyz,
+                right_world.orientation_wxyz,
+                spine_position=targets.spine,
+                base_position=root_position,
+                base_orientation_wxyz=root_orientation,
+            )
+            left_arm_targets = (
+                [ik_result.left[name] for name in LEFT_ARM_JOINTS]
+                if ik_result.left
+                else None
+            )
+            right_arm_targets = (
+                [ik_result.right[name] for name in RIGHT_ARM_JOINTS]
+                if ik_result.right
+                else None
+            )
+            position_targets = compose_position_targets(
+                position_targets,
+                joint_groups,
+                left_arm=left_arm_targets,
+                right_arm=right_arm_targets,
+                left_gripper=targets.left_gripper,
+                right_gripper=targets.right_gripper,
+                spine=targets.spine,
+            )
+            robot.set_joint_position_target(position_targets)
 
             steering_pos_targets, drive_vel_targets = compute_drive_targets(
                 robot,
@@ -1538,7 +1716,7 @@ def run_keyboard_control(
             scene.update(sim.cfg.dt)
 
             count += 1
-            if count % 100 == 0 and (vx != 0.0 or vy != 0.0 or wz != 0.0):
+            if count % 400 == 0 and (vx != 0.0 or vy != 0.0 or wz != 0.0):
                 print(
                     f"step={count} vx={vx:+.2f} vy={vy:+.2f} "
                     f"wz={wz:+.2f} keys={sorted(teleop.pressed)}"
@@ -1546,8 +1724,8 @@ def run_keyboard_control(
     except KeyboardInterrupt:
         print("\nStopped by user.")
     finally:
-        teleop.stop()
-        simulation_app.close()
+        if listener_started:
+            teleop.stop()
 
 
 def main() -> None:

@@ -100,10 +100,22 @@ class CartesianTargetTracker:
 
         limits = self._limits
         current = self._targets
+        spine = _clamp(
+            current.spine + command.spine_delta,
+            limits.spine_min,
+            limits.spine_max,
+        )
+        spine_change = spine - current.spine
         self._targets = TeleopTargets(
-            left=_apply_pose_delta(current.left, command.left_pose, limits),
+            left=_apply_pose_delta(
+                current.left,
+                _with_vertical_translation(command.left_pose, spine_change),
+                limits,
+            ),
             right=_apply_pose_delta(
-                current.right, command.right_pose, limits
+                current.right,
+                _with_vertical_translation(command.right_pose, spine_change),
+                limits,
             ),
             left_gripper=_clamp(
                 current.left_gripper + command.left_gripper_delta,
@@ -115,13 +127,56 @@ class CartesianTargetTracker:
                 limits.gripper_min,
                 limits.gripper_max,
             ),
-            spine=_clamp(
-                current.spine + command.spine_delta,
-                limits.spine_min,
-                limits.spine_max,
-            ),
+            spine=spine,
         )
         return self._targets
+
+
+def pose_world_to_base(
+    pose: Pose,
+    base_position: Sequence[float],
+    base_orientation_wxyz: Sequence[float],
+) -> Pose:
+    """Express a world pose in the moving robot-base coordinate frame."""
+    _validate_finite_vector("base_position", base_position, length=3)
+    _validate_finite_vector(
+        "base_orientation_wxyz", base_orientation_wxyz, length=4
+    )
+    base_orientation = _normalize_quaternion(tuple(base_orientation_wxyz))
+    inverse = _quaternion_conjugate(base_orientation)
+    offset = tuple(
+        value - origin for value, origin in zip(pose.position, base_position)
+    )
+    return Pose(
+        position=_rotate_vector(inverse, offset),
+        orientation_wxyz=_normalize_quaternion(
+            _quaternion_multiply(inverse, pose.orientation_wxyz)
+        ),
+    )
+
+
+def pose_base_to_world(
+    pose: Pose,
+    base_position: Sequence[float],
+    base_orientation_wxyz: Sequence[float],
+) -> Pose:
+    """Express a robot-base-relative pose in the world coordinate frame."""
+    _validate_finite_vector("base_position", base_position, length=3)
+    _validate_finite_vector(
+        "base_orientation_wxyz", base_orientation_wxyz, length=4
+    )
+    base_orientation = _normalize_quaternion(tuple(base_orientation_wxyz))
+    rotated = _rotate_vector(base_orientation, pose.position)
+    return Pose(
+        position=tuple(
+            origin + value for origin, value in zip(base_position, rotated)
+        ),
+        orientation_wxyz=_normalize_quaternion(
+            _quaternion_multiply(
+                base_orientation, pose.orientation_wxyz
+            )
+        ),
+    )
 
 
 LEFT_ARM_JOINTS = tuple(f"left_fr3v2_joint{i}" for i in range(1, 8))
@@ -273,6 +328,17 @@ def _apply_pose_delta(
     return Pose(position=position, orientation_wxyz=orientation)
 
 
+def _with_vertical_translation(delta: PoseDelta, change: float) -> PoseDelta:
+    return PoseDelta(
+        translation=(
+            delta.translation[0],
+            delta.translation[1],
+            delta.translation[2] + change,
+        ),
+        rotation_rpy=delta.rotation_rpy,
+    )
+
+
 def _bounded_pose(pose: Pose, limits: TargetLimits) -> Pose:
     return Pose(
         position=tuple(
@@ -313,6 +379,25 @@ def _quaternion_multiply(
         aw * by - ax * bz + ay * bw + az * bx,
         aw * bz + ax * by - ay * bx + az * bw,
     )
+
+
+def _quaternion_conjugate(
+    quaternion: QuaternionWxyz,
+) -> QuaternionWxyz:
+    w, x, y, z = quaternion
+    return (w, -x, -y, -z)
+
+
+def _rotate_vector(
+    quaternion: QuaternionWxyz,
+    vector: Sequence[float],
+) -> Vector3:
+    pure = (0.0, vector[0], vector[1], vector[2])
+    rotated = _quaternion_multiply(
+        _quaternion_multiply(quaternion, pure),
+        _quaternion_conjugate(quaternion),
+    )
+    return (rotated[1], rotated[2], rotated[3])
 
 
 def _normalize_quaternion(

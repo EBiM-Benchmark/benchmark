@@ -48,6 +48,69 @@ class DualArmIKResult:
         return {**self.left, **self.right}
 
 
+@dataclass(frozen=True)
+class _RawIKAction:
+    joint_positions: np.ndarray
+    joint_indices: np.ndarray
+
+
+class RawLulaArmSolver:
+    """Adapt raw Lula FK/IK to one arm using CPU NumPy warm starts."""
+
+    def __init__(
+        self,
+        lula_solver: Any,
+        frame_name: str,
+        joint_names: Sequence[str],
+        arm_joint_names: Sequence[str],
+        current_joint_positions: Callable[[], Any],
+    ) -> None:
+        self._lula_solver = lula_solver
+        self._frame_name = frame_name
+        self._joint_names = tuple(joint_names)
+        self._arm_indices = np.array(
+            [self._joint_names.index(name) for name in arm_joint_names],
+            dtype=np.int64,
+        )
+        self._current_joint_positions = current_joint_positions
+
+    def _warm_start(self) -> np.ndarray:
+        full = _finite_vector(
+            self._current_joint_positions(),
+            len(self._joint_names),
+            "current joint positions",
+        )
+        return np.array(full[self._arm_indices], dtype=np.float64, copy=True)
+
+    def compute_inverse_kinematics(
+        self, position: Sequence[float], orientation: Sequence[float] | None
+    ) -> tuple[_RawIKAction, bool]:
+        target_position = _finite_vector(position, 3, "target position")
+        target_orientation = (
+            None
+            if orientation is None
+            else _normalized_quaternion(orientation, "target orientation")
+        )
+        positions, succeeded = self._lula_solver.compute_inverse_kinematics(
+            self._frame_name,
+            target_position,
+            target_orientation,
+            self._warm_start(),
+        )
+        return (
+            _RawIKAction(
+                np.asarray(positions, dtype=np.float64),
+                self._arm_indices.copy(),
+            ),
+            bool(succeeded),
+        )
+
+    def compute_end_effector_pose(self) -> tuple[np.ndarray, np.ndarray]:
+        return self._lula_solver.compute_forward_kinematics(
+            self._frame_name, self._warm_start()
+        )
+
+
 class DualArmLulaIK:
     """Solve each arm independently and retain its last valid solution."""
 
@@ -76,6 +139,38 @@ class DualArmLulaIK:
         self._last_warning = {"left": -math.inf, "right": -math.inf}
         self._last_left: dict[str, float] = {}
         self._last_right: dict[str, float] = {}
+
+    def current_end_effector_poses(
+        self,
+        base_position: Sequence[float] = (0.0, 0.0, 0.0),
+        base_orientation_wxyz: Sequence[float] = (1.0, 0.0, 0.0, 0.0),
+        spine_position: float = 0.0,
+    ) -> tuple[
+        tuple[np.ndarray, np.ndarray],
+        tuple[np.ndarray, np.ndarray],
+    ]:
+        """Read both current world poses as position and normalized wxyz."""
+        base_position_array = _finite_vector(base_position, 3, "base_position")
+        base_orientation = _normalized_quaternion(
+            base_orientation_wxyz, "base_orientation_wxyz"
+        )
+        spine_position = float(spine_position)
+        if not math.isfinite(spine_position):
+            raise ValueError("spine_position must be finite")
+        self._set_robot_base_poses(base_position_array, base_orientation)
+        spine_offset = _rotated_vertical_offset(
+            base_orientation, spine_position
+        )
+        left_position, left_orientation = _current_end_effector_pose(
+            self._left_solver
+        )
+        right_position, right_orientation = _current_end_effector_pose(
+            self._right_solver
+        )
+        return (
+            (left_position + spine_offset, left_orientation),
+            (right_position + spine_offset, right_orientation),
+        )
 
     def solve(
         self,
@@ -275,6 +370,58 @@ def create_dual_arm_lula(
     )
 
 
+def create_raw_dual_arm_lula(
+    joint_names: Sequence[str],
+    current_joint_positions: Callable[[], Any],
+    *,
+    project_root: str | Path | None = None,
+    lula_solver_cls: type | None = None,
+) -> DualArmLulaIK:
+    """Create raw Lula arm solvers with CPU joint-state warm starts."""
+    root = (
+        Path(project_root).resolve()
+        if project_root is not None
+        else Path(__file__).resolve().parents[2]
+    )
+    config_dir = root / "scripts" / "config" / "task3_teleop"
+    left_description = config_dir / "left_arm_description.yaml"
+    right_description = config_dir / "right_arm_description.yaml"
+    urdf = config_dir / "mobile_fr3_duo_v0_2_franka_hand.urdf"
+    missing = [
+        path
+        for path in (left_description, right_description, urdf)
+        if not path.is_file()
+    ]
+    if missing:
+        raise FileNotFoundError(
+            "Missing Task 3 Lula files: " + ", ".join(map(str, missing))
+        )
+    if lula_solver_cls is None:
+        lula_solver_cls = _load_lula_solver_class()
+    names = tuple(joint_names)
+    left_lula = lula_solver_cls(str(left_description), str(urdf))
+    right_lula = lula_solver_cls(str(right_description), str(urdf))
+    return DualArmLulaIK(
+        RawLulaArmSolver(
+            left_lula,
+            LEFT_END_EFFECTOR,
+            names,
+            LEFT_ARM_JOINTS,
+            current_joint_positions,
+        ),
+        RawLulaArmSolver(
+            right_lula,
+            RIGHT_END_EFFECTOR,
+            names,
+            RIGHT_ARM_JOINTS,
+            current_joint_positions,
+        ),
+        names,
+        left_lula_solver=left_lula,
+        right_lula_solver=right_lula,
+    )
+
+
 def _load_isaac_solver_classes() -> tuple[type, type]:
     """Load Isaac Sim 5 exports, with the archive's submodule layout fallback."""
     motion_generation = import_module(
@@ -299,6 +446,18 @@ def _load_isaac_solver_classes() -> tuple[type, type]:
             lula_module.LulaKinematicsSolver,
             articulation_module.ArticulationKinematicsSolver,
         )
+
+
+def _load_lula_solver_class() -> type:
+    motion_generation = import_module(
+        "isaacsim.robot_motion.motion_generation"
+    )
+    try:
+        return motion_generation.LulaKinematicsSolver
+    except AttributeError:
+        return import_module(
+            "isaacsim.robot_motion.motion_generation.lula.kinematics"
+        ).LulaKinematicsSolver
 
 
 def _articulation_joint_names(articulation: Any) -> Sequence[str]:
@@ -346,3 +505,75 @@ def _rotated_vertical_offset(
         dtype=np.float64,
     )
     return local_z_in_world * distance
+
+
+def _current_end_effector_pose(
+    solver: Any,
+) -> tuple[np.ndarray, np.ndarray]:
+    position, rotation = solver.compute_end_effector_pose()
+    return (
+        _finite_vector(position, 3, "end-effector position"),
+        _rotation_matrix_to_quaternion(rotation),
+    )
+
+
+def _rotation_matrix_to_quaternion(rotation: Any) -> np.ndarray:
+    try:
+        matrix = np.array(rotation, dtype=np.float64, copy=True)
+    except (TypeError, ValueError):
+        raise ValueError(
+            "end-effector rotation must be a finite 3x3 matrix"
+        ) from None
+    if matrix.shape != (3, 3) or not np.isfinite(matrix).all():
+        raise ValueError("end-effector rotation must be a finite 3x3 matrix")
+
+    trace = float(np.trace(matrix))
+    if trace > 0.0:
+        scale = math.sqrt(trace + 1.0) * 2.0
+        quaternion = np.array(
+            (
+                0.25 * scale,
+                (matrix[2, 1] - matrix[1, 2]) / scale,
+                (matrix[0, 2] - matrix[2, 0]) / scale,
+                (matrix[1, 0] - matrix[0, 1]) / scale,
+            )
+        )
+    else:
+        axis = int(np.argmax(np.diag(matrix)))
+        if axis == 0:
+            scale = math.sqrt(
+                1.0 + matrix[0, 0] - matrix[1, 1] - matrix[2, 2]
+            ) * 2.0
+            quaternion = np.array(
+                (
+                    (matrix[2, 1] - matrix[1, 2]) / scale,
+                    0.25 * scale,
+                    (matrix[0, 1] + matrix[1, 0]) / scale,
+                    (matrix[0, 2] + matrix[2, 0]) / scale,
+                )
+            )
+        elif axis == 1:
+            scale = math.sqrt(
+                1.0 + matrix[1, 1] - matrix[0, 0] - matrix[2, 2]
+            ) * 2.0
+            quaternion = np.array(
+                (
+                    (matrix[0, 2] - matrix[2, 0]) / scale,
+                    (matrix[0, 1] + matrix[1, 0]) / scale,
+                    0.25 * scale,
+                    (matrix[1, 2] + matrix[2, 1]) / scale,
+                )
+            )
+        else:
+            scale = math.sqrt(
+                1.0 + matrix[2, 2] - matrix[0, 0] - matrix[1, 1]
+            ) * 2.0
+            quaternion = np.array(
+                (
+                    (matrix[1, 0] - matrix[0, 1]) / scale,
+                    (matrix[0, 2] + matrix[2, 0]) / scale,
+                    (matrix[1, 2] + matrix[2, 1]) / scale,
+                    0.25 * scale,
+                )
+            )
+    return _normalized_quaternion(quaternion, "end-effector orientation")

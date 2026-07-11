@@ -16,6 +16,8 @@ from teleop_targets import (
     TeleopTargets,
     compose_position_targets,
     discover_joint_groups,
+    pose_base_to_world,
+    pose_world_to_base,
 )
 
 
@@ -85,6 +87,49 @@ def test_pose_tracker_clamps_positions_grippers_and_spine():
     assert result.left_gripper == 0.04
     assert result.right_gripper == 0.0
     assert result.spine == 0.85
+
+
+def test_spine_motion_carries_both_base_relative_end_effector_targets():
+    tracker = CartesianTargetTracker(_targets(), limits=_limits())
+
+    raised = tracker.apply(_command(spine_delta=0.1))
+
+    assert raised.spine == pytest.approx(0.5)
+    assert raised.left.position == pytest.approx((0.5, 0.0, 0.8))
+    assert raised.right.position == pytest.approx((0.4, -0.1, 0.7))
+
+
+def test_clamped_spine_motion_only_carries_arms_by_applied_change():
+    initial = _targets()
+    tracker = CartesianTargetTracker(initial, limits=_limits())
+
+    raised = tracker.apply(_command(spine_delta=1.0))
+
+    assert raised.spine == pytest.approx(0.85)
+    assert raised.left.position[2] == pytest.approx(0.8)
+    assert raised.right.position[2] == pytest.approx(0.8)
+
+
+def test_pose_world_base_round_trip_with_negative_ninety_degree_yaw():
+    half = math.sqrt(0.5)
+    root_position = (-4.6, 2.7, 0.0)
+    root_orientation = (half, 0.0, 0.0, -half)
+    world = Pose(
+        position=(-4.6, 1.7, 0.8),
+        orientation_wxyz=(half, 0.0, 0.0, -half),
+    )
+
+    relative = pose_world_to_base(world, root_position, root_orientation)
+    reconstructed = pose_base_to_world(
+        relative, root_position, root_orientation
+    )
+
+    assert relative.position == pytest.approx((1.0, 0.0, 0.8))
+    assert relative.orientation_wxyz == pytest.approx((1.0, 0.0, 0.0, 0.0))
+    assert reconstructed.position == pytest.approx(world.position)
+    assert reconstructed.orientation_wxyz == pytest.approx(
+        world.orientation_wxyz
+    )
 
 
 def test_pose_tracker_accumulates_successive_commands():
