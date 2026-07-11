@@ -69,9 +69,11 @@ class CartesianTargetTracker:
         _validate_finite_scalar("right_gripper", initial.right_gripper)
         _validate_finite_scalar("spine", initial.spine)
         self._limits = limits
+        self._initial_left = _bounded_pose(initial.left, limits)
+        self._initial_right = _bounded_pose(initial.right, limits)
         self._targets = TeleopTargets(
-            left=_bounded_pose(initial.left, limits),
-            right=_bounded_pose(initial.right, limits),
+            left=self._initial_left,
+            right=self._initial_right,
             left_gripper=_clamp(
                 initial.left_gripper,
                 limits.gripper_min,
@@ -105,22 +107,36 @@ class CartesianTargetTracker:
         spine_change = spine - current.spine
         self._targets = TeleopTargets(
             left=_apply_pose_delta(
-                current.left,
+                self._initial_left if command.reset_arms else current.left,
                 _with_vertical_translation(command.left_pose, spine_change),
                 limits,
             ),
             right=_apply_pose_delta(
-                current.right,
+                self._initial_right if command.reset_arms else current.right,
                 _with_vertical_translation(command.right_pose, spine_change),
                 limits,
             ),
             left_gripper=_clamp(
-                current.left_gripper + command.left_gripper_delta,
+                (
+                    limits.gripper_min
+                    if current.left_gripper
+                    > (limits.gripper_min + limits.gripper_max) / 2.0
+                    else limits.gripper_max
+                )
+                if command.toggle_left_gripper
+                else current.left_gripper + command.left_gripper_delta,
                 limits.gripper_min,
                 limits.gripper_max,
             ),
             right_gripper=_clamp(
-                current.right_gripper + command.right_gripper_delta,
+                (
+                    limits.gripper_min
+                    if current.right_gripper
+                    > (limits.gripper_min + limits.gripper_max) / 2.0
+                    else limits.gripper_max
+                )
+                if command.toggle_right_gripper
+                else current.right_gripper + command.right_gripper_delta,
                 limits.gripper_min,
                 limits.gripper_max,
             ),
@@ -371,6 +387,31 @@ def compose_position_targets(
                 per_environment_scalar=per_environment_scalar,
             )
     return result
+
+
+def position_target_subset(
+    full_targets,
+    groups: JointGroups,
+):
+    """Return position targets for non-base joints only.
+
+    Steering is commanded separately and drive wheels use velocity control, so
+    neither belongs in a full-body position action.
+    """
+    import torch
+
+    if not isinstance(full_targets, torch.Tensor):
+        raise TypeError("full_targets must be a torch.Tensor")
+    if full_targets.ndim != 2:
+        raise ValueError("full_targets must have shape (envs, joints)")
+    joint_ids = (
+        groups.left_arm
+        + groups.right_arm
+        + groups.left_gripper
+        + groups.right_gripper
+        + groups.spine
+    )
+    return full_targets[:, list(joint_ids)], joint_ids
 
 
 def _apply_pose_delta(

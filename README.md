@@ -326,30 +326,36 @@ Task3 is a four-stage feeding task:
 4. Clean Up: return all utensils to the Kitchen Area and place them inside the
    designated sink region, marked by the black tap area.
 
-Launch the keyboard-controlled Task3 demo from the host with the Isaac Lab
-container:
+Launch the keyboard-controlled Task3 Lula-IK demo from the host. Start its
+Isaac Lab container first:
+
+```bash
+docker compose --env-file docker/.env.base -f docker/docker-compose.yaml \
+  --profile isaac-lab-2.3.2 up -d isaac-lab-2-3-2
+```
+
+Then run the launcher:
 
 ```bash
 docker exec -it isaac-lab-2-3-2-workshop bash -lc \
   'cd /workspace/EBiM_Challenge && python scripts/scenes/scene_robot_room_keyboard.py --task task3'
 ```
 
-Task3 starts in base mode. The keyboard controls are:
+The Isaac Lab and plain Isaac Sim launchers share this direct keyboard map:
 
-- `1`: select base mode; `W/S` move forward/back, `A/D` strafe, and `Q/E` or
-  Left/Right Arrow rotate.
-- `2`: select the left arm; `3`: select the right arm.
-- In either arm mode, `W/S`, `A/D`, and `Q/E` translate the selected end
-  effector along robot-base X, Y, and Z. `I/K`, `J/L`, and `U/O` rotate it
-  about base-frame roll, pitch, and yaw.
-- `Z/X`: open/close the left gripper; `C/V`: open/close the right gripper.
-- `R/F`: raise/lower the spine. `Esc` or `Ctrl+C` exits.
+- Left arm: `W/S`, `A/D`, `Q/E` translate X/Y/Z; `Z/X`, `T/G`, `C/V` rotate
+  roll/pitch/yaw; `F` toggles the gripper.
+- Right arm: `O/L`, `K/;`, `I/P` translate X/Y/Z; `N/M`, `U/J`, `,/.` rotate
+  roll/pitch/yaw; `'` toggles the gripper.
+- Hold `Shift` for the mobile base: `H/N` forward/back, `B/M` left/right, and
+  `G/J` rotate counter-clockwise/clockwise. These overlapping arm rotation
+  keys are suppressed while the modifier is held.
+- `R` resets both arm targets. `Esc` or `Ctrl+C` exits.
 
-Mode keys are edge-triggered, while motion keys are continuous and scaled by
-simulation time. Cartesian targets are stored in the moving robot-base frame,
-so moving or rotating the mobile base carries both end-effector targets with
-it. Raising the spine also carries both targets vertically instead of forcing
-the arms to compensate.
+Motion keys are continuous and scaled by simulation time. Cartesian targets
+are stored in the moving robot-base frame, so moving or rotating the mobile
+base carries both end-effector targets with it. The mobile-base defaults are
+set to `0.25 m/s` translation and `0.75 rad/s` yaw.
 
 `task3` enables keyboard control by default. To load the scene as a passive
 Isaac Sim viewer instead, pass `--no-keyboard-control`; in that mode, click
@@ -392,6 +398,33 @@ the last bounded direct target rather than silently falling back to an old
 Cartesian target. Future source arbitration must explicitly release that
 arm's direct ownership and reseed its Cartesian tracker before IK takeover;
 arbitration otherwise remains upstream of the winning command.
+
+For an isolated **plain Isaac Sim 5.1** dual-arm RMPflow demo (no Isaac Lab),
+start the plain Isaac Sim container:
+
+```bash
+docker compose --env-file docker/.env.base -f docker/docker-compose.yaml \
+  --profile isaac-sim-5.1.0 up -d isaac-sim-5-1-0
+```
+
+Then run the separate entry point:
+
+```bash
+docker exec -it isaac-sim-5-1-0-workshop bash -lc \
+  'cd /workspace/EBiM_Challenge && /isaac-sim/python.sh scripts/scenes/scene_robot_room_rmpflow.py'
+```
+
+This executable builds the same Task 3 robot room and Franka-hand robot USD,
+then uses two independent RMPflow policies with Kit-window keyboard control.
+Run it separately from `scene_robot_room_keyboard.py`; the two runtimes do not
+share an articulation or controller. `--headless` loads and steps the plain
+Isaac Sim scene but intentionally disables arm keyboard teleoperation. This
+isolated demo has no ROS/GELLO dependency. Hold `Shift` for mobile-base
+control: `H/N` forward/backward, `B/M` left/right, and `G/J`
+counter-clockwise/clockwise. The modifier prevents these keys from also
+commanding the overlapping arm rotations. Its default base speeds are `0.25
+m/s` and `0.75 rad/s`; override them with `--base-linear-speed` and
+`--base-angular-speed` only after confirming the robot remains stable.
 
 #### Task3 Grading Unit Tests
 

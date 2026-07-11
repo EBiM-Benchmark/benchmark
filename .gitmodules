@@ -1,8 +1,7 @@
-# Placeholder submodule definition for future extraction of the Franka robot description package.
-# Replace the URL with the chosen upstream repository before running `git submodule add`.
+# Fork containing the mobile FR3 USD used by the Task 3 launchers.
 [submodule "third_party/franka_description"]
 	path = third_party/franka_description
-	url = https://github.com/frankarobotics/franka_description.git
+	url = https://github.com/HCIS-Lab/franka_description.git
 [submodule "newton"]
 	path = newton
 	url = https://github.com/newton-physics/newton.git

@@ -15,6 +15,7 @@ MAX_WHEEL_SPEED_RADPS = 18.0
 STOP_EPS = 1.0e-4
 STEERING_FULL_SPEED_ERROR_RAD = math.radians(8.0)
 STEERING_ZERO_SPEED_ERROR_RAD = math.radians(35.0)
+MIN_STEERING_ALIGNMENT_SCALE = 0.2
 HEADING_HOLD_KP = 2.0
 HEADING_HOLD_KD = 0.35
 MAX_HEADING_COMP_RADPS = 0.8
@@ -126,7 +127,12 @@ def compute_drive_targets(
         use_flipped = torch.abs(flipped_delta) < torch.abs(direct_delta)
         steering_delta = torch.where(use_flipped, flipped_delta, direct_delta)
 
-        steering_targets[:, module_index] = current_angle + steering_delta
+        # PhysX reduced-coordinate revolute drives reject targets outside
+        # [-2π, 2π].  These steering joints are continuous, so command the
+        # equivalent wrapped angle instead of allowing turns to accumulate.
+        steering_targets[:, module_index] = _wrap_to_pi(
+            current_angle + steering_delta
+        )
 
         wheel_speed = torch.full_like(
             current_angle, speed_mps / WHEEL_RADIUS_M
@@ -190,8 +196,8 @@ def _wrap_to_pi_scalar(angle: float) -> float:
 
 
 def _steering_alignment_scale(error: torch.Tensor) -> torch.Tensor:
-    """Fade wheel speed down while the steering module is still turning."""
+    """Slow down, but do not fully stall, while the module turns."""
     scale = (STEERING_ZERO_SPEED_ERROR_RAD - error) / (
         STEERING_ZERO_SPEED_ERROR_RAD - STEERING_FULL_SPEED_ERROR_RAD
     )
-    return torch.clamp(scale, min=0.0, max=1.0)
+    return torch.clamp(scale, min=MIN_STEERING_ALIGNMENT_SCALE, max=1.0)

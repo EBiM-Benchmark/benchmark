@@ -1276,6 +1276,20 @@ def measured_position_targets(robot: Any) -> Any:
     return robot.data.joint_pos.detach().clone()
 
 
+def reset_robot_to_default_state(robot: Any, env_origins: Any) -> None:
+    """Write the configured Isaac Lab initial state into PhysX."""
+    root_state = robot.data.default_root_state.clone()
+    root_state[:, :3] += env_origins
+    joint_positions = robot.data.default_joint_pos.clone()
+    joint_velocities = robot.data.default_joint_vel.clone()
+
+    robot.write_root_pose_to_sim(root_state[:, :7])
+    robot.write_root_velocity_to_sim(root_state[:, 7:])
+    robot.write_joint_state_to_sim(joint_positions, joint_velocities)
+    robot.set_joint_position_target(joint_positions)
+    robot.set_joint_velocity_target(joint_velocities)
+
+
 def robot_root_world_pose(
     robot: Any,
 ) -> tuple[tuple[float, ...], tuple[float, ...]]:
@@ -1385,6 +1399,7 @@ class PynputKeyboardTeleop:
 
         if key_name is None:
             return
+        key_name = normalize_keyboard_event_input(key_name)
         if add:
             self.pressed.add(key_name)
         else:
@@ -1452,6 +1467,10 @@ def normalize_keyboard_event_input(key_input: Any) -> str | None:
         "key_1": "1",
         "key_2": "2",
         "key_3": "3",
+        "left_shift": "shift",
+        "right_shift": "shift",
+        "shift_l": "shift",
+        "shift_r": "shift",
     }
     return aliases.get(key_name, key_name)
 
@@ -1476,9 +1495,9 @@ def create_keyboard_teleop() -> Any:
         return KitKeyboardTeleop(carb.input, omni.appwindow)
 
 
-def print_keyboard_control_help(control_help: str, mode: Any) -> None:
+def print_keyboard_control_help(control_help: str) -> None:
     print("\n" + "=" * 80)
-    print(f"Keyboard robot control enabled (mode: {mode.value})")
+    print("Keyboard robot control enabled (direct dual-arm + Shift base map)")
     print("=" * 80)
     print(control_help)
     print("  ESC     stop keyboard listener and exit")
@@ -1550,6 +1569,7 @@ def _run_keyboard_control_app(
         discover_joint_groups,
         pose_base_to_world,
         pose_world_to_base,
+        position_target_subset,
     )
     from tmr_base_control import (
         compensate_yaw_rate,
@@ -1564,6 +1584,9 @@ def _run_keyboard_control_app(
 
     enable_ros2_bridge(simulation_app, args)
 
+    # TODO: Improve the interactive real-time factor (and perceived arm speed)
+    # by profiling the synchronous dual-arm IK loop and decimating IK/control
+    # or rendering updates without changing the commanded physical velocities.
     sim_cfg = sim_utils.SimulationCfg(
         dt=0.005,
         device=args.device,
@@ -1607,6 +1630,10 @@ def _run_keyboard_control_app(
     print("Scene reset complete.", flush=True)
 
     robot = scene["robot"]
+    print("Writing configured robot initial state to PhysX...", flush=True)
+    reset_robot_to_default_state(robot, scene.env_origins)
+    scene.write_data_to_sim()
+    print("Configured robot initial state ready.", flush=True)
     print(
         f"Robot joints ({len(robot.joint_names)}): {robot.joint_names}",
         flush=True,
@@ -1687,7 +1714,6 @@ def _run_keyboard_control_app(
     )
     mapper = KeyboardTeleopMapper()
     direct_joint_latch = DirectJointTargetLatch()
-    displayed_mode = mapper.mode
     print("Dual-arm Lula controller ready.", flush=True)
     print("Reading root yaw...", flush=True)
     heading_hold_yaw = get_root_yaw(robot)
@@ -1697,7 +1723,7 @@ def _run_keyboard_control_app(
     print("Keyboard teleop backend ready.", flush=True)
     print(f"Active steering joints: {steering_indices}", flush=True)
     print(f"Active drive joints: {drive_indices}", flush=True)
-    print_keyboard_control_help(control_help(), mapper.mode)
+    print_keyboard_control_help(control_help())
 
     count = 0
     listener_started = False
@@ -1712,9 +1738,6 @@ def _run_keyboard_control_app(
             )
             command = safe_command(command, now=now, timeout=0.25)
             command = clamp_direct_joint_command(command, robot, joint_groups)
-            if mapper.mode is not displayed_mode:
-                displayed_mode = mapper.mode
-                print(f"Control mode: {displayed_mode.value}", flush=True)
 
             vx, vy, wz_cmd = command.base_twist
             wz, heading_hold_yaw = compensate_yaw_rate(
@@ -1758,7 +1781,13 @@ def _run_keyboard_control_app(
                 right_gripper=targets.right_gripper,
                 spine=targets.spine,
             )
-            robot.set_joint_position_target(position_targets)
+            arm_position_targets, arm_position_joint_ids = (
+                position_target_subset(position_targets, joint_groups)
+            )
+            robot.set_joint_position_target(
+                arm_position_targets,
+                joint_ids=arm_position_joint_ids,
+            )
 
             steering_pos_targets, drive_vel_targets = compute_drive_targets(
                 robot,
