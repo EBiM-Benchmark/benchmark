@@ -19,8 +19,13 @@ cd EBiM_Benchmark_task1
 ```
 
 Keyboard by default; add `--input gamepad` or `--input vr` for other
-devices. Details, other input devices, and eval mode below.
+devices. Details and other input devices below.
 
+Prefer not installing anything natively? See
+[Docker teleop](#other-ways-to-run-it) for a Docker-based alternative
+(native Linux only).
+
+<!-- EVAL SECTION HIDDEN (pending mnet meeting) — restore by unwrapping.
 > **Eval mode is temporarily on hold.** This README currently documents
 > practice mode only (`--input keyboard|gamepad|vr|gello|ros_teleop`, no
 > `--mnet`); scored evaluation (`--mnet`, `local_test`/`submission`) is
@@ -28,6 +33,7 @@ devices. Details, other input devices, and eval mode below.
 > ManipulationNet team. The original instructions are kept in the source
 > as HTML comments (search for `EVAL SECTION HIDDEN`) and will come back
 > once that's resolved.
+-->
 
 Task 1 teleoperates a mobile dual-arm Franka FR3 platform (Robotiq 2F-85
 grippers on a planar-drive base with a vertical spine) to route a deformable
@@ -78,6 +84,7 @@ Two independent choices determine how you run it:
 | | Windows | Ubuntu |
 |---|---|---|
 | Practice | ✅ | ✅ |
+| Eval | coming soon | coming soon |
 
 <!-- EVAL SECTION HIDDEN (pending mnet meeting) — restore by unwrapping.
 | Eval test (`local_test`) | ✅ | ✅ |
@@ -92,7 +99,8 @@ the OS sections below for exact commands and per-input-device detail.
 ```
 your OS
 ├── Windows ── practice (no ROS) ── all via start.bat, no Docker required
-└── Ubuntu   ── practice (no ROS) ── all via start.sh, no Docker required
+└── Ubuntu   ── practice ── docker-run.sh (Docker, one command, recommended)
+                            or start.sh (native conda, no Docker)
 
     every branch ends the same way:
     --input keyboard | gamepad | vr | gello | ros_teleop
@@ -220,24 +228,51 @@ See [registration + connection_test](#registration--connection_test-before-a-rea
 |---|---|
 | Keyboard | ✅ |
 | Gamepad | ✅ |
-| VR | ⚠️ |
+| VR | ✅ via Docker + WiVRn |
 | GELLO¹ | ⚠️ in progress |
-| ros_teleop¹ | ⚠️ |
+| ros_teleop¹ | ✅ |
 
 ✅ verified · ⚠️ not yet verified. ¹ needs ROS 2 even in practice.
 
-**Setup once**: nothing for practice (`start.sh` bootstraps its own conda
-env on first run).
+### Docker — one command, nothing to install
 
-**Practice** (no ROS):
+The recommended path on Ubuntu: every input device below runs from a
+single self-building image. **Setup once**: Docker Engine + Compose v2
+(and, if you have an NVIDIA GPU, nvidia-container-toolkit — detected and
+used automatically). `xhost` display access, gamepad passthrough and GPU
+passthrough are all handled for you; the first run builds the image
+(several minutes), after that every start is seconds and picks up a
+`git pull` automatically.
+
+```bash
+./docker-run.sh                          # keyboard (default)
+./docker-run.sh --input gamepad          # gamepad
+./docker-run.sh --input vr               # VR: WiVRn (Flathub) running + headset connected
+./docker-run.sh --input ros_teleop       # ROS 2 teleop; 2nd terminal:
+./docker-run.sh publisher keyboard       #   (or gamepad / vr)
+```
+
+More detail (self-tests, image rebuilds): [Other ways to run it](#other-ways-to-run-it).
+
+### Native (conda, no Docker)
+
+**Setup once**: nothing (`start.sh` bootstraps its own conda env on first
+run).
 
 ```bash
 ./start.sh                     # keyboard (default)
 ./start.sh --input gamepad
 ```
 
-<!-- COMMAND HIDDEN (VR on Ubuntu not yet verified - see the capability
-matrix. Restore once confirmed working: ./start.sh --input vr -->
+VR on Ubuntu goes through Docker on purpose — the Flathub WiVRn client
+library needs a newer glibc than some hosts have (e.g. Ubuntu 20.04); the
+container ships the right one. See [Troubleshooting](#troubleshooting).
+
+<!-- COMMAND HIDDEN (native ./start.sh --input vr not yet verified - it
+should work on hosts with glibc >= 2.33 (Ubuntu 22.04+), but the only
+Ubuntu machine tested so far was 20.04, where the Flathub WiVRn client
+library cannot be loaded natively at all. Restore once confirmed working:
+./start.sh --input vr -->
 
 <!-- EVAL SECTION HIDDEN (pending mnet meeting) — restore by unwrapping.
 Original table (three more columns) and eval/submission instructions:
@@ -252,12 +287,12 @@ Original table (three more columns) and eval/submission instructions:
 
 ✅ verified · ⚠️ not yet verified. ¹ needs ROS 2 even in practice (every
 other row needs it only for eval test/submission) · ² VR can't enter a
-container — use the native path below instead of `eval.sh`.
+container — use the native path below instead of Docker.
 
 Eval/submission need Docker Engine + Compose v2 and,
 for the evidence camera's 25 fps minimum, **native Linux with a real GPU**
-(nvidia-container-toolkit) — nothing else to set up, `eval.sh` builds its
-own image on first run. No Docker at all?
+(nvidia-container-toolkit) — nothing else to set up, `docker-run.sh`
+builds its image on first run. No Docker at all?
 
 ```bash
 ./setup_eval.sh
@@ -267,25 +302,23 @@ sets up the fully native ROS 2 path in one shot (what it does, and how to
 redo the steps by hand, is in the
 [Docker-free appendix](#appendix--ubuntu-docker-free-eval)).
 
-**Eval test** (`local_test` — unlimited, nothing is submitted). Docker
-bakes the input device into which script you run (no `--input` flag here):
+**Eval test** (`local_test` — unlimited, nothing is submitted): same
+`docker-run.sh` as practice, plus the `--mnet` flag:
 
 ```bash
-xhost +local:docker            # once per login session
-./eval.sh sim                  # keyboard
-# or: ./eval.sh gamepad
+./docker-run.sh --input keyboard --mnet    # or gamepad
 ```
 
 second terminal:
 
 ```bash
-./eval.sh client
+./docker-run.sh client
 ```
 
 Full walkthrough: see [Quick start — Docker eval (Ubuntu), step by step](#quick-start--docker-eval-ubuntu-step-by-step).
-VR and GELLO can't go through `eval.sh` (VR needs direct host device
-access; there's no dedicated compose service for GELLO yet) — run the sim
-half natively instead, client still via `./eval.sh client`:
+VR and GELLO can't run inside the container (VR needs direct host device
+access; GELLO needs the serial device) — run the sim half natively
+instead, client still via `./docker-run.sh client`:
 
 ```bash
 python main.py --input vr --mnet      # or gello — see the Docker-free appendix for the native ROS setup
@@ -385,9 +418,9 @@ Splits teleoperation into two processes connected by ROS 2 topics: a
 **publisher node** reads the physical device and publishes device-agnostic
 Cartesian commands; the sim (`--input ros_teleop`) subscribes and applies
 them through the exact same IK/grasp/base-drive code the local modes use.
-Use it when the device and the sim must live in different processes,
-containers, or machines. Two publishers ship in `teleop_ros2/`
-(keyboard and gamepad); both are baked into the eval image:
+Use it when the device and the sim must live in different processes or
+containers. Three publishers ship in `teleop_ros2/`
+(keyboard, gamepad, VR); all are baked into the eval image:
 
 ```bash
 # terminal 1: the sim as consumer
@@ -395,86 +428,92 @@ python main.py --input ros_teleop
 # terminal 2: a publisher (device attached to THIS machine)
 ros2 run keyboard_teleop_publisher keyboard_teleop_publisher
 # or: ros2 run gamepad_teleop_publisher gamepad_teleop_publisher
+# or: ros2 run vr_teleop_publisher vr_teleop_publisher   (headset + OpenXR runtime here)
 # no device handy? each publisher has a scripted self-test: --pattern 60
+```
+
+Or via Docker (one click, publishers included in the image):
+
+```bash
+./docker-run.sh --input ros_teleop       # terminal 1
+./docker-run.sh publisher vr             # terminal 2 (or keyboard / gamepad)
 ```
 
 Topic contract: `/cmd_vel` (`geometry_msgs/Twist`, base — REP-103
 `base_link` frame, `linear.z` repurposed for the spine lift rate),
 `<side>/teleop_cmd` (`geometry_msgs/Twist`, per-arm Cartesian TCP twist),
-`<side>/gripper_cmd` (`std_msgs/Float32`, >0.5 = close intent). `/cmd_vel`
-matches the topic EBiM_Challenge's own Isaac Sim test commands already use.
-GELLO is intentionally not part of this contract — it stays joint-space and
-IK-free (`--input gello` above). Note: contact rumble/haptics only exist in
-the local modes; the ROS contract has no haptic feedback channel yet.
+`<side>/gripper_cmd` (`std_msgs/Float32`, >0.5 = close intent),
+`<side>/vr_hand` (`std_msgs/Float32MultiArray`, raw VR controller state
+per **hand**). `/cmd_vel` matches the topic EBiM_Challenge's own Isaac Sim
+test commands already use. GELLO is intentionally not part of this
+contract — it stays joint-space and IK-free (`--input gello` above).
 
-Both publishers poll their device continuously (Windows: `GetAsyncKeyState`
-for the keyboard, SDL for the gamepad; Linux: X11 `query_keymap` for the
-keyboard) and drive base/arm motion through the exact same screen-relative
-frame math the local input modes use, fed by the sim's
-`/mujoco/teleop_feedback` (camera azimuth + robot yaw, 30 Hz) — so direction
-feel is identical to driving locally.
+The keyboard/gamepad publishers poll their device continuously (Windows:
+`GetAsyncKeyState` for the keyboard, SDL for the gamepad; Linux: X11
+`query_keymap` for the keyboard) and drive base/arm motion through the
+exact same screen-relative frame math the local input modes use, fed by
+the sim's `/mujoco/teleop_feedback` (camera azimuth + robot yaw, 30 Hz) —
+so direction feel is identical to driving locally.
+
+The VR publisher goes one step further: it carries **no motion semantics
+at all** — it streams raw controller poses/buttons, and the sim runs its
+local VR mode's own clutch/servo/mirroring code against them (grip to move
+the mapped arm, trigger/A for the gripper, sticks for the base; `--facing`
+and `--vr-scale` work exactly like `--input vr`). It needs an active
+OpenXR runtime where it runs (Quest Link on Windows, WiVRn on Linux).
 
 **Verification status**: the full chain (publisher → topics → sim) has been
-verified end-to-end with the publishers' `--pattern` synthetic self-test
-and with real keyboard/gamepad hardware on Windows. Real devices on
-Ubuntu are in community testing — reports welcome.
+verified end-to-end with the publishers' `--pattern` synthetic self-tests
+and with real hardware: keyboard and gamepad on Windows (native) and on
+Ubuntu (Docker), VR headset (WiVRn) on Ubuntu (Docker).
 
 <!-- EVAL SECTION HIDDEN (pending mnet meeting) — restore by removing this
 comment wrapper (and its matching closing marker further down).
 
 ## Quick start — Docker eval (Ubuntu), step by step
 
-1. Once per login session (native Linux):
+1. **Terminal 1 — simulator + eval bridge** (the first run builds the
+   image from source, several minutes; `xhost` access is handled for you):
 
    ```bash
-   xhost +local:docker
-   ```
-
-2. **Terminal 1 — simulator + eval bridge** (the first run builds the
-   image from source, several minutes):
-
-   ```bash
-   ./eval.sh sim
+   ./docker-run.sh --input keyboard --mnet
    ```
 
    A viewer window opens — **this is the robot you will drive**. Ready
    when the log shows `[mnet] bridge up: camera ...`.
 
-3. **Terminal 2 — the official client**; pick `cable_management` →
+2. **Terminal 2 — the official client**; pick `cable_management` →
    `local_test` in its menu:
 
    ```bash
-   ./eval.sh client
+   ./docker-run.sh client
    ```
 
    `mnet_client-ros_2/config/team_config.json` ships pre-filled for local
    testing — no registration, nothing to edit.
 
-4. **Let the tiers advance**: tiers other than Tier 2 are skipped
+3. **Let the tiers advance**: tiers other than Tier 2 are skipped
    automatically. When Tier 2 starts, the board fixtures rearrange
    (randomized per the client's coordinates) and the cable is re-laid.
 
-5. **Type the one-time code**: when the client prints it, switch to
+4. **Type the one-time code**: when the client prints it, switch to
    **terminal 1** and type `code <TEXT>`. The code appears on the plate
    next to the board, inside the evidence camera's frame.
 
-6. **Do the task**: click into the viewer window and route the cable with
+5. **Do the task**: click into the viewer window and route the cable with
    the keyboard — `7/8/9` select base/left/right, arrows move,
    `G`/`V` close/open the gripper (full list under [Controls](#controls)).
    When done, press `F` in the viewer to report completion. Remaining
    tiers auto-skip and the client finishes on its own.
 
-7. **Collect results**: video and logs are in
+6. **Collect results**: video and logs are in
    `robotiq_duo_full_scene_minimal_core/release/mnet_out/` — scoring uses
    the fixed overhead evidence camera, not your viewer perspective. Shut
-   everything down with `./eval.sh down`.
+   everything down with `./docker-run.sh down`.
 
-**Evaluating with a gamepad** (native Linux Docker only): plug the pad in
-and replace step 2 with
-
-```bash
-./eval.sh gamepad          # terminal 2 stays ./eval.sh client
-```
+**Evaluating with a gamepad**: plug the pad in and replace step 1's
+`--input keyboard` with `--input gamepad` (terminal 2 stays
+`./docker-run.sh client`).
 
 ### Registration + `connection_test` before a real submission
 
@@ -500,23 +539,30 @@ rate-limited — see the [mnet docs](https://mnet-client.readthedocs.io/)).
 
 ## Other ways to run it
 
-**Docker teleop without ROS** (`docker-run.sh`, native Linux) — a third
-practice option: same image as `eval.sh` but ROS-free and smaller, for
-driving the sim without installing conda/mujoco natively at all (see
-[RELEASE.md](robotiq_duo_full_scene_minimal_core/RELEASE.md) for how it
-compares to the eval image):
+**Docker teleop** (`docker-run.sh`, native Linux) — driving the sim without
+installing conda/mujoco natively at all. One image covers keyboard, gamepad
+and `ros_teleop`; gamepad (`/dev/input`) and GPU passthrough are detected
+and enabled automatically, and the image is rebuilt incrementally before
+every start so a `git pull` is picked up without any extra step:
 
 ```bash
-./docker-run.sh                    # keyboard (default)
-./docker-run.sh --input gamepad    # gamepad (native Linux only)
-./docker-run.sh --no-viewer        # headless self-check
-./docker-run.sh build              # rebuild the image only
+./docker-run.sh                          # keyboard (default)
+./docker-run.sh --input gamepad          # gamepad
+./docker-run.sh --input vr               # VR — WiVRn on the host, auto-detected
+./docker-run.sh --input ros_teleop       # sim consuming ROS 2 teleop topics,
+./docker-run.sh publisher keyboard       #   with the publisher in a 2nd terminal
+./docker-run.sh --no-viewer              # headless self-check
+./docker-run.sh build                    # rebuild the image only
 ```
 
-Two things cannot work inside any container, by nature of what they need:
-**gamepad** requires `/dev/input` passthrough (native Linux Docker only —
-uncomment the `devices:` line in `release/compose.yaml`), and **VR**
-requires direct host device/driver access — practice VR natively.
+**VR in Docker** works when the host runs [WiVRn](https://github.com/WiVRn/WiVRn)
+(Flathub) with the headset connected: the headset is a streamed device, so
+the sim only needs WiVRn's IPC socket, which `docker-run.sh` passes through
+automatically. This is also the only VR path on hosts whose glibc is too
+old for the Flathub WiVRn client library (e.g. Ubuntu 20.04) — see
+[Troubleshooting](#troubleshooting). **Quest Link / SteamVR** setups and
+**GELLO** cannot run inside any container (direct host device/driver
+access) — use `start.sh` natively for those.
 
 **Self-testing without ROS**:
 
@@ -534,8 +580,7 @@ robotiq_duo_full_scene_minimal_core/   simulator (entry: main.py, code: teleop/)
 mnet_client-ros_2/                     official ManipulationNet ROS 2 client (vendored)
 teleop_ros2/                           ROS 2 teleop publisher packages (keyboard, gamepad)
 start.bat / start.sh                   native practice launchers (Windows / Ubuntu)
-eval.sh                                scored ManipulationNet evaluation (Docker + ROS 2)
-docker-run.sh                          ROS-free Docker teleop (installation-free practice)
+docker-run.sh                          Docker teleop, one image (installation-free)
 setup_eval.bat / setup_eval.sh         one-click Docker-free eval setup (Windows / Ubuntu)
 ros_native.bat                         Windows ROS 2 (RoboStack) command wrapper (see appendix)
 ```
@@ -556,43 +601,36 @@ ros_native.bat                         Windows ROS 2 (RoboStack) command wrapper
 
 <!-- EVAL SECTION HIDDEN (pending mnet meeting) — restore by re-inserting
 this row after `--input`:
-| `--mnet` | start the ManipulationNet eval bridge (needs ROS 2; `eval.sh sim` does this for you) |
+| `--mnet` | start the ManipulationNet eval bridge (needs ROS 2; via Docker just add it to `./docker-run.sh`) |
 -->
 
-## Building the Docker images
+## Building the Docker image
 
-Distribution is by `git clone`: the images are **built locally from this
+Distribution is by `git clone`: the image is **built locally from this
 repo**, there is nothing to pull from a registry. Normally you never do
-this by hand — `./docker-run.sh` builds its image on first use
-(`./docker-run.sh build` forces a rebuild).
+this by hand — `./docker-run.sh` rebuilds it incrementally before every
+sim start (a no-op in seconds when nothing changed; `./docker-run.sh
+build` builds without starting anything).
 
 To build manually:
 
 ```bash
-# ROS-free practice image (smaller; keyboard/gamepad teleop only)
-docker compose -f robotiq_duo_full_scene_minimal_core/release/compose.yaml build runtime
+docker compose -f robotiq_duo_full_scene_minimal_core/release/compose.yaml build sim
 ```
 
 The first build downloads the base image and Python wheels (several
 minutes); later builds reuse the cache and only re-copy changed sources.
 
-<!-- EVAL SECTION HIDDEN (pending mnet meeting) — restore by unwrapping.
-Original intro also said "... `./eval.sh sim` rebuilds its image
-incrementally on every start (code changes are picked up automatically),
-and ..." before "`./docker-run.sh` builds its image on first use".
-Original build block also had this entry above the runtime one:
-# evaluation image (ROS 2 Humble + official mnet client + simulator, ~3.7 GB)
-docker compose -f robotiq_duo_full_scene_minimal_core/release/compose.yaml build sim
--->
-
 <!-- EVAL SECTION HIDDEN (pending mnet meeting) — restore by removing this
-comment wrapper (and its matching closing marker further down).
+comment wrapper (and its matching closing marker further down, right
+before "## Troubleshooting").
 
 ## Appendix — Ubuntu Docker-free eval
 
 Community testing, **unverified** (no Ubuntu host was available to test
 this on — report back before treating it as verified). The standard scored
-path is Docker (`eval.sh`); if you cannot use Docker at all:
+path is Docker (`docker-run.sh` with `--mnet`); if you cannot use Docker
+at all:
 
 ```bash
 ./setup_eval.sh
@@ -631,10 +669,10 @@ ln -sfn "$(pwd)/teleop_ros2/gamepad_teleop_publisher" ros_ws/src/gamepad_teleop_
 ( cd ros_ws && colcon build )
 ```
 
-Then the same `team_config.json` `file_dir` fix as Windows (see the
-[registration section](#registration--connection_test-before-a-real-submission)
-below for why this goes through Python, not a shell redirect) — `setup_eval.sh`
-does this automatically via the shared
+Then the same `team_config.json` `file_dir` fix as Windows (a plain-text
+editor or Python, not a shell redirect — PowerShell's `Out-File`/
+`Set-Content` add a BOM that breaks the client's JSON parsing) —
+`setup_eval.sh` does this automatically via the shared
 [`mnet_client_postpatch.py`](robotiq_duo_full_scene_minimal_core/release/mnet_client_postpatch.py).
 
 ### Running the eval
@@ -759,7 +797,8 @@ cd ros_ws & ..\ros_native.bat colcon build --merge-install & cd ..
 7. **Collect results**: video and logs land in the `file_dir` you set in
    `team_config.json` during setup — scoring uses the fixed overhead
    evidence camera, not your viewer perspective. Close both terminal
-   windows (or Ctrl+C) to shut down; there is no `eval.sh down` step here.
+   windows (or Ctrl+C) to shut down; there is no `docker-run.sh down`
+   step here.
 
 For an **official submission**, see
 [registration + connection_test](#registration--connection_test-before-a-real-submission)
@@ -773,15 +812,15 @@ above — same steps, just prefix each `ros2` command with `ros_native.bat`.
   held keys will cut out; the message names the cause. Usually python-xlib
   is missing (the launcher auto-installs it on the next run) or the session
   has no X server.
+<!-- EVAL SECTION HIDDEN (pending mnet meeting) — restore by unwrapping these
+troubleshooting entries back into the visible list above:
 - **`[mnet] WARNING: evidence camera publishing at N fps`** — the camera process
   cannot reach the client's 25 fps minimum (it will refuse the session).
   Typical cause: a container without GPU access. On a Linux host
-  with nvidia-container-toolkit, `eval.sh` merges the GPU overlay
+  with nvidia-container-toolkit, `docker-run.sh` merges the GPU overlay
   (`release/compose.gpu.yaml`) automatically — look for its
   "NVIDIA container runtime detected" line at startup; if it's missing,
-  install the toolkit. (The overlay uses a `deploy:` reservation, which
-  only applies with `compose up` — that's why eval.sh starts the sim
-  detached and attaches your terminal for the `code <TEXT>` input.)
+  install the toolkit.
 - **Client reports low camera FPS while the sim shows none of the warnings
   above** — stale Fast DDS state from previous force-killed runs silently
   degrades delivery (the publisher runs at 30 fps, subscribers receive ~5).
@@ -808,13 +847,25 @@ above — same steps, just prefix each `ros2` command with `ros_native.bat`.
   RoboStack) — another installed program's directory on `PATH` shadows
   RoboStack's DLLs with older same-named copies. Run everything through
   `ros_native.bat`, which rebuilds a minimal `PATH` first.
+-->
 - **`FormFactorUnavailable`** (VR) — the streaming app is not connected or the
   headset is not being worn
-- **"Camera topic has no publishers"** (client) — start `./eval.sh sim` before
-  `./eval.sh client`
+- **VR: `GLIBC_2.3x' not found` or `failed to determine active runtime file
+  path`** (Ubuntu, native `./start.sh --input vr`) — on older hosts (Ubuntu
+  20.04, glibc 2.31) the Flathub WiVRn client library and parts of pyopenxr
+  need a newer glibc than the OS has; no environment tweak fixes that. Use
+  `./docker-run.sh --input vr` instead — the sim runs in a 22.04 container
+  and reaches WiVRn through its IPC socket, which `docker-run.sh` passes
+  through automatically.
+<!-- EVAL SECTION HIDDEN (pending mnet meeting) — restore by unwrapping:
+- **"Camera topic has no publishers"** (client) — start the sim (with
+  `--mnet`) before `./docker-run.sh client`
+-->
 - **No window from Docker on native Linux** — run `xhost +local:docker` once
   per session
+<!-- EVAL SECTION HIDDEN (pending mnet meeting) — restore by unwrapping:
 - Scoring uses the overhead evidence camera, not your viewer perspective
+-->
 
 ## License & attribution
 
