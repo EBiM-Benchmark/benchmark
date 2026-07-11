@@ -32,6 +32,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1 \
     libglu1-mesa \
     libegl1 \
+    libvulkan1 \
     ros-humble-cv-bridge \
     python3-opencv \
  && rm -rf /var/lib/apt/lists/*
@@ -48,7 +49,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN pip3 install --no-cache-dir \
     mujoco==3.9.0 "numpy>=1.24,<2" glfw==2.10.0 pygame==2.6.1 pillow \
     "pydantic>=2,<3" "requests>=2.32" "tqdm>=4.67" \
-    pupil-apriltags pybullet python-xlib
+    pupil-apriltags pybullet python-xlib \
+    pyopenxr==1.1.5301 PyOpenGL==3.1.10
 
 # ---- official mnet client + our teleop publishers (ROS 2 python packages) ----
 # publishers are copied per-package so TELEOP_PKGS_DIR can point at the
@@ -57,6 +59,7 @@ WORKDIR /ws
 COPY ${MNET_DIR} /ws/src/mnet_client
 COPY ${TELEOP_PKGS_DIR}/keyboard_teleop_publisher /ws/src/teleop_ros2/keyboard_teleop_publisher
 COPY ${TELEOP_PKGS_DIR}/gamepad_teleop_publisher /ws/src/teleop_ros2/gamepad_teleop_publisher
+COPY ${TELEOP_PKGS_DIR}/vr_teleop_publisher /ws/src/teleop_ros2/vr_teleop_publisher
 RUN . /opt/ros/humble/setup.sh && colcon build
 
 # ---- the simulator ----

@@ -289,3 +289,14 @@ ROS_TELEOP_GRIPPER_CLOSE_ABOVE = 0.5
 # control authority - all IK/physics stay in the sim.
 ROS_TELEOP_FEEDBACK_TOPIC = "/mujoco/teleop_feedback"
 ROS_TELEOP_FEEDBACK_HZ = 30.0
+# <side>/vr_hand                 std_msgs/Float32MultiArray, 15 floats:
+#   [0] valid  [1:4] pos xyz (m, VR standing space)  [4:8] quat wxyz
+#   [8] grip  [9] trigger  [10] a  [11] b  [12:14] stick xy  [14] stick_click
+# RAW controller state on purpose: the clutch anchor, VR->screen mapping,
+# hand->arm mirroring (--facing), servo gains and gripper edge logic all run
+# in the sim (run_ros_teleop), through the exact same code as local VR mode
+# (run_vr) - so the feel is identical and the publisher stays a dumb device
+# reader like the keyboard/gamepad ones. Namespaces name the HAND here (the
+# sim decides which arm a hand drives), unlike teleop_cmd's arm namespaces.
+ROS_TELEOP_VR_HAND_TOPIC = "vr_hand"
+ROS_TELEOP_VR_HAND_LEN = 15

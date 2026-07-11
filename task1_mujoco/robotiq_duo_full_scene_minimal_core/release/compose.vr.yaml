@@ -1,0 +1,23 @@
+# WiVRn VR passthrough overlay — docker-run.sh merges this file automatically
+# when a Flathub WiVRn install is present on the host (it also exports the
+# WIVRN_* variables interpolated below).
+#
+# Why VR works in a container here: with WiVRn the headset is a streamed
+# device (WiFi/USB), not locally attached hardware. The sim only needs the
+# WiVRn IPC socket (lives in XDG_RUNTIME_DIR), WiVRn's OpenXR client library
+# (the flatpak dir, mounted read-only), and Vulkan (libvulkan1 is in the
+# image; the GPU parts come from the nvidia runtime's graphics capability).
+# Quest Link / SteamVR paths still cannot run in any container — those do
+# need direct host device/driver access.
+#
+# Bonus: this path also sidesteps old-glibc hosts (e.g. Ubuntu 20.04, glibc
+# 2.31) where the Flathub WiVRn client library (needs >=2.33) cannot be
+# loaded by host processes at all — inside the 22.04 image it loads fine.
+services:
+  sim:
+    environment:
+      - XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR}
+      - XR_RUNTIME_JSON=${WIVRN_RUNTIME_JSON}
+    volumes:
+      - ${XDG_RUNTIME_DIR}:${XDG_RUNTIME_DIR}
+      - ${WIVRN_APP_DIR}:${WIVRN_APP_DIR}:ro

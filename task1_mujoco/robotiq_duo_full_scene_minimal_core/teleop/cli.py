@@ -271,6 +271,22 @@ def build_gello_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def add_ros_vr_args(parser: argparse.ArgumentParser) -> None:
+    """VR-over-ROS knobs (vr_hand topics): the clutch/servo runs in the sim
+    through local VR mode's own code, so these mirror add_vr_args' semantics.
+    Backend/hmd-view flags stay out - those belong to the machine running
+    vr_teleop_publisher, not the sim."""
+    g = parser.add_argument_group("vr over ros (vr_teleop_publisher)")
+    g.add_argument("--vr-scale", type=float, default=1.4, help="controller-to-TCP motion scale")
+    g.add_argument(
+        "--facing",
+        choices=("front", "behind"),
+        default="front",
+        help="front (default): operator faces the robot on screen - hands are mirrored to the"
+        " opposite arm and motion follows the screen axes; behind: same-side hands, robot-frame motion",
+    )
+
+
 def build_ros_teleop_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Duo-FR3 full-scene teleop - unified ROS 2 teleop mode "
@@ -286,5 +302,6 @@ def build_ros_teleop_parser() -> argparse.ArgumentParser:
     add_physics_args(parser, timestep_default=0.001)
     add_grasp_args(parser)
     add_base_args(parser, base_speed_default=3.0, base_yaw_default=360.0, with_control_modes=True)
+    add_ros_vr_args(parser)
     add_mnet_args(parser)
     return parser
