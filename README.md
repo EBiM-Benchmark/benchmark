@@ -301,13 +301,13 @@ Typical GUI launch inside the container:
 
 ### Launch Mobile FR3 In The Robot Room
 
-The robot-room launch script runs in the Isaac Sim container. It loads
-`assets/robot_room.usd` by default, places the mobile FR3 from a task
-preset, and opens the scene paused. Presets are `task1` at `(4.4, -2.5, 0.0)`,
-`task2` at `(4.4, 2.6, 0.0)`, and `task3` at `(-4.6, 2.7, 0.0)`. The preset
-robot yaw is `90` degrees for `task1` and `-90` degrees for `task2`/`task3`.
-For `task3`, the launcher also adds 300 coffee bean rigid bodies to the bowl at
-`(-4.3, -1.5, 0.74659)` and sets the built-in Perspective viewport to
+The robot-room launch script loads `assets/robot_room.usd` by default and
+places the mobile FR3 from a task preset. Presets are `task1` at
+`(4.4, -2.5, 0.0)`, `task2` at `(4.4, 2.6, 0.0)`, and `task3` at
+`(-4.6, 2.7, 0.0)`. The preset robot yaw is `90` degrees for `task1` and
+`-90` degrees for `task2`/`task3`. For `task3`, the launcher also adds 300
+coffee beans to the bowl at `(-4.3, -1.5, 0.74659)` and sets the built-in
+Perspective viewport to
 `(-8.12589, -3.29067, 2.79653, 73.13762, 0.0, -50.88313)`.
 
 #### Task3 Feeding Workflow
@@ -325,12 +325,21 @@ Task3 is a four-stage feeding task:
 4. Clean Up: return all utensils to the Kitchen Area and place them inside the
    designated sink region, marked by the black tap area.
 
-Launch the demo from the host:
+Launch the keyboard-controlled Task3 demo from the host with the Isaac Lab
+container:
 
 ```bash
-docker exec -it isaac-sim-5-1-0-workshop bash -lc \
+docker exec -it isaac-lab-2-3-2-workshop bash -lc \
   'cd /workspace/EBiM_Challenge && python scripts/scenes/scene_robot_room_keyboard.py --task task3'
 ```
+
+In the GUI, use `W/S` to move forward/back, `A/D` to strafe, and `Q/E` to
+rotate. `task3` enables keyboard control by default. To load the scene as a
+passive Isaac Sim viewer instead, pass `--no-keyboard-control`; in that mode,
+click Play in the Isaac Sim GUI or add `--autoplay` to start the timeline.
+For real-time keyboard control, task3 coffee beans are static by default; pass
+`--dynamic-beans` to make them rigid bodies. Use `--stabilization-steps N` if
+you want to run warmup physics steps before enabling the keyboard loop.
 
 To use a different room USD, pass `--room-usd`, for example:
 
@@ -343,40 +352,31 @@ You can still override the preset with `--robot-x`, `--robot-y`, and
 `--robot-z` when manually checking a placement.
 
 The first launch can spend time compiling Isaac/RTX shader caches before the
-scene becomes interactive. Click Play in the Isaac Sim GUI to start the
-timeline, or add `--autoplay` to start immediately.
-
-This launcher only composes the USD scene and starts the Isaac Sim timeline.
-It does not currently run an Isaac Lab control loop, attach a keyboard
-listener, or publish wheel/arm targets. If you click Play and the robot falls
-or the arm joints feel soft, that means the articulation is being simulated
-without a controller holding joint targets. Do not fix that by editing the
-Franka URDF first. Port the actuator configuration and per-step control loop
-from `scripts/deprecated/scene_robot_keyboard.py`, or add an equivalent
-ROS/OmniGraph articulation controller.
+scene becomes interactive.
 
 The `--head-placement` option is only for the task3 head prop. Use `a` through
 `i` to select a fixed placement, or `random` to choose one automatically.
 Lowercase and uppercase letters are both accepted:
 
 ```bash
-docker exec -it isaac-sim-5-1-0-workshop bash -lc \
+docker exec -it isaac-lab-2-3-2-workshop bash -lc \
   'cd /workspace/EBiM_Challenge && python scripts/scenes/scene_robot_room_keyboard.py --task task3 --head-placement e'
 ```
 
 For randomized task3 head placement:
 
 ```bash
-docker exec -it isaac-sim-5-1-0-workshop bash -lc \
+docker exec -it isaac-lab-2-3-2-workshop bash -lc \
   'cd /workspace/EBiM_Challenge && python scripts/scenes/scene_robot_room_keyboard.py --task task3 --head-placement random'
 ```
 
 This option is unrelated to the keyboard `E` key used for rotation in the older
 keyboard-control demos.
 
-The script launches native Isaac Sim and forwards the task preset into Kit, so
-switching `--task task1`, `--task task2`, or `--task task3` changes the spawn
-position without editing the command coordinates.
+In passive viewer mode, the script launches native Isaac Sim and forwards the
+task preset into Kit, so switching `--task task1`, `--task task2`, or
+`--task task3` changes the spawn position without editing the command
+coordinates.
 
 For ROS2 bridge development, enable the bridge explicitly. The launcher sets
 `ROS_DISTRO`, `RMW_IMPLEMENTATION`, and the bundled bridge library path before
@@ -384,7 +384,7 @@ Isaac Sim starts:
 
 ```bash
 docker exec -it isaac-sim-5-1-0-workshop bash -lc \
-  'cd /workspace/EBiM_Challenge && python scripts/scenes/scene_robot_room_keyboard.py --task task3 --ros2-bridge fastdds'
+  'cd /workspace/EBiM_Challenge && python scripts/scenes/scene_robot_room_keyboard.py --task task3 --no-keyboard-control --ros2-bridge fastdds'
 ```
 
 Use `--ros2-bridge cyclonedds` if you want CycloneDDS instead of FastDDS. The
@@ -456,7 +456,7 @@ If GUI applications fail to open:
 ## Main Workshop Scripts
 
 ### Demo Scenes
-- `scripts/scenes/scene_robot_room_keyboard.py` — Isaac Sim launcher for the robot room scene with task-based mobile FR3 spawn presets. `task3` includes coffee beans in the bowl. Despite the filename, this script currently loads the robot into the GUI but does not run live keyboard control.
+- `scripts/scenes/scene_robot_room_keyboard.py` — robot room scene launcher with task-based mobile FR3 spawn presets. `task3` includes coffee beans in the bowl and runs Isaac Lab keyboard base control by default; pass `--no-keyboard-control` for passive Isaac Sim viewing.
 
 ### Utilities
 - `scripts/tools/inspect_usd.py` — print the prim hierarchy of a USD file.
