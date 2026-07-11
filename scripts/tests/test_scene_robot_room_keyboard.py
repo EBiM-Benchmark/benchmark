@@ -146,6 +146,26 @@ def test_keyboard_dual_arm_control_rejects_multiple_environments():
         scene_keyboard.require_single_teleop_environment(2)
 
 
+def test_motion_generation_extension_is_enabled_before_lula_loading():
+    calls = []
+
+    class ExtensionManager:
+        def is_extension_enabled(self, extension_name):
+            calls.append(("is_enabled", extension_name))
+            return False
+
+        def set_extension_enabled_immediate(self, extension_name, enabled):
+            calls.append(("enable", extension_name, enabled))
+            return True
+
+    scene_keyboard.enable_motion_generation_extension(ExtensionManager())
+
+    assert calls == [
+        ("is_enabled", "isaacsim.robot_motion.motion_generation"),
+        ("enable", "isaacsim.robot_motion.motion_generation", True),
+    ]
+
+
 def test_measured_position_targets_are_cloned_once():
     import torch
 

@@ -1254,6 +1254,23 @@ def require_single_teleop_environment(num_envs: int) -> None:
         )
 
 
+MOTION_GENERATION_EXTENSION = "isaacsim.robot_motion.motion_generation"
+
+
+def enable_motion_generation_extension(extension_manager: Any) -> None:
+    """Enable the Lula extension before importing its Python package."""
+    if extension_manager.is_extension_enabled(MOTION_GENERATION_EXTENSION):
+        return
+    enabled = extension_manager.set_extension_enabled_immediate(
+        MOTION_GENERATION_EXTENSION, True
+    )
+    if enabled is False:
+        raise RuntimeError(
+            "Could not enable Isaac Sim motion-generation extension: "
+            f"{MOTION_GENERATION_EXTENSION}"
+        )
+
+
 def measured_position_targets(robot: Any) -> Any:
     """Snapshot measured joints once as persistent position targets."""
     return robot.data.joint_pos.detach().clone()
@@ -1611,6 +1628,13 @@ def _run_keyboard_control_app(
     joint_groups = discover_joint_groups(robot.joint_names)
     position_targets = measured_position_targets(robot)
 
+    print("Enabling Isaac Sim motion-generation extension...", flush=True)
+    import omni.kit.app
+
+    enable_motion_generation_extension(
+        omni.kit.app.get_app().get_extension_manager()
+    )
+    print("Isaac Sim motion-generation extension ready.", flush=True)
     print("Creating raw Lula NumPy joint-state bridge...", flush=True)
     dual_arm_ik = create_raw_dual_arm_lula(
         robot.joint_names,
