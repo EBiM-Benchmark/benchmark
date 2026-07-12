@@ -72,6 +72,15 @@ class TeleopSession:
         self.cable_bodies = cable_body_ids(self.model)
         if not self.cable_geoms or not self.cable_bodies:
             raise RuntimeError("No cable geoms/bodies found.")
+        self._cable_body_arr = np.asarray(self.cable_bodies, dtype=int)
+        self.cable_dofs = np.asarray(
+            [
+                dof
+                for b in self.cable_bodies
+                for dof in range(self.model.body_dofadr[b], self.model.body_dofadr[b] + self.model.body_dofnum[b])
+            ],
+            dtype=int,
+        )
         self.clip_body = optional_obj_id(self.model, mujoco.mjtObj.mjOBJ_BODY, config.CLIP_BODY)
         self.grasp_assist = bool(args.grasp_assist)
 
@@ -142,6 +151,15 @@ class TeleopSession:
         if self.clip_body is not None:
             apply_clip_guide(self.model, self.data, self.clip_body, self.cable_bodies)
         mujoco.mj_step(self.model, self.data)
+        # ballistic safety valve: cap the cable's peak LINEAR segment speed
+        # so whip-crack tips cannot tunnel through the table plates. Fires
+        # only during blow-ups — normal manipulation is ~12x below the cap
+        # (see config.CABLE_LINVEL_MAX for why this is NOT the reverted
+        # angular limiter).
+        lin = self.data.cvel[self._cable_body_arr, 3:6]
+        peak = float(np.sqrt((lin * lin).sum(axis=1).max()))
+        if peak > config.CABLE_LINVEL_MAX:
+            self.data.qvel[self.cable_dofs] *= config.CABLE_LINVEL_MAX / peak
         # Physics is fully solved inside mj_step; downstream code only reads
         # poses (xpos/xmat/geom_xpos) and jacobian prerequisites, so refresh
         # just the kinematic caches instead of a second full dynamics pass.

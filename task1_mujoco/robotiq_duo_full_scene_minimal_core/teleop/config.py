@@ -135,10 +135,27 @@ GRASP_ASSIST_MAX_FORCE = 26.0
 GRASP_ASSIST_RELEASE_DIST = 0.08
 # drop the assist once the pads have lost the cable for this long — otherwise
 # an escaped cable keeps being dragged along below the gripper
+# (2026-07-12: a "time AND distance" variant plus a speed-gated transport
+# grip boost were both tried and user-rejected — combined feel was WORSE
+# than this baseline; do not retry without measurements first)
 GRASP_NOCONTACT_RELEASE_TIME = 0.3
 GRASP_ASSIST_START_DELAY = 0.30
 GRASP_ASSIST_RAMP_TIME = 0.55
 GRASP_ASSIST_SLOT_VEL_LIMIT = 0.65
+
+# --------------------------------------------------------------------------
+# Cable ballistic safety valve: whip-crack dynamics multiply the pushed
+# section's speed several-fold at the free end — measured 25-30 m/s tips
+# from an 8 m/s fling — and at those speeds a segment crosses several cm
+# per step, deep enough into the table plates that the contact normal
+# flips sideways and the chain threads through the solid. Scale the whole
+# cable's qvel down when any segment's LINEAR speed passes this cap.
+# NOT the reverted angular limiter (50 rad/s bit into normal kink motion
+# at ~38 rad/s and felt sticky): normal manipulation moves the cable at
+# well under 1 m/s, ~12x below this trigger, so feel is untouched — the
+# valve only fires during blow-ups.
+# --------------------------------------------------------------------------
+CABLE_LINVEL_MAX = 12.0
 
 # --------------------------------------------------------------------------
 # C-clip retention: segments inside the pocket get a capped spring pull

@@ -244,6 +244,8 @@ def build_vr_parser() -> argparse.ArgumentParser:
     add_viewer_args(parser)
     # VR default timestep is 2x the desktop one: the VR loop shares its time
     # budget with headset frame submission, and grasp feel was verified at 2ms
+    # (1.5ms was tried for contact stability and felt WORSE - likely the +33%
+    # physics cost eating the shared budget; do not retry blind)
     add_physics_args(parser, timestep_default=0.002)
     add_grasp_args(parser)
     add_base_args(parser, base_speed_default=1.2, base_yaw_default=120.0, with_control_modes=False)
