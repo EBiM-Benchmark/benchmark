@@ -860,6 +860,16 @@ troubleshooting entries back into the visible list above:
 <!-- EVAL SECTION HIDDEN (pending mnet meeting) — restore by unwrapping:
 - **"Camera topic has no publishers"** (client) — start the sim (with
   `--mnet`) before `./docker-run.sh client`
+- **`'Bad alloc' exception deserializing ... ParticipantEntitiesInfo`
+  storm, then the sim is `Killed`** (native RoboStack eval) — the conda
+  Fast DDS and the Docker stack's Fast DDS (which shares the host network
+  AND `/dev/shm` on purpose) are wire/SHM incompatible; garbage discovery
+  data triggers runaway allocations until the kernel OOM-kills the sim.
+  Fix: stop the containers (`./docker-run.sh down`), clear stale segments
+  (`sudo rm -f /dev/shm/fastrtps_* /dev/shm/fast_datasharing_*`), and run
+  the native stack on its own domain — `export ROS_DOMAIN_ID=17` in BOTH
+  terminals. If it persists, also force UDP:
+  `export FASTDDS_BUILTIN_TRANSPORTS=UDPv4` (both terminals).
 -->
 - **No window from Docker on native Linux** — run `xhost +local:docker` once
   per session

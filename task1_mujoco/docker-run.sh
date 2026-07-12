@@ -11,7 +11,9 @@
 #   ./docker-run.sh publisher gamepad        #   (add --pattern 60 for a self-test)
 #   ./docker-run.sh --no-viewer              # headless self-check
 #   ./docker-run.sh <flags> --mnet           # ManipulationNet eval bridge
-#   ./docker-run.sh client                   # 2nd terminal: official mnet client
+#   ./docker-run.sh client                   # 2nd terminal: official mnet client (local_test)
+#   ./docker-run.sh connection-test          # verify team_config.json credentials (free)
+#   ./docker-run.sh submit                   # OFFICIAL submission client (rate-limited!)
 #   ./docker-run.sh shell                    # ROS-sourced shell inside the image
 #   ./docker-run.sh build                    # rebuild the image only
 #   ./docker-run.sh down                     # stop/remove containers
@@ -34,6 +36,10 @@ COMPOSE=(docker compose -f robotiq_duo_full_scene_minimal_core/release/compose.y
 if docker info --format '{{json .Runtimes}}' 2>/dev/null | grep -q nvidia; then
     COMPOSE+=(-f robotiq_duo_full_scene_minimal_core/release/compose.gpu.yaml)
     echo "[docker-run] NVIDIA container runtime detected - GPU passthrough enabled"
+else
+    echo "[docker-run] WARNING: no NVIDIA container runtime - the sim will fall back to" >&2
+    echo "[docker-run] software rendering (llvmpipe, ~3 fps). If this machine has an" >&2
+    echo "[docker-run] NVIDIA GPU, install nvidia-container-toolkit and restart docker." >&2
 fi
 
 # /dev/input present (native Linux) -> merge the gamepad passthrough overlay.
@@ -89,6 +95,10 @@ case "${1:-}" in
     build)  "${COMPOSE[@]}" build sim ;;
     down)   "${COMPOSE[@]}" down ;;
     client) "${COMPOSE[@]}" run --rm client ;;
+    # both run in the CLIENT service on purpose: it live-mounts
+    # team_config.json (team_unique_code, no rebuild) and mnet_out/
+    connection-test) "${COMPOSE[@]}" run --rm client ebim ros2 run mnet_client connection_test ;;
+    submit) "${COMPOSE[@]}" run --rm client ebim ros2 run mnet_client submission ;;
     shell)  "${COMPOSE[@]}" run --rm sim ebim shell ;;
     publisher)
         shift
