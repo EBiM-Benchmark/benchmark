@@ -12,6 +12,8 @@ import math
 import os
 import random
 import sys
+import time
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -63,6 +65,22 @@ TASK_ROBOT_POSES = {
     "task1": {"position": (4.4, -2.5, 0.0), "yaw": 90.0},
     "task2": {"position": (4.4, 2.6, 0.0), "yaw": -90.0},
     "task3": {"position": (-4.6, 2.7, 0.0), "yaw": -90.0},
+}
+INITIAL_ROBOT_JOINT_POS = {
+    "left_fr3v2_joint1": 0.0,
+    "left_fr3v2_joint2": -1.5,
+    "left_fr3v2_joint3": 0.0,
+    "left_fr3v2_joint4": -2.2,
+    "left_fr3v2_joint5": 0.0,
+    "left_fr3v2_joint6": 1.5,
+    "left_fr3v2_joint7": 0.785,
+    "right_fr3v2_joint1": 0.0,
+    "right_fr3v2_joint2": -1.5,
+    "right_fr3v2_joint3": 0.0,
+    "right_fr3v2_joint4": -2.2,
+    "right_fr3v2_joint5": 0.0,
+    "right_fr3v2_joint6": 1.5,
+    "right_fr3v2_joint7": 0.785,
 }
 
 # Task 2 Specific
@@ -166,6 +184,44 @@ def parse_args() -> argparse.Namespace:
         help=("Task3 head placement: A-I, or random. Lowercase is accepted."),
     )
     parser.add_argument(
+        "--num-envs",
+        "--num_envs",
+        dest="num_envs",
+        type=int,
+        default=1,
+        help="Number of Isaac Lab environments for keyboard control.",
+    )
+    parser.add_argument(
+        "--device",
+        default="cuda:0",
+        help="Isaac Lab simulation device used for keyboard control.",
+    )
+    parser.add_argument(
+        "--stabilization-steps",
+        type=int,
+        default=0,
+        help="Initial physics steps before enabling keyboard control.",
+    )
+    parser.add_argument(
+        "--dynamic-beans",
+        action="store_true",
+        help="Enable rigid-body physics for task3 beans in keyboard mode.",
+    )
+    keyboard_group = parser.add_mutually_exclusive_group()
+    keyboard_group.add_argument(
+        "--keyboard-control",
+        dest="keyboard_control",
+        action="store_true",
+        default=None,
+        help="Run the robot with live WASD/QE keyboard base control.",
+    )
+    keyboard_group.add_argument(
+        "--no-keyboard-control",
+        dest="keyboard_control",
+        action="store_false",
+        help="Load the scene as a passive Isaac Sim viewer.",
+    )
+    parser.add_argument(
         "--autoplay",
         action="store_true",
         help="Start the Isaac Sim timeline immediately after loading.",
@@ -199,6 +255,53 @@ def parse_args() -> argparse.Namespace:
         help=argparse.SUPPRESS,
     )
     return parser.parse_args(argv)
+
+
+def should_enable_keyboard_control(args: argparse.Namespace) -> bool:
+    if args.keyboard_control is not None:
+        return bool(args.keyboard_control)
+    return args.task == "task3"
+
+
+def robot_actuator_cfg_specs() -> dict[str, dict[str, Any]]:
+    return {
+        "steering_joints": {
+            "joint_names_expr": ["tmrv0_2_joint_0", "tmrv0_2_joint_2"],
+            "stiffness": 500.0,
+            "damping": 50.0,
+            "effort_limit_sim": 200.0,
+        },
+        "drive_joints": {
+            "joint_names_expr": ["tmrv0_2_joint_1", "tmrv0_2_joint_3"],
+            "stiffness": 0.0,
+            "damping": 5.0,
+            "effort_limit_sim": 500.0,
+            "velocity_limit_sim": 20.0,
+        },
+        "passive_base_joints": {
+            "joint_names_expr": [".*caster.*", "rocker_arm_joint"],
+            "stiffness": 0.0,
+            "damping": 0.0,
+        },
+        "spine": {
+            "joint_names_expr": ["franka_spine_vertical_joint"],
+            "stiffness": 5000.0,
+            "damping": 500.0,
+            "effort_limit_sim": 200.0,
+        },
+        "arms": {
+            "joint_names_expr": [".*fr3v2_joint[1-7]"],
+            "stiffness": 5000.0,
+            "damping": 500.0,
+            "effort_limit_sim": 200.0,
+        },
+        "grippers": {
+            "joint_names_expr": [".*finger.*"],
+            "stiffness": 200.0,
+            "damping": 20.0,
+            "effort_limit_sim": 50.0,
+        },
+    }
 
 
 def resolve_usd_path(selection: Path | None, default_path: Path) -> Path:
@@ -479,6 +582,23 @@ def reference_usd(
     return asset_prim
 
 
+def remove_embedded_physics_scenes(stage: Any, root_prim: Any) -> list[str]:
+    from pxr import Usd as pxr_usd
+    from pxr import UsdPhysics as pxr_usd_physics
+
+    Usd: Any = pxr_usd
+    UsdPhysics: Any = pxr_usd_physics
+
+    paths_to_remove = [
+        str(prim.GetPath())
+        for prim in Usd.PrimRange(root_prim)
+        if prim.IsA(UsdPhysics.Scene)
+    ]
+    for prim_path in paths_to_remove:
+        stage.OverridePrim(prim_path).SetActive(False)
+    return paths_to_remove
+
+
 def move_task3_head(
     stage: Any,
     room_asset_path: str,
@@ -665,6 +785,7 @@ def add_coffee_beans(
     color: tuple[float, float, float],
     density: float,
     bowl_position: tuple[float, float, float],
+    dynamic: bool = True,
 ) -> None:
     if count <= 0:
         return
@@ -709,9 +830,10 @@ def add_coffee_beans(
         set_xform(bean_prim, position, yaw_to_quat(math.degrees(yaw)))
 
         UsdPhysics.CollisionAPI.Apply(bean_prim)
-        UsdPhysics.RigidBodyAPI.Apply(bean_prim)
-        mass_api = UsdPhysics.MassAPI.Apply(bean_prim)
-        mass_api.CreateDensityAttr(density)
+        if dynamic:
+            UsdPhysics.RigidBodyAPI.Apply(bean_prim)
+            mass_api = UsdPhysics.MassAPI.Apply(bean_prim)
+            mass_api.CreateDensityAttr(density)
         UsdShade.MaterialBindingAPI.Apply(bean_prim).Bind(material)
 
 
@@ -929,31 +1051,24 @@ def set_initial_perspective_view(app: Any) -> None:
         print(f"Viewport pose API unavailable: {exc}")
 
 
-def build_stage(
+def configure_robot_room_stage(
     app: Any,
+    stage: Any,
     room_path: Path,
-    robot_path: Path,
     task: str,
-    robot_position: tuple[float, float, float],
-    robot_rotation: tuple[float, float, float, float],
-    robot_yaw: float,
     head_placement: str,
+    *,
+    robot_path: Path | None = None,
+    robot_position: tuple[float, float, float] | None = None,
+    robot_rotation: tuple[float, float, float, float] | None = None,
+    robot_yaw: float | None = None,
+    dynamic_beans: bool = True,
 ) -> Any:
-    import omni.usd
     from pxr import UsdGeom as pxr_usd_geom
     from pxr import UsdLux as pxr_usd_lux
 
     UsdGeom: Any = pxr_usd_geom
     UsdLux: Any = pxr_usd_lux
-
-    context = omni.usd.get_context()
-    context.new_stage()
-    for _ in range(10):
-        app.update()
-
-    stage = context.get_stage()
-    if stage is None:
-        raise RuntimeError("Could not create an Isaac Sim stage.")
 
     stage.SetFramesPerSecond(60.0)
     stage.SetTimeCodesPerSecond(60.0)
@@ -970,13 +1085,28 @@ def build_stage(
         room_path,
         reset_asset_xform=True,
     )
-    reference_usd(
+    removed_physics_scenes = remove_embedded_physics_scenes(
         stage,
-        "/World/Robot",
-        robot_path,
-        robot_position,
-        robot_rotation,
+        room_asset_prim,
     )
+    if removed_physics_scenes:
+        print(
+            "Disabled embedded room physics scenes: "
+            + ", ".join(removed_physics_scenes),
+            flush=True,
+        )
+    if (
+        robot_path is not None
+        and robot_position is not None
+        and robot_rotation is not None
+    ):
+        reference_usd(
+            stage,
+            "/World/Robot",
+            robot_path,
+            robot_position,
+            robot_rotation,
+        )
 
     resolved_head_placement = None
     head_prim_path = None
@@ -1003,6 +1133,7 @@ def build_stage(
             color=DEFAULT_BEAN_COLOR,
             density=DEFAULT_BEAN_DENSITY,
             bowl_position=TASK3_BOWL_POSITION,
+            dynamic=dynamic_beans,
         )
 
     dome = UsdLux.DomeLight.Define(stage, "/World/Light")
@@ -1017,18 +1148,681 @@ def build_stage(
     print("Robot room loaded in Isaac Sim")
     print("=" * 80)
     print(f"Room USD: {room_path}")
-    print(f"Robot USD: {robot_path}")
-    print(
-        "Robot start: "
-        f"({robot_position[0]:.3f}, {robot_position[1]:.3f}, "
-        f"{robot_position[2]:.3f})"
-    )
-    print(f"Robot yaw: {robot_yaw:.1f} deg")
-    print(f"Coffee beans: {DEFAULT_BEAN_COUNT if task == 'task3' else 0}")
+    if robot_path is not None:
+        print(f"Robot USD: {robot_path}")
+    if robot_position is not None:
+        print(
+            "Robot start: "
+            f"({robot_position[0]:.3f}, {robot_position[1]:.3f}, "
+            f"{robot_position[2]:.3f})"
+        )
+    if robot_yaw is not None:
+        print(f"Robot yaw: {robot_yaw:.1f} deg")
+    bean_mode = "dynamic" if dynamic_beans else "static"
+    bean_count = DEFAULT_BEAN_COUNT if task == "task3" else 0
+    print(f"Coffee beans: {bean_count} ({bean_mode})")
     if resolved_head_placement and head_prim_path:
         print(f"Head placement: {resolved_head_placement}")
         print(f"Head prim: {head_prim_path}")
     return stage
+
+
+def build_stage(
+    app: Any,
+    room_path: Path,
+    robot_path: Path,
+    task: str,
+    robot_position: tuple[float, float, float],
+    robot_rotation: tuple[float, float, float, float],
+    robot_yaw: float,
+    head_placement: str,
+) -> Any:
+    import omni.usd
+
+    context = omni.usd.get_context()
+    context.new_stage()
+    for _ in range(10):
+        app.update()
+
+    stage = context.get_stage()
+    if stage is None:
+        raise RuntimeError("Could not create an Isaac Sim stage.")
+
+    return configure_robot_room_stage(
+        app,
+        stage,
+        room_path=room_path,
+        task=task,
+        head_placement=head_placement,
+        robot_path=robot_path,
+        robot_position=robot_position,
+        robot_rotation=robot_rotation,
+        robot_yaw=robot_yaw,
+    )
+
+
+def make_robot_actuator_cfgs(implicit_actuator_cfg: Any) -> dict[str, Any]:
+    return {
+        name: implicit_actuator_cfg(**spec)
+        for name, spec in robot_actuator_cfg_specs().items()
+    }
+
+
+def make_control_scene_cfg(
+    *,
+    num_envs: int,
+    robot_path: Path,
+    robot_position: tuple[float, float, float],
+    robot_rotation: tuple[float, float, float, float],
+) -> Any:
+    import isaaclab.sim as sim_utils
+    from isaaclab.actuators import ImplicitActuatorCfg
+    from isaaclab.assets import ArticulationCfg
+    from isaaclab.scene import InteractiveSceneCfg
+
+    scene_cfg = InteractiveSceneCfg(num_envs=num_envs, env_spacing=10.0)
+    scene_cfg.robot = ArticulationCfg(
+        prim_path="{ENV_REGEX_NS}/Robot",
+        spawn=sim_utils.UsdFileCfg(usd_path=str(robot_path)),
+        init_state=ArticulationCfg.InitialStateCfg(
+            pos=robot_position,
+            rot=robot_rotation,
+            joint_pos=INITIAL_ROBOT_JOINT_POS,
+        ),
+        actuators=make_robot_actuator_cfgs(ImplicitActuatorCfg),
+    )
+    return scene_cfg
+
+
+def disable_robot_external_wrenches(robot: Any) -> None:
+    """Keep Isaac Lab from applying unused external link wrenches."""
+    for composer_name in (
+        "instantaneous_wrench_composer",
+        "permanent_wrench_composer",
+    ):
+        composer = getattr(robot, composer_name, None)
+        if composer is not None:
+            composer.reset()
+
+
+def require_single_teleop_environment(num_envs: int) -> None:
+    """Lula's Core articulation wrapper controls one Task 3 robot."""
+    if num_envs != 1:
+        raise RuntimeError(
+            "Keyboard dual-arm IK requires exactly one environment; "
+            f"received num_envs={num_envs}."
+        )
+
+
+MOTION_GENERATION_EXTENSION = "isaacsim.robot_motion.motion_generation"
+
+
+def enable_motion_generation_extension(extension_manager: Any) -> None:
+    """Enable the Lula extension before importing its Python package."""
+    if extension_manager.is_extension_enabled(MOTION_GENERATION_EXTENSION):
+        return
+    enabled = extension_manager.set_extension_enabled_immediate(
+        MOTION_GENERATION_EXTENSION, True
+    )
+    if enabled is False:
+        raise RuntimeError(
+            "Could not enable Isaac Sim motion-generation extension: "
+            f"{MOTION_GENERATION_EXTENSION}"
+        )
+
+
+def measured_position_targets(robot: Any) -> Any:
+    """Snapshot measured joints once as persistent position targets."""
+    return robot.data.joint_pos.detach().clone()
+
+
+def reset_robot_to_default_state(robot: Any, env_origins: Any) -> None:
+    """Write the configured Isaac Lab initial state into PhysX."""
+    root_state = robot.data.default_root_state.clone()
+    root_state[:, :3] += env_origins
+    joint_positions = robot.data.default_joint_pos.clone()
+    joint_velocities = robot.data.default_joint_vel.clone()
+
+    robot.write_root_pose_to_sim(root_state[:, :7])
+    robot.write_root_velocity_to_sim(root_state[:, 7:])
+    robot.write_joint_state_to_sim(joint_positions, joint_velocities)
+    robot.set_joint_position_target(joint_positions)
+    robot.set_joint_velocity_target(joint_velocities)
+
+
+def robot_root_world_pose(
+    robot: Any,
+) -> tuple[tuple[float, ...], tuple[float, ...]]:
+    """Read the first environment's root pose in Isaac Lab wxyz order."""
+    position = robot.data.root_pos_w[0].detach().cpu().tolist()
+    orientation = robot.data.root_quat_w[0].detach().cpu().tolist()
+    return tuple(position), tuple(orientation)
+
+
+def clamp_direct_joint_command(command: Any, robot: Any, groups: Any) -> Any:
+    """Clamp present direct targets to the articulation's soft limits."""
+    if (
+        command.left_joint_positions is None
+        and command.right_joint_positions is None
+    ):
+        return command
+    limits = getattr(robot.data, "soft_joint_pos_limits", None)
+    if limits is None:
+        raise RuntimeError(
+            "Direct arm commands require robot.data.soft_joint_pos_limits"
+        )
+    required_ids = groups.left_arm + groups.right_arm
+    if (
+        limits.ndim != 3
+        or limits.shape[0] < 1
+        or limits.shape[2] != 2
+        or not required_ids
+        or limits.shape[1] <= max(required_ids)
+    ):
+        raise RuntimeError(
+            "soft_joint_pos_limits must have shape (envs, joints, 2)"
+        )
+    from teleop_targets import clamp_arm_joint_positions
+
+    updates = {}
+    for side, values, joint_ids in (
+        ("left", command.left_joint_positions, groups.left_arm),
+        ("right", command.right_joint_positions, groups.right_arm),
+    ):
+        if values is None:
+            continue
+        lower = limits[0, list(joint_ids), 0].detach().cpu().tolist()
+        upper = limits[0, list(joint_ids), 1].detach().cpu().tolist()
+        updates[f"{side}_joint_positions"] = clamp_arm_joint_positions(
+            values, lower, upper
+        )
+    return replace(command, **updates)
+
+
+def configure_keyboard_control_stage(
+    configure: Any,
+    app: Any,
+    stage: Any,
+    **kwargs: Any,
+) -> Any:
+    """Configure room props only; InteractiveScene owns the sole robot."""
+    return configure(app, stage, robot_path=None, **kwargs)
+
+
+def run_with_app_cleanup(app: Any, callback: Any) -> Any:
+    try:
+        return callback()
+    finally:
+        app.close()
+
+
+class PynputKeyboardTeleop:
+    def __init__(self, keyboard_module: Any) -> None:
+        self._keyboard = keyboard_module
+        self.pressed: set[str] = set()
+        self.stop_requested = False
+        self._listener: Any | None = None
+
+    def start(self) -> None:
+        self._listener = self._keyboard.Listener(
+            on_press=self._on_press,
+            on_release=self._on_release,
+            suppress=False,
+        )
+        self._listener.daemon = True
+        self._listener.start()
+
+    def stop(self) -> None:
+        if self._listener is not None:
+            self._listener.stop()
+
+    def _on_press(self, key: Any) -> bool | None:
+        self._update_pressed(key, add=True)
+        if key == self._keyboard.Key.esc:
+            self.stop_requested = True
+            return False
+        return None
+
+    def _on_release(self, key: Any) -> bool | None:
+        self._update_pressed(key, add=False)
+        if key == self._keyboard.Key.esc:
+            self.stop_requested = True
+            return False
+        return None
+
+    def _update_pressed(self, key: Any, *, add: bool) -> None:
+        key_name = None
+        if hasattr(key, "char") and key.char:
+            key_name = key.char.lower()
+        elif hasattr(key, "name"):
+            key_name = key.name
+
+        if key_name is None:
+            return
+        key_name = normalize_keyboard_event_input(key_name)
+        if add:
+            self.pressed.add(key_name)
+        else:
+            self.pressed.discard(key_name)
+
+
+class KitKeyboardTeleop:
+    def __init__(self, carb_input: Any, appwindow: Any) -> None:
+        self._carb_input = carb_input
+        self._keyboard = appwindow.get_default_app_window().get_keyboard()
+        self._input = carb_input.acquire_input_interface()
+        self._subscription: Any | None = None
+        self.pressed: set[str] = set()
+        self.stop_requested = False
+
+    def start(self) -> None:
+        self._subscription = self._input.subscribe_to_keyboard_events(
+            self._keyboard,
+            self._on_keyboard_event,
+        )
+
+    def stop(self) -> None:
+        if self._subscription is None:
+            return
+        unsubscribe = getattr(
+            self._input,
+            "unsubscribe_to_keyboard_events",
+            None,
+        )
+        if unsubscribe is not None:
+            unsubscribe(self._keyboard, self._subscription)
+        self._subscription = None
+
+    def _on_keyboard_event(self, event: Any, *_args: Any) -> bool:
+        key_name = normalize_keyboard_event_input(event.input)
+        if key_name is None:
+            return True
+
+        event_type = event.type
+        if event_type in (
+            self._carb_input.KeyboardEventType.KEY_PRESS,
+            self._carb_input.KeyboardEventType.KEY_REPEAT,
+        ):
+            self.pressed.add(key_name)
+            if key_name == "esc":
+                self.stop_requested = True
+        elif event_type == self._carb_input.KeyboardEventType.KEY_RELEASE:
+            self.pressed.discard(key_name)
+            if key_name == "esc":
+                self.stop_requested = True
+        return True
+
+
+def normalize_keyboard_event_input(key_input: Any) -> str | None:
+    raw_name = getattr(key_input, "name", None)
+    if raw_name is None:
+        raw_name = str(key_input).rsplit(".", maxsplit=1)[-1]
+    key_name = str(raw_name).lower()
+    aliases = {
+        "escape": "esc",
+        "left_arrow": "left",
+        "right_arrow": "right",
+        "arrow_left": "left",
+        "arrow_right": "right",
+        "key_1": "1",
+        "key_2": "2",
+        "key_3": "3",
+        "left_shift": "shift",
+        "right_shift": "shift",
+        "shift_l": "shift",
+        "shift_r": "shift",
+    }
+    return aliases.get(key_name, key_name)
+
+
+def create_keyboard_teleop() -> Any:
+    try:
+        import carb.input
+        import omni.appwindow
+
+        return KitKeyboardTeleop(carb.input, omni.appwindow)
+    except Exception:
+        pass
+
+    try:
+        from pynput import keyboard
+
+        return PynputKeyboardTeleop(keyboard)
+    except ImportError:
+        import carb.input
+        import omni.appwindow
+
+        return KitKeyboardTeleop(carb.input, omni.appwindow)
+
+
+def print_keyboard_control_help(control_help: str) -> None:
+    print("\n" + "=" * 80)
+    print("Keyboard robot control enabled (direct dual-arm + Shift base map)")
+    print("=" * 80)
+    print(control_help)
+    print("  ESC     stop keyboard listener and exit")
+    print("  Ctrl+C  exit")
+    print(
+        "Tip: the listener is global, so the viewport does not need focus.\n"
+    )
+
+
+def run_keyboard_control(
+    args: argparse.Namespace,
+    *,
+    room_path: Path,
+    robot_path: Path,
+    robot_position: tuple[float, float, float],
+    robot_rotation: tuple[float, float, float, float],
+    robot_yaw: float,
+) -> None:
+    configure_ros2_bridge_env(args)
+    require_single_teleop_environment(args.num_envs)
+    try:
+        from isaaclab.app import AppLauncher
+    except ImportError as exc:
+        raise RuntimeError(
+            "Keyboard robot control requires the Isaac Lab runtime. "
+            "Run this in the isaac-lab Docker profile, or pass "
+            "--no-keyboard-control to use the passive Isaac Sim viewer."
+        ) from exc
+    app_launcher = AppLauncher({"headless": args.headless})
+    simulation_app = app_launcher.app
+    run_with_app_cleanup(
+        simulation_app,
+        lambda: _run_keyboard_control_app(
+            args,
+            simulation_app=simulation_app,
+            room_path=room_path,
+            robot_path=robot_path,
+            robot_position=robot_position,
+            robot_rotation=robot_rotation,
+            robot_yaw=robot_yaw,
+        ),
+    )
+
+
+def _run_keyboard_control_app(
+    args: argparse.Namespace,
+    *,
+    simulation_app: Any,
+    room_path: Path,
+    robot_path: Path,
+    robot_position: tuple[float, float, float],
+    robot_rotation: tuple[float, float, float, float],
+    robot_yaw: float,
+) -> None:
+    from dual_arm_lula import (
+        LEFT_ARM_JOINTS,
+        RIGHT_ARM_JOINTS,
+        create_raw_dual_arm_lula,
+    )
+    from keyboard_arm_teleop import KeyboardTeleopMapper, control_help
+    from teleop_commands import safe_command
+    from teleop_targets import (
+        CartesianTargetTracker,
+        DirectJointTargetLatch,
+        Pose,
+        TargetLimits,
+        TeleopTargets,
+        compose_position_targets,
+        discover_joint_groups,
+        pose_base_to_world,
+        pose_world_to_base,
+        position_target_subset,
+    )
+    from tmr_base_control import (
+        compensate_yaw_rate,
+        compute_drive_targets,
+        find_drive_joint_ids,
+        get_root_yaw,
+    )
+
+    import isaaclab.sim as sim_utils
+    from isaaclab.scene import InteractiveScene
+    from isaaclab.sim import SimulationContext
+
+    enable_ros2_bridge(simulation_app, args)
+
+    # TODO: Improve the interactive real-time factor (and perceived arm speed)
+    # by profiling the synchronous dual-arm IK loop and decimating IK/control
+    # or rendering updates without changing the commanded physical velocities.
+    sim_cfg = sim_utils.SimulationCfg(
+        dt=0.005,
+        device=args.device,
+        gravity=(0.0, 0.0, -9.81),
+    )
+    print("Creating SimulationContext...", flush=True)
+    sim = SimulationContext(sim_cfg)
+    print("SimulationContext ready.", flush=True)
+    print("Configuring robot room stage...", flush=True)
+    configure_keyboard_control_stage(
+        configure_robot_room_stage,
+        simulation_app,
+        sim.stage,
+        room_path=room_path,
+        task=args.task,
+        head_placement=args.head_placement,
+        robot_position=robot_position,
+        robot_yaw=robot_yaw,
+        dynamic_beans=args.dynamic_beans,
+    )
+    print("Robot room stage configured.", flush=True)
+    sim.set_camera_view(
+        eye=[robot_position[0] + 3.5, robot_position[1] + 3.5, 2.5],
+        target=[robot_position[0], robot_position[1], 0.5],
+    )
+
+    print("Creating Isaac Lab InteractiveScene...", flush=True)
+    scene_cfg = make_control_scene_cfg(
+        num_envs=args.num_envs,
+        robot_path=robot_path,
+        robot_position=robot_position,
+        robot_rotation=robot_rotation,
+    )
+    scene = InteractiveScene(scene_cfg)
+    print("InteractiveScene ready.", flush=True)
+    print("Resetting simulation...", flush=True)
+    sim.reset()
+    print("Simulation reset complete.", flush=True)
+    print("Resetting scene...", flush=True)
+    scene.reset()
+    print("Scene reset complete.", flush=True)
+
+    robot = scene["robot"]
+    print("Writing configured robot initial state to PhysX...", flush=True)
+    reset_robot_to_default_state(robot, scene.env_origins)
+    scene.write_data_to_sim()
+    print("Configured robot initial state ready.", flush=True)
+    print(
+        f"Robot joints ({len(robot.joint_names)}): {robot.joint_names}",
+        flush=True,
+    )
+    stabilization_steps = max(0, args.stabilization_steps)
+    stabilization_targets = robot.data.default_joint_pos.clone()
+    for index in range(stabilization_steps):
+        robot.set_joint_position_target(stabilization_targets)
+        disable_robot_external_wrenches(robot)
+        scene.write_data_to_sim()
+        sim.step()
+        scene.update(sim.cfg.dt)
+        if index == 0 or (index + 1) % 50 == 0:
+            print(
+                f"Stabilizing robot... {index + 1}/{stabilization_steps}",
+                flush=True,
+            )
+
+    print("Finding drive joint ids...", flush=True)
+    steering_indices, drive_indices = find_drive_joint_ids(robot.joint_names)
+    print("Drive joint ids ready.", flush=True)
+    joint_groups = discover_joint_groups(robot.joint_names)
+    position_targets = measured_position_targets(robot)
+
+    print("Enabling Isaac Sim motion-generation extension...", flush=True)
+    import omni.kit.app
+
+    enable_motion_generation_extension(
+        omni.kit.app.get_app().get_extension_manager()
+    )
+    print("Isaac Sim motion-generation extension ready.", flush=True)
+    print("Creating raw Lula NumPy joint-state bridge...", flush=True)
+    dual_arm_ik = create_raw_dual_arm_lula(
+        robot.joint_names,
+        lambda: robot.data.joint_pos[0].detach().cpu().numpy(),
+    )
+    root_position, root_orientation = robot_root_world_pose(robot)
+    initial_spine = float(position_targets[0, joint_groups.spine[0]].item())
+    left_world_values, right_world_values = (
+        dual_arm_ik.current_end_effector_poses(
+            root_position,
+            root_orientation,
+            initial_spine,
+        )
+    )
+    left_relative = pose_world_to_base(
+        Pose(tuple(left_world_values[0]), tuple(left_world_values[1])),
+        root_position,
+        root_orientation,
+    )
+    right_relative = pose_world_to_base(
+        Pose(tuple(right_world_values[0]), tuple(right_world_values[1])),
+        root_position,
+        root_orientation,
+    )
+    initial_left_gripper = float(
+        position_targets[0, joint_groups.left_gripper[0]].item()
+    )
+    initial_right_gripper = float(
+        position_targets[0, joint_groups.right_gripper[0]].item()
+    )
+    tracker = CartesianTargetTracker(
+        TeleopTargets(
+            left=left_relative,
+            right=right_relative,
+            left_gripper=initial_left_gripper,
+            right_gripper=initial_right_gripper,
+            spine=initial_spine,
+        ),
+        limits=TargetLimits(
+            position_min=(-1.5, -1.5, -0.5),
+            position_max=(1.5, 1.5, 2.5),
+            gripper_min=0.0,
+            gripper_max=0.04,
+            spine_min=0.0,
+            spine_max=0.85,
+        ),
+    )
+    mapper = KeyboardTeleopMapper()
+    direct_joint_latch = DirectJointTargetLatch()
+    print("Dual-arm Lula controller ready.", flush=True)
+    print("Reading root yaw...", flush=True)
+    heading_hold_yaw = get_root_yaw(robot)
+    print("Root yaw ready.", flush=True)
+    print("Creating keyboard teleop backend...", flush=True)
+    teleop = create_keyboard_teleop()
+    print("Keyboard teleop backend ready.", flush=True)
+    print(f"Active steering joints: {steering_indices}", flush=True)
+    print(f"Active drive joints: {drive_indices}", flush=True)
+    print_keyboard_control_help(control_help())
+
+    count = 0
+    listener_started = False
+    try:
+        teleop.start()
+        listener_started = True
+        print("Keyboard teleop listener started.", flush=True)
+        while simulation_app.is_running() and not teleop.stop_requested:
+            now = time.monotonic()
+            command = mapper.map_keys(
+                set(teleop.pressed), timestamp=now, dt=sim.cfg.dt
+            )
+            command = safe_command(command, now=now, timeout=0.25)
+            command = clamp_direct_joint_command(command, robot, joint_groups)
+
+            vx, vy, wz_cmd = command.base_twist
+            wz, heading_hold_yaw = compensate_yaw_rate(
+                robot,
+                vx,
+                vy,
+                wz_cmd,
+                heading_hold_yaw,
+                manual_rotation=abs(wz_cmd) > 1.0e-4,
+            )
+
+            targets = tracker.apply(command)
+            root_position, root_orientation = robot_root_world_pose(robot)
+            left_world = pose_base_to_world(
+                targets.left, root_position, root_orientation
+            )
+            right_world = pose_base_to_world(
+                targets.right, root_position, root_orientation
+            )
+            ik_result = dual_arm_ik.solve(
+                left_world.position,
+                right_world.position,
+                left_world.orientation_wxyz,
+                right_world.orientation_wxyz,
+                spine_position=targets.spine,
+                base_position=root_position,
+                base_orientation_wxyz=root_orientation,
+            )
+            left_arm_targets, right_arm_targets = direct_joint_latch.select(
+                command,
+                ik_result,
+                LEFT_ARM_JOINTS,
+                RIGHT_ARM_JOINTS,
+            )
+            position_targets = compose_position_targets(
+                position_targets,
+                joint_groups,
+                left_arm=left_arm_targets,
+                right_arm=right_arm_targets,
+                left_gripper=targets.left_gripper,
+                right_gripper=targets.right_gripper,
+                spine=targets.spine,
+            )
+            arm_position_targets, arm_position_joint_ids = (
+                position_target_subset(position_targets, joint_groups)
+            )
+            robot.set_joint_position_target(
+                arm_position_targets,
+                joint_ids=arm_position_joint_ids,
+            )
+
+            steering_pos_targets, drive_vel_targets = compute_drive_targets(
+                robot,
+                steering_indices,
+                vx,
+                vy,
+                wz,
+                num_envs=args.num_envs,
+                device=sim.device,
+            )
+            robot.set_joint_position_target(
+                steering_pos_targets,
+                joint_ids=steering_indices,
+            )
+            robot.set_joint_velocity_target(
+                drive_vel_targets,
+                joint_ids=drive_indices,
+            )
+
+            disable_robot_external_wrenches(robot)
+            scene.write_data_to_sim()
+            sim.step()
+            scene.update(sim.cfg.dt)
+
+            count += 1
+            if count % 400 == 0 and (vx != 0.0 or vy != 0.0 or wz != 0.0):
+                print(
+                    f"step={count} vx={vx:+.2f} vy={vy:+.2f} "
+                    f"wz={wz:+.2f} keys={sorted(teleop.pressed)}"
+                )
+    except KeyboardInterrupt:
+        print("\nStopped by user.")
+    finally:
+        if listener_started:
+            teleop.stop()
 
 
 def main() -> None:
@@ -1049,6 +1843,18 @@ def main() -> None:
 
     robot_position = resolve_robot_position(args)
     robot_yaw = resolve_robot_yaw(args)
+    robot_rotation = yaw_to_quat(robot_yaw)
+
+    if should_enable_keyboard_control(args):
+        run_keyboard_control(
+            args,
+            room_path=room_path,
+            robot_path=robot_path,
+            robot_position=robot_position,
+            robot_rotation=robot_rotation,
+            robot_yaw=robot_yaw,
+        )
+        return
 
     if not args.inside_kit and os.environ.get(INSIDE_KIT_ENV_VAR) != "1":
         launch_isaac_sim(args)
@@ -1064,7 +1870,7 @@ def main() -> None:
             robot_path=robot_path,
             task=args.task,
             robot_position=robot_position,
-            robot_rotation=yaw_to_quat(robot_yaw),
+            robot_rotation=robot_rotation,
             robot_yaw=robot_yaw,
             head_placement=args.head_placement,
         )

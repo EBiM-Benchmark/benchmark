@@ -1,0 +1,49 @@
+# Copyright (c) 2026 The EBiM Benchmark Contributors
+# SPDX-License-Identifier: Apache-2.0
+
+# SPDX-FileCopyrightText: Copyright (c) 2026 The EBiM Benchmark Contributors
+# SPDX-License-Identifier: Apache-2.0
+#
+# Adapted from EBiM benchmark-archive Robotiq_DEMO commit 78c28ea
+# (Apache-2.0) for the Task 3 Franka-hand URDF.
+
+api_version: 1.0
+
+cspace:
+  - left_fr3v2_joint1
+  - left_fr3v2_joint2
+  - left_fr3v2_joint3
+  - left_fr3v2_joint4
+  - left_fr3v2_joint5
+  - left_fr3v2_joint6
+  - left_fr3v2_joint7
+
+default_q: [0.0, -1.5, 0.0, -2.2, 0.0, 1.5, 0.785]
+acceleration_limits: [10, 10, 10, 10, 10, 10, 10]
+jerk_limits: [10000, 10000, 10000, 10000, 10000, 10000, 10000]
+
+cspace_to_urdf_rules:
+  - {name: caster_front_left_steering_joint, rule: fixed, value: 0.0}
+  - {name: caster_front_left_joint, rule: fixed, value: 0.0}
+  - {name: tmrv0_2_joint_0, rule: fixed, value: 0.0}
+  - {name: tmrv0_2_joint_1, rule: fixed, value: 0.0}
+  - {name: rocker_arm_joint, rule: fixed, value: 0.0}
+  - {name: caster_rear_right_steering_joint, rule: fixed, value: 0.0}
+  - {name: caster_rear_right_joint, rule: fixed, value: 0.0}
+  - {name: tmrv0_2_joint_2, rule: fixed, value: 0.0}
+  - {name: tmrv0_2_joint_3, rule: fixed, value: 0.0}
+  - {name: franka_spine_vertical_joint, rule: fixed, value: 0.0}
+  - {name: left_fr3v2_finger_joint1, rule: fixed, value: 0.0}
+  - {name: left_fr3v2_finger_joint2, rule: fixed, value: 0.0}
+  - {name: right_fr3v2_finger_joint1, rule: fixed, value: 0.0}
+  - {name: right_fr3v2_finger_joint2, rule: fixed, value: 0.0}
+  - {name: right_fr3v2_joint1, rule: fixed, value: 0.0}
+  - {name: right_fr3v2_joint2, rule: fixed, value: -1.5}
+  - {name: right_fr3v2_joint3, rule: fixed, value: 0.0}
+  - {name: right_fr3v2_joint4, rule: fixed, value: -2.2}
+  - {name: right_fr3v2_joint5, rule: fixed, value: 0.0}
+  - {name: right_fr3v2_joint6, rule: fixed, value: 1.5}
+  - {name: right_fr3v2_joint7, rule: fixed, value: 0.785}
+
+# IK does not use collision geometry. RMPFlow is outside this iteration.
+collision_spheres: []
