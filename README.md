@@ -7,7 +7,7 @@
 | Task | Engines | Where in this repo | Status |
 |---|---|---|---|
 | Task 1 — Cable Routing & Plugging | Isaac Sim, MuJoCo | [`task1_isaacsim/`](task1_isaacsim/), [`task1_mujoco/`](task1_mujoco/) | see [STATUS.md](STATUS.md) |
-| Task 2 — Deformable Material Handling (Thermal Pad Placement) | Isaac Sim (Genesis committed) | [`assets/task2_objects/`](assets/task2_objects/), [`scripts/evaluation/task2/`](scripts/evaluation/task2/) | see [STATUS.md](STATUS.md) |
+| Task 2 — Deformable Material Handling (Thermal Pad Placement) | Isaac Sim (Genesis committed) | [`task2_isaacsim/`](task2_isaacsim/), [`assets/task2_objects/`](assets/task2_objects/), [`scripts/evaluation/task2/`](scripts/evaluation/task2/) | see [STATUS.md](STATUS.md) |
 | Task 3 — Assisted Living & Feeding | Isaac Sim (MuJoCo committed) | Isaac Sim: [`scripts/scenes/scene_robot_room_keyboard.py`](scripts/scenes/scene_robot_room_keyboard.py), [`assets/robot_room.usd`](assets/robot_room.usd); MuJoCo: in development — see [STATUS.md](STATUS.md) | see [STATUS.md](STATUS.md) |
 
 Full rules and official scoring are on the competition page: https://ebim-benchmark.github.io/competition.html#tasks . The evaluation code in this repository is a development facilitator; official scoring follows the rules published there.
@@ -57,12 +57,39 @@ cd task1_mujoco
 See [`task1_mujoco/README.md`](task1_mujoco/README.md) for the full participant
 guide (paths, input modes, controls, troubleshooting).
 
+## Task 2 — Mobile FR3 Duo Teleoperation (Isaac Sim 5.1.0 / PhysX)
+
+[`task2_isaacsim/`](task2_isaacsim/README.md) contains the Task 2 teleoperation
+stack: driving the mobile FR3 Duo to place the deformable thermal pad, running
+in plain **Isaac Sim 5.1.0 (PhysX)** because the pad asset needs PhysX GPU
+deformables (Isaac Lab + Newton cannot run it). It reuses the Task 1 helper
+containers (adapters, browser controller, republisher/position controller) and
+the same ROS topic contract, and works with either the full robot room
+(`--scene room`, which also publishes the `/isaac/eval_camera/*` topics for the
+[Task 2 evaluation stack](scripts/evaluation/task2/)) or a barebone scene.
+Input devices come from the same
+[`EBiM-Benchmark/teleoperation`](https://github.com/EBiM-Benchmark/teleoperation)
+repository.
+
+Quick start (from the repo root, with the Isaac Sim 5.1.0 container running and
+the robot USD downloaded — no special hardware, keyboard base + browser arms):
+
+```bash
+bash task2_isaacsim/scripts/run_isaacsim_teleop.sh \
+  --scene barebone \
+  --with-keyboard-teleop
+```
+
+See [`task2_isaacsim/README.md`](task2_isaacsim/README.md) for prerequisites,
+the GELLO + foot-pedal configuration, and the architecture.
+
 ## Repository Layout
 
 ```text
 benchmark/
 ├── task1_isaacsim/              # Task 1: mobile FR3 Duo teleoperation (Isaac Lab + Newton)
 ├── task1_mujoco/                # Task 1: cable-management teleoperation + eval (MuJoCo)
+├── task2_isaacsim/              # Task 2: thermal-pad teleoperation (Isaac Sim 5.1.0 / PhysX)
 ├── assets/                      # USD assets and generated scene files
 │   └── tabletop_task_scene_DEMO # Scene with Commandable via ROS mobile_Fr3_duo
 ├── docker/                      # Docker Compose runtimes for Isaac Sim and Isaac Lab

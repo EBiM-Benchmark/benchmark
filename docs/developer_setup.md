@@ -38,6 +38,9 @@ variables and does not expand `${...}` values in the compose model.
 
 ```text
 benchmark/
+|-- task1_isaacsim/             # Task 1: mobile FR3 Duo teleoperation (Isaac Lab + Newton)
+|-- task1_mujoco/               # Task 1: cable-management teleoperation + eval (MuJoCo)
+|-- task2_isaacsim/             # Task 2: thermal-pad teleoperation (Isaac Sim 5.1.0 / PhysX)
 |-- assets/                     # USD assets and generated scenes
 |-- docker/                     # Dockerfile, compose stack, runtime env
 |-- docs/                       # Developer docs and images

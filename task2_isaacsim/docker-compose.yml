@@ -1,0 +1,108 @@
+# Copyright (c) 2026 The EBiM Benchmark Contributors
+# SPDX-License-Identifier: Apache-2.0
+#
+# Task 2 lightweight ROS 2 helper services.
+#
+# These are the *same* helper nodes as Task 1 — the adapter/controller scripts
+# and browser UI are reused verbatim by mounting ../task1_isaacsim at /workspace.
+# The simulator itself is launched by scripts/run_isaacsim_teleop.sh inside the
+# Isaac Sim 5.1.0 container (isaac-sim-5-1-0-workshop). The teleop input
+# *device* publishers (keyboard / GELLO / pedal) come from the EBiM
+# `teleoperation` repository on the host.
+#
+# NOTE: these services bind the same host-network topics (and browser port
+# 8090) as the Task 1 helper stack — run either the task1 or the task2 helper
+# stack, not both at once.
+services:
+  # Remaps /bridge/* command topics onto the /isaac/* topics the bridge consumes
+  # and applies gripper open/close calibration.
+  ros_republisher:
+    image: ros:jazzy-ros-base
+    container_name: task2_ros_republisher
+    network_mode: host
+    ipc: host
+    working_dir: /workspace
+    command: >
+      bash -lc "source /opt/ros/jazzy/setup.bash &&
+      python3 /workspace/scripts/controllers/ros_joint_republisher.py --bridge-prefix ${REPUBLISHER_BRIDGE_PREFIX:-/bridge} --isaac-prefix ${REPUBLISHER_ISAAC_PREFIX:-/isaac} --gripper-open-position ${REPUBLISHER_GRIPPER_OPEN_POSITION:-0.0} --gripper-closed-position ${REPUBLISHER_GRIPPER_CLOSED_POSITION:-0.8} $([ \"${REPUBLISHER_GRIPPER_INVERT:-false}\" = \"true\" ] && echo '--gripper-invert') $([ \"${REPUBLISHER_DISABLE_BROWSER_COMMAND_TOPICS:-false}\" = \"true\" ] && echo '--disable-browser-command-topics')"
+    environment:
+      - ROS_DISTRO=jazzy
+      - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+      - FASTDDS_BUILTIN_TRANSPORTS=UDPv4
+      - PYTHONPATH=/workspace/scripts
+    volumes:
+      - ../task1_isaacsim:/workspace
+    restart: unless-stopped
+    tty: true
+    stdin_open: true
+
+  # Holds arm/gripper joints at their commanded positions every step.
+  position_controller:
+    image: ros:jazzy-ros-base
+    container_name: task2_position_controller
+    network_mode: host
+    ipc: host
+    working_dir: /workspace
+    command: >
+      bash -lc "source /opt/ros/jazzy/setup.bash &&
+      python3 /workspace/scripts/controllers/joint_position_controller.py"
+    environment:
+      - ROS_DISTRO=jazzy
+      - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+      - FASTDDS_BUILTIN_TRANSPORTS=UDPv4
+    volumes:
+      - ../task1_isaacsim:/workspace
+    restart: unless-stopped
+    tty: true
+    stdin_open: true
+    profiles:
+      - position
+
+  # Sim-side glue between the teleoperation device topics and the bridge:
+  #   keyboard_to_base.py : /keyboard/state -> /pedal/state
+  #   gello_to_bridge.py  : /*/gello/joint_states -> /bridge/*
+  # Select adapters with TELEOP_ADAPTERS (e.g. "keyboard", "gello", or both).
+  teleop_adapters:
+    image: ros:jazzy-ros-base
+    container_name: task2_teleop_adapters
+    network_mode: host
+    ipc: host
+    working_dir: /workspace
+    command: bash /workspace/services/teleop_adapters/start_teleop_adapters.sh
+    environment:
+      - ROS_DISTRO=jazzy
+      - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+      - FASTDDS_BUILTIN_TRANSPORTS=UDPv4
+      - TELEOP_ADAPTERS=${TELEOP_ADAPTERS:-keyboard gello}
+    volumes:
+      - ../task1_isaacsim:/workspace
+    restart: unless-stopped
+    tty: true
+    stdin_open: true
+    profiles:
+      - teleop
+
+  # Optional browser teleoperation UI (no hardware required) at http://localhost:8090.
+  browser_controller:
+    build:
+      context: ../task1_isaacsim/services/browser_controller
+      dockerfile: Dockerfile
+    container_name: task2_browser_controller
+    network_mode: host
+    ipc: host
+    depends_on:
+      - ros_republisher
+    working_dir: /workspace
+    command: >
+      bash -lc "source /opt/ros/jazzy/setup.bash &&
+      python3 /workspace/services/browser_controller/app.py --host 0.0.0.0 --port 8090 --publish-rate 60.0"
+    environment:
+      - ROS_DISTRO=jazzy
+      - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+      - FASTDDS_BUILTIN_TRANSPORTS=UDPv4
+      - PYTHONPATH=/workspace/services/browser_controller:/workspace/scripts
+    volumes:
+      - ../task1_isaacsim:/workspace
+    restart: unless-stopped
+    tty: true
+    stdin_open: true
