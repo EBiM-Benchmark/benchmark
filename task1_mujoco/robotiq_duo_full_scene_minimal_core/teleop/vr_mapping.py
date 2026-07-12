@@ -100,9 +100,11 @@ def screen_to_base_local(
     """Base stick in plain screen axes (not mirrored like the arms):
     stick left = base moves screen-left, stick up = into the screen.
     Returns the (forward, left) command in the robot's heading frame."""
+    # MuJoCo free camera (measured via mjv_updateScene's mjvGLCamera):
+    # into-screen = [+cos(az), +sin(az)], screen-right = [+sin(az), -cos(az)]
     az = math.radians(float(cam.azimuth))
-    fwd_h = np.array([-math.cos(az), -math.sin(az), 0.0])  # into the screen
-    right_h = np.array([fwd_h[1], -fwd_h[0], 0.0])  # screen right
+    fwd_h = np.array([math.cos(az), math.sin(az), 0.0])  # into the screen
+    right_h = np.array([math.sin(az), -math.cos(az), 0.0])  # screen right
     world = right_h * sx + fwd_h * sy
     fwd = planar_body_axis(data, base_body, forward_axis)
     left_axis = np.cross(np.array([0.0, 0.0, 1.0]), fwd)

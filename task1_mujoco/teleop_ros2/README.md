@@ -14,6 +14,7 @@ repository. GELLO and the foot pedal are NOT here — the official
 | `/cmd_vel` | `geometry_msgs/Twist` | mobile base, REP-103 base_link frame (x fwd, y left, angular.z yaw); `linear.z` repurposed as the spine (vertical lift) rate. Matches the EBiM_Challenge Isaac test commands. |
 | `/left/teleop_cmd`, `/right/teleop_cmd` | `geometry_msgs/Twist` | per-arm Cartesian TCP twist (m/s, rad/s, world frame) |
 | `/left/gripper_cmd`, `/right/gripper_cmd` | `std_msgs/Float32` | >0.5 = close intent, <=0.5 = open |
+| `/left/vr_hand`, `/right/vr_hand` | `std_msgs/Float32MultiArray` | RAW VR controller state per **hand** (15 floats: valid, pos xyz, quat wxyz, grip, trigger, a, b, stick xy, stick click). The consumer runs the clutch/servo/mirroring itself — see below. |
 | `/mujoco/teleop_feedback` | `std_msgs/Float32MultiArray` | published BY the simulator: `[viewer_cam_azimuth_deg, robot_yaw_rad]` for screen-relative device mapping. Information only — **all IK and physics stay in the simulator**; publishers never solve IK. |
 
 The consumers (the MuJoCo sim's `--input ros_teleop`, or a real-robot
@@ -31,13 +32,17 @@ feel is identical to driving the devices locally.
 - `gamepad_teleop_publisher` — SDL GameController layout (identical mapping
   on every OS/vendor), `Share`/`L1`/`R1` mode select, sticks/triggers,
   stick-click speed levels. Needs `pygame`.
-- VR publisher: planned, not yet implemented — it additionally needs a
-  haptic-feedback topic (sim contact forces -> controller rumble) designed
-  and a headset to verify against, so it is deferred rather than shipped
-  untested.
+- `vr_teleop_publisher` — publishes RAW OpenXR controller state on
+  `vr_hand` (pose, grip, trigger, buttons, sticks); unlike the two above it
+  carries **no motion semantics at all** — the consumer runs the clutch
+  anchor, VR→screen mapping, hand→arm mirroring and servo itself (the
+  MuJoCo sim does this with its local VR mode's own code, so the feel is
+  identical to `--input vr`). Needs `pyopenxr`/`PyOpenGL`/`glfw` and an
+  active OpenXR runtime (Quest Link on Windows, WiVRn on Linux) on the
+  machine it runs on.
 
-Both publishers accept `--pattern` (publish a scripted test sequence for a
-few seconds, no device needed) for CI/self-testing, and both hold safe
+Every publisher accepts `--pattern` (publish a scripted test sequence for a
+few seconds, no device needed) for CI/self-testing, and all hold safe
 zeros/stop when their device disappears.
 
 ## Build & run
@@ -48,4 +53,5 @@ colcon build
 source install/setup.bash
 ros2 run keyboard_teleop_publisher keyboard_teleop_publisher
 ros2 run gamepad_teleop_publisher gamepad_teleop_publisher
+ros2 run vr_teleop_publisher vr_teleop_publisher
 ```

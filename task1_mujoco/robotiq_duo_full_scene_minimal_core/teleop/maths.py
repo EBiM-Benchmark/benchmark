@@ -43,6 +43,13 @@ def mat_to_quat(mat: np.ndarray) -> np.ndarray:
     return quat / max(np.linalg.norm(quat), 1e-9)
 
 
+def quat_to_mat(quat: np.ndarray) -> np.ndarray:
+    mat = np.zeros(9, dtype=np.float64)
+    q = np.asarray(quat, dtype=np.float64)
+    mujoco.mju_quat2Mat(mat, q / max(np.linalg.norm(q), 1e-9))
+    return mat.reshape(3, 3)
+
+
 def rot_error(target_quat: np.ndarray, current_mat: np.ndarray) -> np.ndarray:
     """Axis-angle rotation (rad) taking ``current_mat`` onto ``target_quat``."""
     current = mat_to_quat(current_mat)

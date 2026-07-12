@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+MUJOCO_LOG.TXT
+build/
+mnet_out/
+# heavy assets for ManipulationNet tasks we do not run (cable_management only)
+/mnet_client-ros_2/assets/grasping_in_clutter/
+/mnet_client-ros_2/assets/tabletop_manipulation/
+DEV_NOTES.md
+# native Windows ROS 2 (RoboStack) workspace + outputs
+ros_ws/
+mnet_out_native/
+robotiq_duo_full_scene_minimal_core/mnet_cam.log

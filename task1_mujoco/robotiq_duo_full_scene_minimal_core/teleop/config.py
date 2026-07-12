@@ -135,10 +135,27 @@ GRASP_ASSIST_MAX_FORCE = 26.0
 GRASP_ASSIST_RELEASE_DIST = 0.08
 # drop the assist once the pads have lost the cable for this long — otherwise
 # an escaped cable keeps being dragged along below the gripper
+# (2026-07-12: a "time AND distance" variant plus a speed-gated transport
+# grip boost were both tried and user-rejected — combined feel was WORSE
+# than this baseline; do not retry without measurements first)
 GRASP_NOCONTACT_RELEASE_TIME = 0.3
 GRASP_ASSIST_START_DELAY = 0.30
 GRASP_ASSIST_RAMP_TIME = 0.55
 GRASP_ASSIST_SLOT_VEL_LIMIT = 0.65
+
+# --------------------------------------------------------------------------
+# Cable ballistic safety valve: whip-crack dynamics multiply the pushed
+# section's speed several-fold at the free end — measured 25-30 m/s tips
+# from an 8 m/s fling — and at those speeds a segment crosses several cm
+# per step, deep enough into the table plates that the contact normal
+# flips sideways and the chain threads through the solid. Scale the whole
+# cable's qvel down when any segment's LINEAR speed passes this cap.
+# NOT the reverted angular limiter (50 rad/s bit into normal kink motion
+# at ~38 rad/s and felt sticky): normal manipulation moves the cable at
+# well under 1 m/s, ~12x below this trigger, so feel is untouched — the
+# valve only fires during blow-ups.
+# --------------------------------------------------------------------------
+CABLE_LINVEL_MAX = 12.0
 
 # --------------------------------------------------------------------------
 # C-clip retention: segments inside the pocket get a capped spring pull
@@ -222,19 +239,23 @@ GELLO_DATA_TIMEOUT = 0.5
 
 # USB foot pedal (reference repo's pedal_state_publisher): publishes the
 # combined pressed state as a plain string on /pedal/state - one of
-# "A", "B", "C", "A+C", "B+C", "NONE". In the GELLO workflow the pedal
-# drives the MOBILE BASE (GELLO occupies both hands). The state->motion
-# mapping below is OUR assumption (the reference publisher is deliberately
-# semantic-free); tuples are (local_x, local_y, spine, yaw) in the same
-# convention BaseDriver.drive takes. +yaw = turn right, matching the
-# keyboard End key. Adjust freely per rig/operator preference.
+# "A", "B", "C", "A+C", "B+C", "NONE" (A/B are mutually exclusive at the
+# hardware level, C only ever arrives combined with whichever of A/B was
+# already held, so those six are the only reachable states). In the GELLO
+# workflow the pedal drives the MOBILE BASE (GELLO occupies both hands).
+# The state->motion mapping below matches the reference repo's own
+# pedal_state_subscriber.py example (STATE_TO_ACTION: A=forward,
+# B=turn left, A+C=backward, B+C=turn right; C alone and NONE are left
+# unmapped there, so both go to no-motion here); tuples are
+# (local_x, local_y, spine, yaw) in the same convention BaseDriver.drive
+# takes. +yaw = turn right, matching the keyboard End key.
 PEDAL_STATE_TOPIC = "/pedal/state"
 PEDAL_BASE_COMMANDS = {
-    "A": (0.0, 0.0, 0.0, -1.0),  # A: turn left
-    "B": (0.0, 0.0, 0.0, +1.0),  # B: turn right
-    "C": (1.0, 0.0, 0.0, 0.0),  # C: forward
-    "A+C": (1.0, 0.0, 0.0, -1.0),  # forward-left arc
-    "B+C": (1.0, 0.0, 0.0, +1.0),  # forward-right arc
+    "A": (1.0, 0.0, 0.0, 0.0),  # forward
+    "B": (0.0, 0.0, 0.0, -1.0),  # turn left
+    "A+C": (-1.0, 0.0, 0.0, 0.0),  # backward
+    "B+C": (0.0, 0.0, 0.0, +1.0),  # turn right
+    "C": (0.0, 0.0, 0.0, 0.0),  # unmapped in the reference example
     "NONE": (0.0, 0.0, 0.0, 0.0),
 }
 PEDAL_DATA_TIMEOUT = 0.5
@@ -285,3 +306,14 @@ ROS_TELEOP_GRIPPER_CLOSE_ABOVE = 0.5
 # control authority - all IK/physics stay in the sim.
 ROS_TELEOP_FEEDBACK_TOPIC = "/mujoco/teleop_feedback"
 ROS_TELEOP_FEEDBACK_HZ = 30.0
+# <side>/vr_hand                 std_msgs/Float32MultiArray, 15 floats:
+#   [0] valid  [1:4] pos xyz (m, VR standing space)  [4:8] quat wxyz
+#   [8] grip  [9] trigger  [10] a  [11] b  [12:14] stick xy  [14] stick_click
+# RAW controller state on purpose: the clutch anchor, VR->screen mapping,
+# hand->arm mirroring (--facing), servo gains and gripper edge logic all run
+# in the sim (run_ros_teleop), through the exact same code as local VR mode
+# (run_vr) - so the feel is identical and the publisher stays a dumb device
+# reader like the keyboard/gamepad ones. Namespaces name the HAND here (the
+# sim decides which arm a hand drives), unlike teleop_cmd's arm namespaces.
+ROS_TELEOP_VR_HAND_TOPIC = "vr_hand"
+ROS_TELEOP_VR_HAND_LEN = 15

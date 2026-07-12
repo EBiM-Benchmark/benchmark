@@ -8,8 +8,11 @@ Two backends fix that:
   layout across OS and vendors via SDL's controller database — the left
   stick is always LEFTX/LEFTY, triggers are always TRIGGERLEFT/RIGHT, and
   A/B/shoulders are the same physical buttons on Windows, WSL and Linux.
-- **Raw joystick** (fallback for pads without an SDL mapping): the
-  historical index layout this project used on Windows.
+- **Raw joystick** (fallback for pads without an SDL mapping): per-platform
+  index layout — the historical Windows one (right stick on axes 2/3,
+  triggers on 4/5) or the Linux kernel xpad one (0=LX 1=LY 2=LT 3=RX
+  4=RY 5=RT; reading the Windows indices there feeds the left trigger's
+  -1 rest value into the right stick, and the arm drives itself).
 
 The runner consumes SEMANTIC values only (sticks / triggers / dpad + named
 button events), so mapping differences never leak out of this module.
@@ -17,6 +20,7 @@ button events), so mapping differences never leak out of this module.
 
 from __future__ import annotations
 
+import sys
 import time
 
 import numpy as np
@@ -34,7 +38,10 @@ except Exception:
     sdl2_controller = None
 
 # semantic one-shot buttons; physical placement per backend:
-#   mode_base   = Share/Back          mode_left/right = L1 / R1
+#   mode_base   = Share/Back          mode_left/right = R1 / L1
+#   (operator-facing frame: the robot's own left arm sits on the
+#   operator's right when facing it, so the physically-left shoulder
+#   button selects the arm that appears on the operator's left)
 #   close/open  = Circle(B) / Cross(A)   help = Triangle(Y)
 #   speed_up/down = click left / right stick (same convention as VR)
 _EVENTS = (
@@ -62,6 +69,7 @@ class Gamepad:
         self._ctrl = None
         self._joy = None
         self.rest: dict[int, float] = {}
+        self._ax: dict[str, int] = {"rx": 2, "ry": 3, "lt": 4, "rt": 5}
         self._btn_map: dict[str, tuple[int, ...]] = {}
         self._prev: dict[str, bool] = {name: False for name in _EVENTS}
 
@@ -84,8 +92,8 @@ class Gamepad:
                         self.message = f"{name} [SDL mapping: layout identical on every OS]"
                         self._btn_map = {
                             "mode_base": (pygame.CONTROLLER_BUTTON_BACK,),
-                            "mode_left": (pygame.CONTROLLER_BUTTON_LEFTSHOULDER,),
-                            "mode_right": (pygame.CONTROLLER_BUTTON_RIGHTSHOULDER,),
+                            "mode_left": (pygame.CONTROLLER_BUTTON_RIGHTSHOULDER,),
+                            "mode_right": (pygame.CONTROLLER_BUTTON_LEFTSHOULDER,),
                             "close": (pygame.CONTROLLER_BUTTON_B,),
                             "open": (pygame.CONTROLLER_BUTTON_A,),
                             "help": (pygame.CONTROLLER_BUTTON_Y,),
@@ -105,11 +113,19 @@ class Gamepad:
         self._joy = pygame.joystick.Joystick(0)
         self._joy.init()
         self.backend = "joystick"
-        self.message = f"{self._joy.get_name()} [raw indices - verify the layout on this OS]"
+        if sys.platform.startswith("linux"):
+            # Linux kernel xpad order: 0=LX 1=LY 2=LT 3=RX 4=RY 5=RT
+            self._ax = {"rx": 3, "ry": 4, "lt": 2, "rt": 5}
+            layout = "linux-xpad"
+        else:
+            # historical Windows layout: right stick on 2/3, triggers on 4/5
+            self._ax = {"rx": 2, "ry": 3, "lt": 4, "rt": 5}
+            layout = "windows"
+        self.message = f"{self._joy.get_name()} [raw indices, {layout} layout - verify]"
         self._btn_map = {
             "mode_base": (6,),
-            "mode_left": (9, 4),
-            "mode_right": (10, 5),
+            "mode_left": (10, 5),
+            "mode_right": (9, 4),
             "close": (1,),
             "open": (0,),
             "help": (3,),
@@ -162,7 +178,7 @@ class Gamepad:
                 deadzone(self._ctrl_axis(pygame.CONTROLLER_AXIS_RIGHTY)),
             )
         if self.backend == "joystick":
-            return deadzone(self._raw_axis(2)), deadzone(self._raw_axis(3))
+            return deadzone(self._raw_axis(self._ax["rx"])), deadzone(self._raw_axis(self._ax["ry"]))
         return 0.0, 0.0
 
     def _trigger(self, ctrl_axis: int, raw_idx: int) -> float:
@@ -183,10 +199,12 @@ class Gamepad:
         return 0.0
 
     def trigger_left(self) -> float:
-        return self._trigger(pygame.CONTROLLER_AXIS_TRIGGERLEFT if pygame else 0, 4)
+        raw_idx = self._ax["lt"] if self.backend == "joystick" else 0
+        return self._trigger(pygame.CONTROLLER_AXIS_TRIGGERLEFT if pygame else 0, raw_idx)
 
     def trigger_right(self) -> float:
-        return self._trigger(pygame.CONTROLLER_AXIS_TRIGGERRIGHT if pygame else 0, 5)
+        raw_idx = self._ax["rt"] if self.backend == "joystick" else 0
+        return self._trigger(pygame.CONTROLLER_AXIS_TRIGGERRIGHT if pygame else 0, raw_idx)
 
     def dpad_x(self) -> int:
         if self.backend == "controller":

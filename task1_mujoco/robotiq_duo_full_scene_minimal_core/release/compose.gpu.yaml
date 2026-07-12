@@ -1,0 +1,26 @@
+# NVIDIA GPU passthrough overlay — docker-run.sh merges this file
+# automatically when `docker info` reports an nvidia runtime
+# (nvidia-container-toolkit installed). Nothing to uncomment by hand.
+#
+# Kept separate from compose.yaml because this syntax makes every compose
+# command fail on hosts WITHOUT the toolkit.
+#
+# Two mechanisms, deliberately both present:
+# - `runtime: nvidia` is a container-creation setting (same as `docker run
+#   --runtime nvidia`), the one that matters here: it works with `compose
+#   run`, which is how docker-run.sh starts the sim, and needs no Compose
+#   CLI version check (unlike the `--gpus` flag).
+# - `deploy:` reservations only take effect with `compose up` — `compose
+#   run` silently ignores them (measured: GPU with `up`, ~3 fps llvmpipe
+#   with `run` on the same host). Kept for anyone starting the service
+#   with `up` directly.
+services:
+  sim:
+    runtime: nvidia
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

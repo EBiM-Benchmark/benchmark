@@ -37,11 +37,15 @@ bridge reports itself unavailable and the teleop runs on unaffected.
 
 from __future__ import annotations
 
+import array
 import ast
+import subprocess
+import sys
 import json
 import math
 import threading
 import time
+from multiprocessing import shared_memory
 from pathlib import Path
 
 import numpy as np
@@ -159,6 +163,14 @@ class MnetBridge:
         self._spin_thread.start()
 
         self._renderer: mujoco.Renderer | None = None
+        self._render_thread: threading.Thread | None = None
+        self._frame_ready = threading.Event()  # main -> worker: scene snapshot taken
+        self._worker_idle = threading.Event()  # worker -> main: ready for the next frame
+        self._renderer_up = threading.Event()
+        self._shm: shared_memory.SharedMemory | None = None
+        self._seq_np = None
+        self._hb_np = None
+        self._cam_proc: subprocess.Popen | None = None
         self._scene_opt = mujoco.MjvOption()
         self._scene_opt.geomgroup[:] = 0
         for g in (
@@ -192,7 +204,10 @@ class MnetBridge:
         if msg.data != self.ongoing_task:
             self.ongoing_task = msg.data
             log(f"[mnet] ongoing task: {msg.data}")
-            if self.target_tier and msg.data != self.target_tier and msg.data not in self._autoskipped:
+            # the client announces e.g. "Current Task: Tier2" - match by
+            # containment, not equality (first real run caught this)
+            is_target = bool(self.target_tier) and self.target_tier in msg.data
+            if self.target_tier and not is_target and msg.data not in self._autoskipped:
                 self._autoskipped.add(msg.data)
                 log(f"[mnet] auto-skipping {msg.data} (target tier: {self.target_tier})")
                 self.report_skipped()
@@ -238,10 +253,56 @@ class MnetBridge:
 
     # --------------------------------------------------------------- camera
     def ensure_renderer(self) -> None:
-        """Create the offscreen renderer; call once after the viewer is up so
-        GL context creation happens in a safe, known order."""
-        if self._renderer is None:
-            self._renderer = mujoco.Renderer(self.model, height=self.height, width=self.width)
+        """Start the out-of-process camera renderer/publisher. In-process
+        rendering contends with the viewer's GL contexts (3.5 ms alone ->
+        20-24 ms measured) and with mj_step's GIL; the child owns its own
+        model copy, GL context and interpreter. The sim side only memcpy's
+        its state into shared memory (see maybe_publish)."""
+        if self._cam_proc is not None or self._shm is not None:
+            return
+        from .scene import XML as SCENE_XML
+
+        m = self.model
+        qb, bpb, bqb, rgb_ = m.nq * 8, m.nbody * 24, m.nbody * 32, m.ngeom * 16
+        self._slot_b = qb + bpb + bqb + rgb_
+        self._shm = shared_memory.SharedMemory(create=True, size=64 + 2 * self._slot_b)
+        self._seq_np = np.ndarray((1,), np.uint64, self._shm.buf, 0)
+        self._seq_np[0] = 0
+        self._hb_np = np.ndarray((1,), np.float64, self._shm.buf, 8)
+        self._hb_np[0] = time.time()
+
+        def _views(slot: int):
+            off = 64 + slot * self._slot_b
+            return (
+                np.ndarray((m.nq,), np.float64, self._shm.buf, off),
+                np.ndarray((m.nbody, 3), np.float64, self._shm.buf, off + qb),
+                np.ndarray((m.nbody, 4), np.float64, self._shm.buf, off + qb + bpb),
+                np.ndarray((m.ngeom, 4), np.float32, self._shm.buf, off + qb + bpb + bqb),
+            )
+
+        self._slot_views = (_views(0), _views(1))
+        script = Path(__file__).resolve().parent / "mnet_cam_pub.py"
+        cam_log = Path(script).parent.parent / "mnet_cam.log"
+        self._cam_log_f = open(cam_log, "w", encoding="utf-8")
+        self._cam_proc = subprocess.Popen(
+            [
+                sys.executable,
+                str(script),
+                self._shm.name,
+                str(SCENE_XML),
+                str(self.width),
+                str(self.height),
+                f"{self.fps:g}",
+                self.cam_name or "mnet_overhead",
+                self.camera_topic,
+                self.camera_info_topic,
+            ],
+            stdout=self._cam_log_f,
+            stderr=subprocess.STDOUT,
+            stdin=subprocess.DEVNULL,
+        )
+        log(f"[mnet] camera process log: {cam_log}")
+        log(f"[mnet] camera renderer process started (pid {self._cam_proc.pid}; it loads its own model copy, ~20 s)")
 
     def _make_camera_info(self):
         """Intrinsics of the offscreen render: square pixels, centered
@@ -284,54 +345,22 @@ class MnetBridge:
         return info
 
     def maybe_publish(self, data: mujoco.MjData, viewer_cam=None) -> None:
-        """Render and publish one camera frame if the FPS window has elapsed.
-        Uses the fixed model camera; ``viewer_cam`` is only the fallback when
-        --mnet-camera viewer was requested (or the camera is missing)."""
-        now = time.perf_counter()
-        if now < self._next_pub:
-            return
-        self._next_pub = now + 1.0 / self.fps
-        camera = self.cam_name if self.cam_name is not None else viewer_cam
-        if camera is None:
-            return
+        """Snapshot the sim state into shared memory (~20 KB memcpy). The
+        camera process samples it at the target fps and does all rendering
+        and publishing; syncing raw arrays means the code plate (geom_rgba),
+        fixture randomization (body_pos/quat) and the cable (qpos) follow
+        automatically with no replay logic."""
         self.ensure_renderer()
-        self._renderer.update_scene(data, camera=camera, scene_option=self._scene_opt)
-        rgb = self._renderer.render()
-
-        stamp = self.node.get_clock().now().to_msg()
-        msg = self._Image()
-        msg.header.stamp = stamp
-        msg.header.frame_id = "mnet_sim_camera"
-        msg.height, msg.width = rgb.shape[:2]
-        msg.encoding = "rgb8"  # the client converts via cv_bridge to bgr8
-        msg.is_bigendian = 0
-        msg.step = rgb.shape[1] * 3
-        msg.data = np.ascontiguousarray(rgb).tobytes()
-        self._image_pub.publish(msg)
-
-        self._info_msg.header.stamp = stamp
-        self._info_pub.publish(self._info_msg)
-
-        # one-time sanity check: the official client rejects < 25 fps, so
-        # surface a starved camera here instead of a minute later in its
-        # calibration. Typical cause: software rendering (WSLg / a container
-        # without GPU access) slowing the whole sim loop.
-        if not self._rate_warned:
-            if self._rate_t0 is None:
-                self._rate_t0 = now
-            self._rate_n += 1
-            elapsed = now - self._rate_t0
-            if elapsed >= 15.0:
-                actual = (self._rate_n - 1) / elapsed
-                if actual < 25.0:
-                    log(
-                        f"[mnet] WARNING: evidence camera at {actual:.1f} fps "
-                        f"(target {self.fps:g}; the client refuses < 25). "
-                        "Typical cause: software rendering (WSL2, or Docker "
-                        "without GPU access) - run the eval on native Linux "
-                        "and/or enable the GPU blocks in release/compose.yaml."
-                    )
-                self._rate_warned = True
+        if self._shm is None:
+            return
+        s = int(self._seq_np[0])
+        q, bp, bq, rg = self._slot_views[(s + 1) & 1]
+        np.copyto(q, data.qpos)
+        np.copyto(bp, self.model.body_pos)
+        np.copyto(bq, self.model.body_quat)
+        np.copyto(rg, self.model.geom_rgba)
+        self._hb_np[0] = time.time()
+        self._seq_np[0] = s + 1
 
     # -------------------------------------------------------------- reports
     def _call_trigger(self, client, label: str) -> None:
@@ -360,6 +389,14 @@ class MnetBridge:
     # -------------------------------------------------------------- cleanup
     def close(self) -> None:
         self._stop = True
+        if self._cam_proc is not None:
+            try:
+                self._cam_proc.terminate()
+            except Exception:
+                pass
+        self._frame_ready.set()  # wake the render worker so it can exit
+        if self._render_thread is not None and self._render_thread.is_alive():
+            self._render_thread.join(timeout=2.0)
         if self._spin_thread.is_alive():
             self._spin_thread.join(timeout=2.0)
         try:
@@ -367,6 +404,14 @@ class MnetBridge:
             self.node.destroy_node()
         except Exception:
             pass
-        if self._renderer is not None:
-            self._renderer.close()
-            self._renderer = None
+        # the renderer is owned and closed by the render worker thread
+        self._renderer = None
+        if self._shm is not None:
+            self._seq_np = None
+            self._hb_np = None
+            try:
+                self._shm.close()
+                self._shm.unlink()
+            except Exception:
+                pass
+            self._shm = None

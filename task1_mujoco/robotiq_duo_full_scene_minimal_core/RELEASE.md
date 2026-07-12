@@ -6,8 +6,7 @@
 |---|---|---|
 | `build/duo_teleop_<ver>.zip`（**明文源码包**，默认） | Windows / Linux 原生用户，含 VR | 挂到 GitHub Release 下载 |
 | 同上但 `--obfuscate`（PyArmor 混淆，可选） | 需要源码保密时 | 需 pyarmor，正式分发建议购 license |
-| `duo-teleop-runtime` Docker 镜像（release/compose.yaml） | 跨平台一致性测试（键盘/手柄，无 ROS） | `docker-run.sh` 封装 |
-| `duo-teleop-eval` Docker 镜像（release/compose.yaml） | Ubuntu / WSL2 跑 ManipulationNet 评测 / GELLO（都需要 ROS 2） | `eval.sh` 封装 |
+| `duo-teleop-eval` Docker 镜像（release/compose.yaml，唯一镜像） | Ubuntu：练习（键盘/手柄/ros_teleop）与 ManipulationNet 评测（`--mnet` 开关） | `docker-run.sh` 封装 |
 | 本仓库 | 开发者 | https://github.com/2houyuhang/EBiM_Benchmark_task1 |
 
 ---
@@ -34,15 +33,21 @@ VR 运行时（代码是纯 OpenXR，装好任一运行时即可）：
 - Ubuntu + Quest：WiVRn（推荐，无需 Steam）或 ALVR+SteamVR；需 X11 会话
 - Index/Vive：SteamVR
 
-### B. Docker 评测栈（Ubuntu / WSL2，含 ROS 2 + mnet client）
+### B. Docker（Ubuntu，单一镜像：练习 + 评测）
 
-仓库根目录的 `eval.sh` 是一键封装（等价的裸 compose 命令见文件内注释）：
+仓库根目录的 `docker-run.sh` 是唯一 Docker 入口（等价的裸 compose 命令见
+compose.yaml 文件内注释）。练习即默认；评测只是加 `--mnet` 参数：
 
 ```bash
+./docker-run.sh                              # 键盘练习（首次自动构建镜像）
+./docker-run.sh --input gamepad              # 手柄练习（/dev/input 自动直通）
+./docker-run.sh --input ros_teleop           # ros_teleop 练习（配第二终端 publisher）
+./docker-run.sh publisher keyboard           # 第二终端：teleop 发布节点
+# —— 评测 ——
 # 0. 一次性：编辑 mnet_client-ros_2/config/team_config.json
 #    camera_image_topic=/mujoco/camera/image_raw, autonomy_level=0, file_dir=/ws/out
-./eval.sh sim        # 首次自动构建镜像，然后弹出 sim 窗口（WSL2 免配置；原生 Linux 先 xhost +local:docker）
-./eval.sh client     # 第二个终端：交互式 client，输入 cable_management
+./docker-run.sh --input keyboard --mnet      # sim + 评测桥
+./docker-run.sh client                       # 第二个终端：交互式 client，输入 cable_management
 #    -> 出 one-time code 后，在 sim 终端输入: code <TEXT>
 #    -> 非 Tier2 自动跳过；Tier2 fixture 自动随机化；完成后在 sim 窗口按 F
 ```

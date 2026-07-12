@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fast DDS profile: shared-memory + UDP transports.
+
+     The evidence camera streams ~1 MB frames at 25-45 fps. Over the default
+     UDP loopback on Windows, reliable delivery of fragmented messages that
+     size collapses under load (measured: the mnet client receives exactly
+     ~1 fps while `ros2 topic hz` sees 20+). Shared memory moves the frames
+     with a memcpy instead. UDP stays enabled for discovery/remote peers.
+
+     Injected by ros_native.bat via FASTRTPS_DEFAULT_PROFILES_FILE; harmless
+     for every other topic. -->
+<profiles xmlns="http://www.eprosima.com/XMLSchemas/fastRTPS_Profiles">
+  <transport_descriptors>
+    <transport_descriptor>
+      <transport_id>shm_transport</transport_id>
+      <type>SHM</type>
+      <segment_size>8388608</segment_size>
+    </transport_descriptor>
+    <transport_descriptor>
+      <transport_id>udp_transport</transport_id>
+      <type>UDPv4</type>
+    </transport_descriptor>
+  </transport_descriptors>
+  <participant profile_name="shm_first_participant" is_default_profile="true">
+    <rtps>
+      <userTransports>
+        <transport_id>shm_transport</transport_id>
+        <transport_id>udp_transport</transport_id>
+      </userTransports>
+      <useBuiltinTransports>false</useBuiltinTransports>
+    </rtps>
+  </participant>
+</profiles>

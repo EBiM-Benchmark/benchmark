@@ -55,6 +55,7 @@ class BaseDriver:
             "y": optional_obj_id(model, mujoco.mjtObj.mjOBJ_JOINT, config.BASE_Y_JOINT),
             "yaw": optional_obj_id(model, mujoco.mjtObj.mjOBJ_JOINT, config.BASE_YAW_JOINT),
         }
+        self.joint_ids = joint_ids
         self.dof_ids = {name: None if jid is None else int(model.jnt_dofadr[jid]) for name, jid in joint_ids.items()}
         self.qadrs = {name: None if jid is None else int(model.jnt_qposadr[jid]) for name, jid in joint_ids.items()}
         self.acts = {
@@ -143,6 +144,30 @@ class BaseDriver:
             self.forward_axis,
         )
 
+    def _joint_xy(self, world_xy: np.ndarray) -> tuple[float, float]:
+        """Project a world-frame planar command onto the two slide joints'
+        ACTUAL world axes. The planar stack is mounted under a rotated parent
+        body (measured: base_planar_x drives world -Y, base_planar_y drives
+        world +X), so writing world X/Y straight into the x/y channels turns
+        every command by 90 degrees."""
+        jx = self.joint_ids["x"]
+        jy = self.joint_ids["y"]
+        if jx is None or jy is None:
+            return float(world_xy[0]), float(world_xy[1])
+        return (
+            float(world_xy[:2] @ self.data.xaxis[jx][:2]),
+            float(world_xy[:2] @ self.data.xaxis[jy][:2]),
+        )
+
+    def _yaw_sign(self) -> float:
+        """+1 if the yaw hinge spins about world +Z, -1 for -Z (the hinge
+        lives in the same rotated stack as the slides)."""
+        jz = self.joint_ids["yaw"]
+        if jz is None:
+            return 1.0
+        s = float(np.sign(self.data.xaxis[jz][2]))
+        return s if s != 0.0 else 1.0
+
     # ------------------------------------------------------------------ modes
     def drive(
         self,
@@ -184,18 +209,18 @@ class BaseDriver:
         active = False
         if float(np.hypot(local_x, local_y)) > config.TWIST_DEAD or abs(yaw) > config.TWIST_DEAD:
             self._idle_anchor = None
-            world_xy = self._world_xy(local_x, local_y)
+            jx_cmd, jy_cmd = self._joint_xy(self._world_xy(local_x, local_y))
             self._set_ctrl(
                 self.acts["base_x"],
-                world_xy[0] * self.base_speed * self.speed_scale[0],
+                jx_cmd * self.base_speed * self.speed_scale[0],
             )
             self._set_ctrl(
                 self.acts["base_y"],
-                world_xy[1] * self.base_speed * self.speed_scale[0],
+                jy_cmd * self.base_speed * self.speed_scale[0],
             )
             self._set_ctrl(
                 self.acts["base_yaw"],
-                yaw * self.base_yaw_speed * self.speed_scale[0],
+                yaw * self._yaw_sign() * self.base_yaw_speed * self.speed_scale[0],
             )
             active = True
         else:
@@ -229,10 +254,10 @@ class BaseDriver:
         yaw: float,
         dt: float,
     ) -> bool:
-        world_xy = self._world_xy(local_x, local_y)
-        vx = world_xy[0] * self.base_speed * self.speed_scale[0]
-        vy = world_xy[1] * self.base_speed * self.speed_scale[0]
-        wz = yaw * self.base_yaw_speed * self.speed_scale[0]
+        jx_cmd, jy_cmd = self._joint_xy(self._world_xy(local_x, local_y))
+        vx = jx_cmd * self.base_speed * self.speed_scale[0]
+        vy = jy_cmd * self.base_speed * self.speed_scale[0]
+        wz = yaw * self._yaw_sign() * self.base_yaw_speed * self.speed_scale[0]
         if self.dof_ids["x"] is not None:
             self.data.qvel[self.dof_ids["x"]] = vx
         if self.dof_ids["y"] is not None:

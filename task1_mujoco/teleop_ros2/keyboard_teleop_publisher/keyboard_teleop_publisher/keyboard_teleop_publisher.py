@@ -4,16 +4,17 @@ MuJoCo simulator), standalone ROS 2 node.
 Publishes device-agnostic Cartesian commands only — NO IK anywhere here;
 the consumer (the MuJoCo sim's --input ros_teleop, or a real-robot
 controller) solves motion with its own control stack against its own live
-robot state. Held keys are read from the X server (query_keymap), so this
-node needs a Linux/X11 session and `python-xlib`, and works regardless of
-which window has focus.
+robot state. Held keys are polled straight from the OS (same mechanism as
+the sim's own local keyboard mode, teleop/input_keyboard.py): GetAsyncKeyState
+on Windows, the X server's query_keymap on Linux/X11 (`python-xlib`
+required). Both work regardless of which window has focus.
 
 Key map (identical to the sim's local keyboard mode):
   7/8/9        select base / left arm / right arm
-  arrows       base mode: drive in SCREEN directions (uses the sim's
-               /mujoco/teleop_feedback [cam_azimuth_deg, robot_yaw_rad];
-               falls back to robot-frame if the sim isn't running)
-               arm modes: TCP X/Y in the robot's heading frame
+  arrows       base and arm modes: drive in SCREEN directions (uses the
+               sim's /mujoco/teleop_feedback [cam_azimuth_deg,
+               robot_yaw_rad]; falls back to robot-frame if the sim
+               isn't running)
   Home/End     base turn left/right
   PageUp/Down  base: spine up/down; arm: TCP Z up/down; rotate: roll
   R            toggle the ARM between translate and rotate
@@ -28,6 +29,7 @@ from __future__ import annotations
 
 import argparse
 import math
+import os
 import time
 
 import rclpy
@@ -74,6 +76,46 @@ class _X11Keys:
         return {name for name, code in self._codes.items() if keymap[code // 8] & (1 << (code % 8))}
 
 
+# Windows virtual-key codes for every tracked key (standard VK_* constants;
+# same values as teleop/input_keyboard.py's _WIN_KEY_CODES for the motion
+# keys, extended here with the discrete keys since this node has no viewer
+# window/callback to source them from).
+_WIN_VK_CODES = {
+    "Up": 0x26,
+    "Down": 0x28,
+    "Left": 0x25,
+    "Right": 0x27,
+    "Page_Up": 0x21,
+    "Page_Down": 0x22,
+    "Home": 0x24,
+    "End": 0x23,
+    "7": 0x37,
+    "8": 0x38,
+    "9": 0x39,
+    "r": 0x52,
+    "g": 0x47,
+    "v": 0x56,
+    "space": 0x20,
+    "minus": 0xBD,  # VK_OEM_MINUS
+    "equal": 0xBB,  # VK_OEM_PLUS (unshifted '=' on a US keyboard)
+}
+
+
+class _WinKeys:
+    """Held-key polling via GetAsyncKeyState (same mechanism as the sim's
+    own Windows keyboard backend, teleop/input_keyboard.py)."""
+
+    def __init__(self) -> None:
+        import ctypes
+
+        if os.name != "nt":
+            raise RuntimeError("not running on Windows")
+        self._get_key_state = ctypes.windll.user32.GetAsyncKeyState
+
+    def down(self) -> set[str]:
+        return {name for name, vk in _WIN_VK_CODES.items() if self._get_key_state(vk) & 0x8000}
+
+
 class KeyboardTeleopPublisher:
     def __init__(self, node) -> None:
         self.node = node
@@ -101,9 +143,11 @@ class KeyboardTeleopPublisher:
         topic; robot-frame passthrough when the sim isn't publishing."""
         if self._feedback is None or time.perf_counter() - self._feedback_time > FEEDBACK_TIMEOUT:
             return sy, -sx  # robot frame fallback: up=forward, left=left
+        # MuJoCo free camera (measured via mjv_updateScene's mjvGLCamera):
+        # into-screen = [+cos(az), +sin(az)], screen-right = [+sin(az), -cos(az)]
         az = math.radians(self._feedback[0])
-        fwd_h = (-math.cos(az), -math.sin(az))
-        right_h = (fwd_h[1], -fwd_h[0])
+        fwd_h = (math.cos(az), math.sin(az))
+        right_h = (math.sin(az), -math.cos(az))
         wx = right_h[0] * sx + fwd_h[0] * sy
         wy = right_h[1] * sx + fwd_h[1] * sy
         yaw = self._feedback[1]
@@ -112,15 +156,15 @@ class KeyboardTeleopPublisher:
         return wx * fwd[0] + wy * fwd[1], wx * left[0] + wy * left[1]
 
     def _arm_xy_to_world(self, fwd_in: float, right_in: float) -> tuple[float, float]:
-        """Robot-heading frame -> world xy (the sim's --arm-frame base default)."""
-        yaw = 0.0
+        """Screen-relative frame -> world xy (matches the sim's --arm-frame
+        camera default: camera_xy_to_world), fed by the live camera azimuth
+        from the feedback topic; identity (no rotation) until it arrives."""
+        az = 0.0
         if self._feedback is not None and time.perf_counter() - self._feedback_time <= FEEDBACK_TIMEOUT:
-            yaw = self._feedback[1]
-        fwd = (math.cos(yaw), math.sin(yaw))
-        left = (-fwd[1], fwd[0])
-        # second local component is the robot's LEFT (mirror of "right" input)
-        lx, ly = fwd_in, -right_in
-        return lx * fwd[0] + ly * left[0], lx * fwd[1] + ly * left[1]
+            az = math.radians(self._feedback[0])
+        fwd = (math.cos(az), math.sin(az))
+        right = (math.sin(az), -math.cos(az))
+        return fwd_in * fwd[0] + right_in * right[0], fwd_in * fwd[1] + right_in * right[1]
 
     # --------------------------------------------------------------- tick
     def tick(self, down: set[str]) -> None:
@@ -201,6 +245,14 @@ def _run_pattern(pub: KeyboardTeleopPublisher, node, seconds: float) -> None:
 
 
 def main(args=None) -> None:
+    if os.name == "nt":
+        try:
+            import ctypes
+
+            ctypes.windll.winmm.timeBeginPeriod(1)
+        except Exception:
+            pass
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--pattern",
@@ -221,11 +273,12 @@ def main(args=None) -> None:
             _run_pattern(pub, node, cli.pattern)
             return
         try:
-            keys = _X11Keys()
+            keys = _WinKeys() if os.name == "nt" else _X11Keys()
         except Exception as exc:
             node.get_logger().error(
-                f"X11 keyboard polling unavailable ({exc}); this node needs a "
-                "Linux/X11 session and python-xlib. Use --pattern for a self-test."
+                f"held-key polling unavailable ({exc}); this node needs "
+                "GetAsyncKeyState on Windows or python-xlib on Linux/X11. "
+                "Use --pattern for a self-test."
             )
             return
         node.get_logger().info(

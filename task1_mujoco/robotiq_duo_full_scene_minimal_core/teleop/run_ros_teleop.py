@@ -18,6 +18,7 @@ IK-free by nature, not part of this Cartesian contract.
 from __future__ import annotations
 
 import math
+import sys
 import time
 
 import glfw
@@ -28,7 +29,7 @@ import mujoco
 
 from . import config, log
 from .grasping import open_gripper
-from .maths import smooth_twist
+from .maths import mat_to_quat, rot_error, smooth_twist
 from .mjutil import planar_body_axis
 from .robot_arm import (
     apply_twist_ik,
@@ -37,19 +38,37 @@ from .robot_arm import (
     seed_arm,
 )
 from .session import TeleopSession
+from .vr_mapping import (
+    ClutchState,
+    screen_to_base_local,
+    vr_to_screen_map,
+    vr_to_world_map,
+)
 
 HELP = """
 Unified ROS 2 teleop (--input ros_teleop)
   Consumes /cmd_vel (base), /left|right/teleop_cmd (arm Cartesian twist),
   /left|right/gripper_cmd from a separately-running Teleop Node (keyboard,
-  gamepad, or VR - see teleop_state_publisher). Applied through the exact
-  same IK/grasp/base-drive code the local input modes use, so the feel is
-  identical regardless of which device produced the commands.
+  gamepad - see teleop_ros2/). Applied through the exact same IK/grasp/
+  base-drive code the local input modes use, so the feel is identical
+  regardless of which device produced the commands.
+  VR: /left|right/vr_hand (raw controller state from vr_teleop_publisher)
+  drives the arms through local VR mode's own clutch/servo code - hold
+  GRIP to move the mapped arm, TRIGGER close, A open, sticks drive the
+  base. --facing / --vr-scale behave exactly like --input vr.
   F / H : report task finished / skipped (--mnet eval mode)
 """
 
 
 def main(args) -> None:
+    if sys.platform == "win32":
+        try:
+            import ctypes
+
+            ctypes.windll.winmm.timeBeginPeriod(1)
+        except Exception:
+            pass
+
     log(HELP)
     try:
         from .input_ros_teleop import RosTeleopBridge
@@ -84,14 +103,135 @@ def main(args) -> None:
     # every tick would undo that and the gripper would overdrive forever)
     was_closing = {"left": False, "right": False}
 
-    def control_tick(dt: float) -> None:
+    # ---- VR-over-ROS state: raw controller poses arrive on <side>/vr_hand
+    # and drive the arms through a verbatim copy of run_vr.py's clutch/servo
+    # block (anchor at grip-engage, position servo against the LIVE sim TCP),
+    # so the feel is identical to local VR mode; the publisher is a dumb
+    # device reader. Hand->arm mirroring follows --facing like local VR.
+    clutch = {"left": ClutchState(), "right": ClutchState()}
+    prev_trigger = {"left": False, "right": False}
+    prev_a = {"left": False, "right": False}
+    facing_front = getattr(args, "facing", "front") == "front"
+    vr_scale = float(getattr(args, "vr_scale", 1.4))
+    hand_arm_pairs = (("left", "right"), ("right", "left")) if facing_front else (("left", "left"), ("right", "right"))
+    vr_seen = [False]
+
+    def vr_drive_arm(name: str, arm_name: str, hand, dt: float, cam) -> None:
+        """One hand -> one arm, verbatim run_vr.py clutch/servo semantics."""
+        arm = arms[arm_name]
+        state = clutch[name]
+
+        trig = hand.trigger > config.VR_TRIGGER_CLOSE
+        if trig and not prev_trigger[name]:
+            arm.close_ramp = True
+            log(f"{arm_name} gripper closing (vr over ros)...")
+        prev_trigger[name] = trig
+        if hand.a and not prev_a[name]:
+            open_gripper(data, arm)
+            log(f"{arm_name} gripper open (vr over ros)")
+        prev_a[name] = hand.a
+
+        engage_now = hand.grip > (config.VR_GRIP_RELEASE if state.engaged else config.VR_GRIP_ENGAGE)
+        if engage_now:
+            if not state.engaged:
+                state.engaged = True
+                state.ctrl_pos = hand.pos.copy()
+                state.ctrl_rot = hand.rot.copy()
+                state.tcp_pos = data.xpos[arm.tcp_body].copy()
+                state.tcp_rot = data.xmat[arm.tcp_body].reshape(3, 3).copy()
+                if facing_front and cam is not None:
+                    state.map = vr_to_screen_map(cam)
+                else:
+                    state.map = vr_to_world_map(data, session.base_body, args.robot_forward_axis)
+                log(f"{arm_name} arm engaged (vr over ros)")
+            m = state.map
+            desired_pos = state.tcp_pos + m @ (hand.pos - state.ctrl_pos) * vr_scale
+            rot_delta_w = m @ (hand.rot @ state.ctrl_rot.T) @ m.T
+            desired_quat = mat_to_quat(rot_delta_w @ state.tcp_rot)
+            twist = np.zeros(6)
+            twist[:3] = config.VR_POS_GAIN * (desired_pos - data.xpos[arm.tcp_body])
+            twist[3:] = config.VR_ROT_GAIN * rot_error(desired_quat, data.xmat[arm.tcp_body].reshape(3, 3))
+            grasped = arm.grasped_body is not None
+            if grasped:
+                twist[:3] *= config.GRASPED_SPEED_SCALE
+                twist[3:] *= max(config.GRASPED_SPEED_SCALE, 0.65)
+                if arm.filtered_twist is None:
+                    arm.filtered_twist = np.zeros(6)
+                arm.filtered_twist[:] = smooth_twist(
+                    arm.filtered_twist,
+                    twist,
+                    dt,
+                    config.GRASPED_TWIST_FILTER_TAU,
+                )
+                twist = arm.filtered_twist.copy()
+            twist = clamp_tcp_twist_for_contact(model, twist, grasped)
+            apply_twist_ik(model, data, arm, twist)
+            arm.was_command_active = True
+        else:
+            if state.engaged:
+                state.engaged = False
+                log(f"{arm_name} arm locked (vr over ros)")
+            if arm.was_command_active:
+                seed_arm(model, data, arm)
+                arm.was_command_active = False
+            hard_hold_arm(model, data, arm)
+
+    def control_tick(dt: float, cam=None) -> None:
         while not code_queue.empty():
             code_display.show(code_queue.get_nowait())
 
-        base_cmd = bridge.get_base_cmd()
+        vr_hands = bridge.get_vr_hands()
+        vr_active = {name: hand.valid for name, hand in vr_hands.items()}
+        if any(vr_active.values()) and not vr_seen[0]:
+            # same free-motion clamp loosening local VR mode applies, so
+            # tracking keeps up with a real hand (grasped clamp unchanged)
+            vr_seen[0] = True
+            config.FREE_MAX_TCP_STEP = config.VR_FREE_MAX_TCP_STEP
+            config.GRASPED_MAX_TCP_STEP = config.VR_GRASPED_MAX_TCP_STEP
+            log("[ros_teleop] VR hand stream detected - VR motion clamps applied")
+
+        # ---- base: VR sticks take over while a hand stream is live
+        # (verbatim run_vr.py stick mapping); /cmd_vel otherwise
+        if any(vr_active.values()):
+            base_cmd = np.zeros(4)
+            right, left = vr_hands["right"], vr_hands["left"]
+            if right.valid:
+                sx, sy = right.stick
+                if abs(sx) > config.VR_STICK_DEAD or abs(sy) > config.VR_STICK_DEAD:
+                    if facing_front and cam is not None:
+                        lx, ly = screen_to_base_local(
+                            cam, sx, sy, data, session.base_body, args.robot_forward_axis
+                        )
+                        base_cmd[0] += lx
+                        base_cmd[1] += ly
+                    else:
+                        base_cmd[0] += sy
+                        base_cmd[1] += -sx
+            if left.valid:
+                sx, sy = left.stick
+                if abs(sx) > config.VR_STICK_DEAD:
+                    base_cmd[3] += sx if facing_front else -sx
+                if abs(sy) > config.VR_STICK_DEAD:
+                    base_cmd[2] += sy
+            if session.any_arm_grasped():
+                base_cmd[0] *= config.GRASPED_BASE_SPEED_SCALE
+                base_cmd[1] *= config.GRASPED_BASE_SPEED_SCALE
+                base_cmd[3] *= config.GRASPED_BASE_SPEED_SCALE
+                base_cmd[2] *= max(config.GRASPED_BASE_SPEED_SCALE, 0.35)
+        else:
+            base_cmd = bridge.get_base_cmd()
         session.base_driver.drive(base_cmd[0], base_cmd[1], base_cmd[2], base_cmd[3], dt)
 
+        # arms driven by a live VR hand this tick (mapped via --facing)
+        vr_driven_arms = set()
+        for hand_name, arm_name in hand_arm_pairs:
+            if vr_active[hand_name] or clutch[hand_name].engaged:
+                vr_drive_arm(hand_name, arm_name, vr_hands[hand_name], dt, cam)
+                vr_driven_arms.add(arm_name)
+
         for side, arm in arms.items():
+            if side in vr_driven_arms:
+                continue
             incoming = bridge.get_arm_twist(side)
             if incoming is None:
                 twist_cmd = np.zeros(6)
@@ -137,7 +277,7 @@ def main(args) -> None:
                 log(f"{side} gripper open (ros_teleop)")
             was_closing[side] = closing_now
 
-        session.step_once(dt)
+        session.step_once(dt, follow_tcp_quat=bool(vr_driven_arms))
 
     if args.no_viewer:
         for _ in range(400):
@@ -172,7 +312,7 @@ def main(args) -> None:
                 elif mnet is not None and key == glfw.KEY_H:
                     mnet.report_skipped()
 
-            control_tick(dt)
+            control_tick(dt, viewer.cam)
 
             # frame feedback for screen-relative device mapping in the
             # publishers (keyboard/VR); rate-limited inside the bridge

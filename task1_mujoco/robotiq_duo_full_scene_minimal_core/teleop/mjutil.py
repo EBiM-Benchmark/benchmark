@@ -82,9 +82,11 @@ def camera_xy_to_world(cam, local_xy: np.ndarray) -> np.ndarray:
     """Map operator-view input (forward=screen-up/away, right=screen-right)
     to world xy using the current viewer camera azimuth, so stick-left always
     moves the TCP toward the operator's left no matter how the robot faces."""
+    # MuJoCo free camera (measured via mjv_updateScene's mjvGLCamera):
+    # into-screen = [+cos(az), +sin(az)], screen-right = [+sin(az), -cos(az)]
     az = math.radians(float(cam.azimuth))
-    forward = np.array([-math.cos(az), -math.sin(az), 0.0], dtype=np.float64)
-    right = np.array([forward[1], -forward[0], 0.0], dtype=np.float64)
+    forward = np.array([math.cos(az), math.sin(az), 0.0], dtype=np.float64)
+    right = np.array([math.sin(az), -math.cos(az), 0.0], dtype=np.float64)
     world = local_xy[0] * forward + local_xy[1] * right
     return np.array([world[0], world[1], 0.0], dtype=np.float64)
 

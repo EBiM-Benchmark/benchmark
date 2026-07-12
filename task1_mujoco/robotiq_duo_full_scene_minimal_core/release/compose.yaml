@@ -1,31 +1,33 @@
-# Two independent stacks in one file. From the repo root:
+# One image, one stack. ./docker-run.sh at the repo root wraps all of this;
+# the raw commands (from the repo root):
 #
-#   # cross-platform interactive testing (keyboard/gamepad, no ROS) — see
-#   # docker-run.sh at the repo root for a one-click wrapper around this:
-#   docker compose -f robotiq_duo_full_scene_minimal_core/release/compose.yaml build runtime
-#   docker compose -f robotiq_duo_full_scene_minimal_core/release/compose.yaml run --rm runtime
-#
-#   # ManipulationNet eval stack (ROS 2 + mnet client) — see eval.sh:
 #   docker compose -f robotiq_duo_full_scene_minimal_core/release/compose.yaml build sim
-#   docker compose -f robotiq_duo_full_scene_minimal_core/release/compose.yaml up sim
-#   docker compose -f robotiq_duo_full_scene_minimal_core/release/compose.yaml run --rm client
+#   docker compose -f robotiq_duo_full_scene_minimal_core/release/compose.yaml run --rm sim                # keyboard practice
+#   docker compose -f robotiq_duo_full_scene_minimal_core/release/compose.yaml run --rm sim \
+#       ebim python3 main.py --input gamepad                                                               # any other mode
+#   docker compose -f robotiq_duo_full_scene_minimal_core/release/compose.yaml run --rm client             # ManipulationNet client
 #
-# Display: native Linux needs `xhost +local:docker` once per session.
-# WSL2 (Windows) needs nothing — WSLg provides the X11 socket automatically.
-# Edit mnet_client-ros_2/config/team_config.json on the HOST (it is mounted
-# into the client); set camera_image_topic=/mujoco/camera/image_raw,
+# `ebim <cmd>` is the in-image launcher: it sources ROS 2 + the prebuilt
+# workspace (mnet client + teleop publishers), then executes the command.
+#
+# Display: native Linux needs `xhost +local:docker` once per session
+# (docker-run.sh does this for you).
+# Eval config: edit mnet_client-ros_2/config/team_config.json on the HOST (it
+# is mounted into the client); set camera_image_topic=/mujoco/camera/image_raw,
 # autonomy_level=0, file_dir=/ws/out.
 services:
-  # cross-platform interactive testing: same image/behavior on Windows
-  # (Docker Desktop + WSL2) and native Linux. No ROS, no mnet — just the sim.
-  runtime:
+  # The simulator. Practice by default; the ManipulationNet eval bridge is
+  # just a flag (--mnet) — the one image carries ROS 2, the ros_teleop
+  # publisher packages, and the official mnet client.
+  sim:
     build:
       context: ../..
-      dockerfile: ${SIM_DIR:-robotiq_duo_full_scene_minimal_core}/release/Dockerfile.runtime
+      # if the sim folder is ever renamed: SIM_DIR=<new name> docker compose build
+      dockerfile: ${SIM_DIR:-robotiq_duo_full_scene_minimal_core}/release/Dockerfile.eval
       args:
         SIM_DIR: ${SIM_DIR:-robotiq_duo_full_scene_minimal_core}
-    image: duo-teleop-runtime:latest
-    network_mode: host
+    image: duo-teleop-eval:latest
+    network_mode: host   # DDS discovery + X11 without extra plumbing
     ipc: host
     stdin_open: true     # 'code <TEXT>' one-time-code entry reads stdin
     tty: true
@@ -42,82 +44,13 @@ services:
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
       # DEV MODE: uncomment to run your live source instead of the baked copy
       # - ../../robotiq_duo_full_scene_minimal_core:/ws/sim
-    # gamepad: uncomment on native Linux (WSL2 has no /dev/input passthrough)
-    # devices:
-    #   - /dev/input:/dev/input
-    # native Linux + nvidia-container-toolkit: uncomment for GPU passthrough
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: all
-    #           capabilities: [gpu]
-    command: python3 main.py --input keyboard
-
-  sim:
-    build:
-      context: ../..
-      # if the sim folder is ever renamed: SIM_DIR=<new name> docker compose build
-      dockerfile: ${SIM_DIR:-robotiq_duo_full_scene_minimal_core}/release/Dockerfile.eval
-      args:
-        SIM_DIR: ${SIM_DIR:-robotiq_duo_full_scene_minimal_core}
-    image: duo-teleop-eval:latest
-    network_mode: host   # DDS discovery + X11 without extra plumbing
-    ipc: host
-    stdin_open: true     # 'code <TEXT>' one-time-code entry reads stdin
-    tty: true
-    environment:
-      - DISPLAY=${DISPLAY:-:0}
-      # WSL2 hybrid graphics: steer Mesa's D3D12 layer to a discrete GPU
-      # (set by eval.sh; empty is a no-op — Mesa picks its own default)
-      - MESA_D3D12_DEFAULT_ADAPTER_NAME=${MESA_D3D12_DEFAULT_ADAPTER_NAME:-}
-      # native Linux + nvidia-container-toolkit: opt in to GPU-accelerated
-      # OpenGL (harmless no-op without the toolkit installed). Software
-      # rendering can starve the evidence camera below the mnet client's
-      # 25 fps minimum — enable the deploy block below if that happens.
-      - NVIDIA_VISIBLE_DEVICES=${NVIDIA_VISIBLE_DEVICES:-all}
-      - NVIDIA_DRIVER_CAPABILITIES=${NVIDIA_DRIVER_CAPABILITIES:-all}
-    volumes:
-      - /tmp/.X11-unix:/tmp/.X11-unix:rw
-      # DEV MODE: uncomment to run your live source instead of the baked copy
-      # - ../../robotiq_duo_full_scene_minimal_core:/ws/sim
-    # gamepad: uncomment on native Linux (WSL2 has no /dev/input passthrough)
-    # devices:
-    #   - /dev/input:/dev/input
-    # native Linux + nvidia-container-toolkit: uncomment for GPU passthrough
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: all
-    #           capabilities: [gpu]
-    command: >
-      bash -lc "source /opt/ros/humble/setup.bash && source /ws/install/setup.bash
-      && python3 main.py --input keyboard --mnet"
-
-  # gamepad-driven eval: same as sim but with the pad passed through.
-  # Native Linux only (WSL2 has no /dev/input passthrough) — started by
-  # `./eval.sh gamepad`, fails fast elsewhere by design.
-  sim-gamepad:
-    image: duo-teleop-eval:latest
-    network_mode: host
-    ipc: host
-    stdin_open: true
-    tty: true
-    environment:
-      - DISPLAY=${DISPLAY:-:0}
-      - MESA_D3D12_DEFAULT_ADAPTER_NAME=${MESA_D3D12_DEFAULT_ADAPTER_NAME:-}
-      - NVIDIA_VISIBLE_DEVICES=${NVIDIA_VISIBLE_DEVICES:-all}
-      - NVIDIA_DRIVER_CAPABILITIES=${NVIDIA_DRIVER_CAPABILITIES:-all}
-    volumes:
-      - /tmp/.X11-unix:/tmp/.X11-unix:rw
-    devices:
-      - /dev/input:/dev/input
-    command: >
-      bash -lc "source /opt/ros/humble/setup.bash && source /ws/install/setup.bash
-      && python3 main.py --input gamepad --mnet"
+    # gamepad passthrough: release/compose.input.yaml overlay — docker-run.sh
+    # merges it automatically when the host has /dev/input (a `devices:` entry
+    # for a path the host lacks aborts container start, hence the overlay)
+    #
+    # GPU passthrough: release/compose.gpu.yaml overlay — docker-run.sh merges
+    # it automatically when the NVIDIA container runtime is present
+    command: ebim python3 main.py --input keyboard
 
   client:
     image: duo-teleop-eval:latest
@@ -129,6 +62,4 @@ services:
       - ./mnet_out:/ws/out
       # live host config: edit team_config.json without rebuilding
       - ../../mnet_client-ros_2/config/team_config.json:/ws/install/mnet_client/share/mnet_client/config/team_config.json:ro
-    command: >
-      bash -lc "source /opt/ros/humble/setup.bash && source /ws/install/setup.bash
-      && ros2 run mnet_client local_test"
+    command: ebim ros2 run mnet_client local_test

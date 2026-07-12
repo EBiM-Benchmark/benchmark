@@ -1,0 +1,27 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>vr_teleop_publisher</name>
+  <version>0.1.0</version>
+  <description>
+    VR teleop publisher for the EBiM task-1 MuJoCo simulator. Publishes RAW
+    OpenXR controller state (pose + buttons) per hand; all clutch/servo
+    control math stays in the simulator so the feel is identical to its
+    local VR mode. Needs pyopenxr + an active OpenXR runtime on THIS
+    machine (Quest Link on Windows, WiVRn on Linux).
+  </description>
+  <maintainer email="cahgzt@gmail.com">2houyuhang</maintainer>
+  <license>Apache-2.0</license>
+
+  <depend>rclpy</depend>
+  <depend>std_msgs</depend>
+
+  <test_depend>ament_copyright</test_depend>
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>ament_pep257</test_depend>
+  <test_depend>python3-pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

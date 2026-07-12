@@ -19,6 +19,8 @@ import time
 import numpy as np
 
 from . import config, log
+from .maths import quat_to_mat
+from .vr_mapping import HandState
 
 
 class RosTeleopBridge:
@@ -44,12 +46,18 @@ class RosTeleopBridge:
             "right": np.zeros(6),
         }
         self._gripper: dict[str, float] = {"left": 0.0, "right": 0.0}
+        self._vr_hand: dict[str, np.ndarray] = {
+            "left": np.zeros(config.ROS_TELEOP_VR_HAND_LEN),
+            "right": np.zeros(config.ROS_TELEOP_VR_HAND_LEN),
+        }
         self._last_update: dict[str, float] = {
             "base": 0.0,
             "left_arm": 0.0,
             "right_arm": 0.0,
             "left_gripper": 0.0,
             "right_gripper": 0.0,
+            "left_vr_hand": 0.0,
+            "right_vr_hand": 0.0,
         }
 
         if not rclpy.ok():
@@ -68,6 +76,12 @@ class RosTeleopBridge:
                 Float32,
                 f"/{ns}/{config.ROS_TELEOP_GRIPPER_TOPIC}",
                 self._make_gripper_cb(side),
+                10,
+            )
+            self.node.create_subscription(
+                Float32MultiArray,
+                f"/{ns}/{config.ROS_TELEOP_VR_HAND_TOPIC}",
+                self._make_vr_hand_cb(side),
                 10,
             )
 
@@ -125,6 +139,16 @@ class RosTeleopBridge:
 
         return cb
 
+    def _make_vr_hand_cb(self, side: str):
+        def cb(msg) -> None:
+            if len(msg.data) < config.ROS_TELEOP_VR_HAND_LEN:
+                return
+            with self._lock:
+                self._vr_hand[side][:] = msg.data[: config.ROS_TELEOP_VR_HAND_LEN]
+                self._last_update[f"{side}_vr_hand"] = time.perf_counter()
+
+        return cb
+
     def _spin(self) -> None:
         while not self._stop and self._rclpy.ok():
             self._executor.spin_once(timeout_sec=0.1)
@@ -153,6 +177,33 @@ class RosTeleopBridge:
             if not self._fresh(f"{side}_gripper"):
                 return False
             return self._gripper[side] > config.ROS_TELEOP_GRIPPER_CLOSE_ABOVE
+
+    def get_vr_hands(self) -> dict[str, HandState]:
+        """Raw VR controller state per HAND (see config's vr_hand contract).
+        A hand is valid=False when its topic is stale or the publisher
+        flagged it invalid - identical semantics to a local VR backend's
+        get_hands(), so run_vr's clutch logic consumes it unchanged."""
+        hands: dict[str, HandState] = {}
+        with self._lock:
+            for side in ("left", "right"):
+                hand = HandState()
+                raw = self._vr_hand[side]
+                if self._fresh(f"{side}_vr_hand") and raw[0] > 0.5:
+                    hand.valid = True
+                    hand.pos = raw[1:4].copy()
+                    hand.rot = quat_to_mat(raw[4:8])
+                    hand.grip = float(raw[8])
+                    hand.trigger = float(raw[9])
+                    hand.a = raw[10] > 0.5
+                    hand.b = raw[11] > 0.5
+                    hand.stick = raw[12:14].copy()
+                    hand.stick_click = raw[14] > 0.5
+                hands[side] = hand
+        return hands
+
+    def any_vr_hand_fresh(self) -> bool:
+        with self._lock:
+            return any(self._fresh(f"{s}_vr_hand") and self._vr_hand[s][0] > 0.5 for s in ("left", "right"))
 
     def publish_feedback(self, cam_azimuth_deg: float, robot_yaw_rad: float) -> None:
         """Rate-limited [azimuth, yaw] broadcast for screen-relative mapping."""

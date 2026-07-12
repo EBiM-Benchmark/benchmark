@@ -100,9 +100,10 @@ def add_arm_args(parser: argparse.ArgumentParser) -> None:
     g.add_argument(
         "--arm-frame",
         choices=("base", "camera"),
-        default="base",
-        help="frame for arm stick/WASD translation: base = robot heading (stable, default), "
-        "camera = operator screen axes (mirror teleop)",
+        default="camera",
+        help="frame for arm stick/arrow translation: camera = operator screen axes "
+        "(matches the base and VR, default), base = robot heading (stable under "
+        "camera orbits)",
     )
 
 
@@ -243,6 +244,8 @@ def build_vr_parser() -> argparse.ArgumentParser:
     add_viewer_args(parser)
     # VR default timestep is 2x the desktop one: the VR loop shares its time
     # budget with headset frame submission, and grasp feel was verified at 2ms
+    # (1.5ms was tried for contact stability and felt WORSE - likely the +33%
+    # physics cost eating the shared budget; do not retry blind)
     add_physics_args(parser, timestep_default=0.002)
     add_grasp_args(parser)
     add_base_args(parser, base_speed_default=1.2, base_yaw_default=120.0, with_control_modes=False)
@@ -270,6 +273,22 @@ def build_gello_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def add_ros_vr_args(parser: argparse.ArgumentParser) -> None:
+    """VR-over-ROS knobs (vr_hand topics): the clutch/servo runs in the sim
+    through local VR mode's own code, so these mirror add_vr_args' semantics.
+    Backend/hmd-view flags stay out - those belong to the machine running
+    vr_teleop_publisher, not the sim."""
+    g = parser.add_argument_group("vr over ros (vr_teleop_publisher)")
+    g.add_argument("--vr-scale", type=float, default=1.4, help="controller-to-TCP motion scale")
+    g.add_argument(
+        "--facing",
+        choices=("front", "behind"),
+        default="front",
+        help="front (default): operator faces the robot on screen - hands are mirrored to the"
+        " opposite arm and motion follows the screen axes; behind: same-side hands, robot-frame motion",
+    )
+
+
 def build_ros_teleop_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Duo-FR3 full-scene teleop - unified ROS 2 teleop mode "
@@ -285,5 +304,6 @@ def build_ros_teleop_parser() -> argparse.ArgumentParser:
     add_physics_args(parser, timestep_default=0.001)
     add_grasp_args(parser)
     add_base_args(parser, base_speed_default=3.0, base_yaw_default=360.0, with_control_modes=True)
+    add_ros_vr_args(parser)
     add_mnet_args(parser)
     return parser

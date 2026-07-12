@@ -8,9 +8,13 @@ on every OS and vendor (falls back to raw joystick indices for unmapped
 pads, same as the simulator's local gamepad mode).
 
 Mapping (identical to the sim's local gamepad mode):
-  Share/Back      mobile base mode      L1 / R1   left / right arm mode
-  left stick      base X/Y or TCP X/Y (robot heading frame via
-                  /mujoco/teleop_feedback; falls back to yaw=0)
+  Share/Back      mobile base mode      R1 / L1   left / right arm mode
+                  (operator-facing frame: the robot's own left arm sits
+                  on the operator's right when facing it, so the
+                  physically-left shoulder button selects the arm that
+                  appears on the operator's left)
+  left stick      base X/Y or TCP X/Y, SCREEN-relative (camera azimuth via
+                  /mujoco/teleop_feedback; falls back to robot frame)
   right stick     base yaw or TCP yaw/pitch
   L2/R2           base: spine down/up; arm: TCP Z down/up
   D-pad left/right   TCP roll
@@ -24,6 +28,7 @@ from __future__ import annotations
 
 import argparse
 import math
+import os
 import time
 
 import rclpy
@@ -128,8 +133,8 @@ class _Pad:
         if self.ctrl is not None:
             table = {
                 "mode_base": pg.CONTROLLER_BUTTON_BACK,
-                "mode_left": pg.CONTROLLER_BUTTON_LEFTSHOULDER,
-                "mode_right": pg.CONTROLLER_BUTTON_RIGHTSHOULDER,
+                "mode_left": pg.CONTROLLER_BUTTON_RIGHTSHOULDER,
+                "mode_right": pg.CONTROLLER_BUTTON_LEFTSHOULDER,
                 "close": pg.CONTROLLER_BUTTON_B,
                 "open": pg.CONTROLLER_BUTTON_A,
                 "speed_up": pg.CONTROLLER_BUTTON_LEFTSTICK,
@@ -141,8 +146,8 @@ class _Pad:
         elif self.joy is not None:
             table = {
                 "mode_base": (6,),
-                "mode_left": (9, 4),
-                "mode_right": (10, 5),
+                "mode_left": (10, 5),
+                "mode_right": (9, 4),
                 "close": (1,),
                 "open": (0,),
                 "speed_down": (7,),
@@ -173,14 +178,32 @@ class GamepadTeleopPublisher:
             self._feedback = (float(msg.data[0]), float(msg.data[1]))
             self._feedback_time = time.perf_counter()
 
-    def _arm_xy_to_world(self, fwd_in: float, right_in: float) -> tuple[float, float]:
-        yaw = 0.0
-        if self._feedback is not None and time.perf_counter() - self._feedback_time <= FEEDBACK_TIMEOUT:
-            yaw = self._feedback[1]
+    def _screen_to_base_local(self, sx: float, sy: float) -> tuple[float, float]:
+        """Same math as the sim's screen_to_base_local: stick left = base
+        moves screen-left, stick up = into the screen. Robot-frame
+        passthrough until the feedback topic arrives."""
+        if self._feedback is None or time.perf_counter() - self._feedback_time > FEEDBACK_TIMEOUT:
+            return sy, -sx  # robot frame fallback: up=forward, left=left
+        az = math.radians(self._feedback[0])
+        fwd_h = (math.cos(az), math.sin(az))
+        right_h = (math.sin(az), -math.cos(az))
+        wx = right_h[0] * sx + fwd_h[0] * sy
+        wy = right_h[1] * sx + fwd_h[1] * sy
+        yaw = self._feedback[1]
         fwd = (math.cos(yaw), math.sin(yaw))
         left = (-fwd[1], fwd[0])
-        lx, ly = fwd_in, -right_in
-        return lx * fwd[0] + ly * left[0], lx * fwd[1] + ly * left[1]
+        return wx * fwd[0] + wy * fwd[1], wx * left[0] + wy * left[1]
+
+    def _arm_xy_to_world(self, fwd_in: float, right_in: float) -> tuple[float, float]:
+        """Screen-relative frame -> world xy (matches the sim's --arm-frame
+        camera default: camera_xy_to_world), fed by the live camera azimuth
+        from the feedback topic; identity (no rotation) until it arrives."""
+        az = 0.0
+        if self._feedback is not None and time.perf_counter() - self._feedback_time <= FEEDBACK_TIMEOUT:
+            az = math.radians(self._feedback[0])
+        fwd = (math.cos(az), math.sin(az))
+        right = (math.sin(az), -math.cos(az))
+        return fwd_in * fwd[0] + right_in * right[0], fwd_in * fwd[1] + right_in * right[1]
 
     def tick(self, pad: _Pad) -> None:
         pad.pump()
@@ -217,8 +240,7 @@ class GamepadTeleopPublisher:
         base = Twist()
         arm = {s: Twist() for s in SIDES}
         if self.mode == "base":
-            base.linear.x = -ly
-            base.linear.y = -lx  # stick left = robot's left, matching the sim
+            base.linear.x, base.linear.y = self._screen_to_base_local(lx, -ly)
             base.linear.z = r2 - l2
             base.angular.z = rx
         else:
@@ -254,6 +276,14 @@ def _run_pattern(pub: GamepadTeleopPublisher, node, seconds: float) -> None:
 
 
 def main(args=None) -> None:
+    if os.name == "nt":
+        try:
+            import ctypes
+
+            ctypes.windll.winmm.timeBeginPeriod(1)
+        except Exception:
+            pass
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--pattern",
@@ -283,7 +313,7 @@ def main(args=None) -> None:
             return
         node.get_logger().info(
             "publishing /cmd_vel + /left|right/teleop_cmd + /left|right/gripper_cmd; "
-            "Share=base L1/R1=arms Circle=close Cross=open stick-click=speed"
+            "Share=base R1/L1=left/right-arm Circle=close Cross=open stick-click=speed"
         )
         while rclpy.ok():
             pub.tick(pad)
