@@ -296,7 +296,7 @@ Run the keyboard teleop node to control the movement of the TMR omnidirectional 
 ros2 run teleop_twist_keyboard teleop_twist_keyboard --ros-args -p holonomic:=true
 
 ```
-
+https://github.com/user-attachments/assets/4616d4db-39b2-4590-b121-d1308f6c2a07
 
 #### 2.1 Grpper joints Control
 
