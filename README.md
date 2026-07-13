@@ -287,6 +287,7 @@ All keyboard teleoperation logic is fully integrated into the Action Graph withi
 Instant Activation: Click the viewpoint in the viewport to immediately enable keyboard control.
 
 Unified Control: No external terminal scripts are required; the Action Graph handles all key mappings internally for seamless bimanual and chassis coordination.
+https://github.com/user-attachments/assets/4616d4db-39b2-4590-b121-d1308f6c2a07
 
 #### 1.1 Control the TMR Chassis Motion
 
@@ -296,7 +297,7 @@ Run the keyboard teleop node to control the movement of the TMR omnidirectional 
 ros2 run teleop_twist_keyboard teleop_twist_keyboard --ros-args -p holonomic:=true
 
 ```
-https://github.com/user-attachments/assets/4616d4db-39b2-4590-b121-d1308f6c2a07
+https://github.com/user-attachments/assets/fc54ea8a-4472-4799-85f8-32ae94082aa4
 
 #### 2.1 Grpper joints Control
 
