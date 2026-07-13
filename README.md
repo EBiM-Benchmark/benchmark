@@ -287,6 +287,7 @@ All keyboard teleoperation logic is fully integrated into the Action Graph withi
 Instant Activation: Click the viewpoint in the viewport to immediately enable keyboard control.
 
 Unified Control: No external terminal scripts are required; the Action Graph handles all key mappings internally for seamless bimanual and chassis coordination.
+
 https://github.com/user-attachments/assets/4616d4db-39b2-4590-b121-d1308f6c2a07
 
 #### 1.1 Control the TMR Chassis Motion
