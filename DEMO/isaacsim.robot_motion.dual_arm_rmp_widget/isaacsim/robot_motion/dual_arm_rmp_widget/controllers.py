@@ -23,7 +23,9 @@ from isaacsim.core.utils.types import ArticulationAction
 from isaacsim.robot_motion.motion_generation.articulation_kinematics_solver import ArticulationKinematicsSolver
 from isaacsim.robot_motion.motion_generation.articulation_trajectory import ArticulationTrajectory
 from isaacsim.robot_motion.motion_generation.path_planner_visualizer import PathPlannerVisualizer
-
+# 引入 ROS 2 相关的 Python 库
+import rclpy
+from sensor_msgs.msg import JointState
 
 class LulaController(BaseController):
     def __init__(self, name: str):
@@ -38,6 +40,24 @@ class KinematicsController(LulaController):
         BaseController.__init__(self, name)
         self._art_kinematics_left = art_kinematics_left
         self._art_kinematics_right = art_kinematics_right
+
+    # ==================== ROS 2 初始化 ====================
+        # 确保 rclpy 已经全局初始化（Isaac Sim 启动 ROS 桥接时通常已初始化）
+        if not rclpy.ok():
+            rclpy.init()
+        
+        # 创建一个专用于控制器的 ROS 2 节点
+        self._ros_node = rclpy.create_node("lula_kinematics_ros_bridge")
+        
+        # 创建两个独立的发布者，使用标准的 JointState 消息
+        self._left_pub = self._ros_node.create_publisher(JointState, "/leftarm_current_pose", 10)
+        self._right_pub = self._ros_node.create_publisher(JointState, "/rightarm_current_pose", 10)
+        
+        # 缓存左右臂的关节名称列表（供 ROS 可视化如 Rviz 识别，可选）
+        # Lula 求解器可以获取对应的关节名，如果没有可以直接用字符串列表代替
+        self._left_joint_names = [f"left_fr3v2_joint{i}" for i in range(1, 8)]
+        self._right_joint_names = [f"right_fr3v2_joint{i}" for i in range(1, 8)]
+        # ======================================================
 
     def forward(
         self, 
@@ -61,6 +81,26 @@ class KinematicsController(LulaController):
             carb.log_warn("Failed to compute Left Arm Inverse Kinematics")
         if not succ_right:
             carb.log_warn("Failed to compute Right Arm Inverse Kinematics")
+
+        # ==================== ROS 2 关节数据发布 ====================
+        now = self._ros_node.get_clock().now().to_msg()
+
+        if succ_left and action_left.joint_positions is not None:
+            left_msg = JointState()
+            left_msg.header.stamp = now
+            left_msg.name = self._left_joint_names
+            left_msg.position = action_left.joint_positions.tolist()
+            self._left_pub.publish(left_msg)
+
+        if succ_right and action_right.joint_positions is not None:
+            right_msg = JointState()
+            right_msg.header.stamp = now
+            right_msg.name = self._right_joint_names
+            right_msg.position = action_right.joint_positions.tolist()
+            self._right_pub.publish(right_msg)
+            
+        rclpy.spin_once(self._ros_node, timeout_sec=0.0)
+        # ============================================================
 
         # 3. 合并两者的 ArticulationAction
         # 提取两者的 joint_positions 并通过 joint_indices 正确映射
