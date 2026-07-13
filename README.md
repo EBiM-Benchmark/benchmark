@@ -304,9 +304,21 @@ Numpad 1 & 2: Control the right arm gripper (Open / Close).
 
 Numpad 3 & 4: Control the left arm gripper (Open / Close).
 
+
+
+https://github.com/user-attachments/assets/e06405d2-e554-42ba-a92a-a538a61f53be
+
+
+
 #### 2.2 Waist Vertical Control
 
-Numpad 5: Raises the waist vertical joint by 0.1m (adjustable range: 0.0m to 0.85m).
+Numpad 5: Decreases the waist vertical joint by 0.1m (adjustable range: 0.0m to 0.85m).
+
+Numpad 6: Raises the waist vertical joint by 0.1m (adjustable range: 0.0m to 0.85m).
+
+
+https://github.com/user-attachments/assets/abfe6b21-3e92-43d5-8728-5a0c52c95073
+
 
 
 
@@ -447,7 +459,12 @@ Before recording, you must set up the required virtual environment. Please follo
 3. Execute the recording script:
       ```bash
    python record.py
+
       
+
+https://github.com/user-attachments/assets/512aba8a-5ff5-45b4-8911-da25a53b1848
+
+
  Recording Control via Terminal:
   *  Enter `2`: Start recording the dataset.
   *  Enter `3`: Stop recording and automatically save the episode.
@@ -470,6 +487,11 @@ You can append the following arguments to specify the target dataset and subset:
 ```bash
 PYTHONPATH=submodules/lerobot/src python -m lerobot.scripts.visualize_dataset --root ./data --repo-id mobile_dual_arm_test --episode-index 0
 ```
+
+
+https://github.com/user-attachments/assets/c86206a8-55de-4cad-88c7-12e7752b285f
+
+
 ## References
 
 - Isaac Sim 5.1.0 container documentation: <https://docs.isaacsim.omniverse.nvidia.com/5.1.0/installation/install_container.html>
