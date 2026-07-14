@@ -951,7 +951,7 @@ pre-commit run --all-files
 
 CI runs the same command on every pull request (`.github/workflows/pre-commit.yaml`), and `pre-commit` is the required status check on `main`, so a pull request cannot merge while it is red. The hooks cover Ruff (lint and format), codespell, license headers, and a set of file checks. Their configuration lives in `.pre-commit-config.yaml`, with Ruff's rules in `pyproject.toml`; several directories are excluded, listed under `exclude` at the end of `.pre-commit-config.yaml`.
 
-`pyproject.toml` here is lint and type-check configuration only — this repository is not a pip-installable package, so there is no `pip install -e .` step.
+`pyproject.toml` here holds tool configuration only — this repository is not a pip-installable package, so there is no `pip install -e .` step.
 
 For runtime and environment setup — host requirements, Docker targets, and the simulation stack — see [docs/developer_setup.md](docs/developer_setup.md).
 
