@@ -934,6 +934,27 @@ library path is configured before Isaac Sim starts. The launcher re-execs
 itself once in ROS mode so `LD_LIBRARY_PATH` is visible to the dynamic loader
 from process startup, and stores ROS logs under `/isaac-sim/kit/logs/ros`.
 
+## Contributing
+
+Linting and formatting run through [pre-commit](https://pre-commit.com/). Install the hooks once after cloning:
+
+```bash
+pip install pre-commit
+pre-commit install
+```
+
+Run them across the repository before pushing:
+
+```bash
+pre-commit run --all-files
+```
+
+CI runs the same command on every pull request (`.github/workflows/pre-commit.yaml`), and `pre-commit` is the required status check on `main`, so a pull request cannot merge while it is red. The hooks cover Ruff (lint and format), codespell, license headers, and a set of file checks. Their configuration lives in `.pre-commit-config.yaml`, with Ruff's rules in `pyproject.toml`; several directories are excluded, listed under `exclude` at the end of `.pre-commit-config.yaml`.
+
+`pyproject.toml` here holds tool configuration only — this repository is not a pip-installable package, so there is no `pip install -e .` step.
+
+For runtime and environment setup — host requirements, Docker targets, and the simulation stack — see [docs/developer_setup.md](docs/developer_setup.md).
+
 ## Validation Checklist
 
 After changes, verify the following:
