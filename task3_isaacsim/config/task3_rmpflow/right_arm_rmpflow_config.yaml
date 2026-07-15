@@ -3,7 +3,7 @@
 
 # SPDX-FileCopyrightText: Copyright (c) 2026 The EBiM Benchmark Contributors
 # SPDX-License-Identifier: Apache-2.0
-# Adapted from Isaac Sim 5.1 FR3 RMPflow and EBiM feature/task2_teleop.
+# Task 3 participant runtime; adapted from Isaac Sim 5.1 FR3 RMPflow.
 
 joint_limit_buffers: [.01, .03, .01, .01, .01, .01, .01]
 rmp_params:

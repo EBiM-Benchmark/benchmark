@@ -1,7 +1,7 @@
 # Copyright (c) 2026 The EBiM Benchmark Contributors
 # SPDX-License-Identifier: Apache-2.0
 
-"""Shared keyboard mapping for Task 3 mobile-base and dual-arm teleop."""
+"""Keyboard mapping for the Task 3 mobile-base and dual-arm runtime."""
 
 import math
 from dataclasses import dataclass

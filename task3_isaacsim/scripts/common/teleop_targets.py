@@ -1,7 +1,7 @@
 # Copyright (c) 2026 The EBiM Benchmark Contributors
 # SPDX-License-Identifier: Apache-2.0
 
-"""Bounded teleoperation targets and mobile FR3 Duo joint composition."""
+"""Task 3 teleoperation targets and mobile FR3 Duo joint composition."""
 
 import math
 from collections.abc import Sequence

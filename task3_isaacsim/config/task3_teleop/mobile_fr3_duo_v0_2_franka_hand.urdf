@@ -2,7 +2,7 @@
 <!-- SPDX-FileCopyrightText: Copyright (c) 2026 The EBiM Benchmark Contributors -->
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 <!--
-  Kinematics-only Task 3 adaptation of Franka Robotics' franka_description
+  Participant-runtime Task 3 adaptation of Franka Robotics' franka_description
   mobile_fr3_duo_v0_2_franka_hand.urdf, distributed under Apache-2.0.
   Visual and collision geometry are intentionally omitted for portable Lula IK.
 -->

@@ -4,7 +4,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 The EBiM Benchmark Contributors
 # SPDX-License-Identifier: Apache-2.0
 #
-# Adapted from EBiM benchmark-archive Robotiq_DEMO commit 78c28ea
+# Task 3 participant runtime, adapted from benchmark-archive commit 78c28ea
 # (Apache-2.0) for the Task 3 Franka-hand URDF.
 
 api_version: 1.0
