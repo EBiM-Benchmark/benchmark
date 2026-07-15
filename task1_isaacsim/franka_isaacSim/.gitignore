@@ -1,0 +1,12 @@
+docker
+stream_output.log
+*.pyc
+__pycache__/
+*.log
+extra
+.claude
+.pytest_cache
+.venv
+.vscode
+assets/configuration
+assets/3D_assets/omniverse_asset_storage

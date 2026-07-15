@@ -1,0 +1,15 @@
+.vscode/
+
+build/
+install/
+log/
+
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+.cache/
+.pytest_cache/
+
+.DS_Store

@@ -1,0 +1,35 @@
+fr3_duo_mount_origin:
+  kinematic:
+    x: 0.0
+    y: 0.0
+    z: 0.0
+    roll: 0.0
+    pitch: 0.0
+    yaw: 0.0
+
+fr3_duo_mount_mounting_point:
+  kinematic:
+    x: -0.037
+    y: 0.0
+    z: -0.05
+    roll: 0.0
+    pitch: 0.0
+    yaw: 0.0
+
+fr3_duo_mount_left:
+  kinematic:
+    x: 0.0
+    y: 0.05018
+    z: 0.0
+    roll: -0.89
+    pitch: -0.17
+    yaw: -0.46
+
+fr3_duo_mount_right:
+  kinematic:
+    x: 0.0
+    y: -0.05018
+    z: 0.0
+    roll: 0.89
+    pitch: -0.17
+    yaw: 0.46

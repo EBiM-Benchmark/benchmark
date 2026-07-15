@@ -1,0 +1,9 @@
+[submodule "assets/franka_description"]
+	path = assets/franka_description
+	url = ssh://git@bitbucket.fe.lan:7999/moctrl/franka_description.git
+[submodule "assets/franka_ros2"]
+	path = assets/franka_ros2
+	url = ssh://git@bitbucket.fe.lan:7999/moctrl/franka_ros2.git
+[submodule "assets/ros2_robotiq_gripper"]
+	path = assets/ros2_robotiq_gripper
+	url = https://github.com/PickNikRobotics/ros2_robotiq_gripper.git

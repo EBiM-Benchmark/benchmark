@@ -1,0 +1,69 @@
+LEFT:
+  namespace: left
+  com_port: usb-ROBOTIS_OpenRB-150_38F23AFA5157375037202020FF11170D-if00
+  num_arm_joints: 7
+  joint_signs:
+  - 1
+  - 1
+  - -1
+  - 1
+  - 1
+  - 1
+  - 1
+  gripper: true
+  assembly_offsets:
+  - 4.712
+  - 3.142
+  - 4.712
+  - 3.142
+  - 4.712
+  - 3.142
+  - 4.712
+  gripper_range_rad:
+  - 2.521
+  - 3.253
+  dynamixel_torque_enable:
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  dynamixel_goal_position:
+  - 0.0
+  - 0.0
+  - 0.0
+  - -1.571
+  - 0.0
+  - 1.571
+  - 0.0
+  - 3.509
+  dynamixel_kp_p:
+  - 30
+  - 60
+  - 0
+  - 30
+  - 0
+  - 0
+  - 0
+  - 50
+  dynamixel_kp_i:
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  dynamixel_kp_d:
+  - 250
+  - 100
+  - 80
+  - 60
+  - 30
+  - 10
+  - 5
+  - 0

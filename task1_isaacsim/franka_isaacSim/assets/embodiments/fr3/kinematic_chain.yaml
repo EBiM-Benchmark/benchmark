@@ -1,0 +1,103 @@
+embodiment_key: fr3
+version: "1.0"
+description: >
+  Rigid-body kinematic tree for the single FR3v2 fixed-base configuration.
+  Transforms are link-origin-to-link-origin (from the parent joint origin).
+  Values match the Franka FR3v2 URDF DH parameters.
+  Note: the USD prim hierarchy is flat (all arm links are siblings under /ai_cell)
+  due to Isaac Sim 5.1 PhysX articulation parsing requirements; the logical
+  serial chain below reflects kinematic connectivity, not prim nesting.
+
+base_frame: world
+
+links:
+  world:
+    description: "Scene origin / world frame"
+    inertia_mass: 0.0
+
+  fr3v2_link0:
+    description: "Arm base link (fixed to pedestal)"
+    parent: world
+    joint_to_parent: fr3v2_joint0_fixed
+    transform_xyz_m:   [ 0.0,  0.0,  0.89]
+    transform_rpy_rad: [ 0.0,  0.0,  0.0]
+    inertia_mass_kg: 2.5
+    usd_prim_path: /ai_cell/fr3v2_link0
+
+  fr3v2_link1:
+    description: "Arm link 1"
+    parent: fr3v2_link0
+    joint_to_parent: fr3v2_joint1
+    transform_xyz_m:   [ 0.0,  0.0,  0.333]
+    transform_rpy_rad: [ 0.0,  0.0,  0.0]
+    inertia_mass_kg: 2.92
+    usd_prim_path: /ai_cell/fr3v2_link1
+
+  fr3v2_link2:
+    description: "Arm link 2"
+    parent: fr3v2_link1
+    joint_to_parent: fr3v2_joint2
+    transform_xyz_m:   [ 0.0,  0.0,  0.0]
+    transform_rpy_rad: [-1.5708,  0.0,  0.0]
+    inertia_mass_kg: 2.36
+    usd_prim_path: /ai_cell/fr3v2_link2
+
+  fr3v2_link3:
+    description: "Arm link 3"
+    parent: fr3v2_link2
+    joint_to_parent: fr3v2_joint3
+    transform_xyz_m:   [ 0.0, -0.316,  0.0]
+    transform_rpy_rad: [ 1.5708,  0.0,  0.0]
+    inertia_mass_kg: 2.38
+    usd_prim_path: /ai_cell/fr3v2_link3
+
+  fr3v2_link4:
+    description: "Arm link 4"
+    parent: fr3v2_link3
+    joint_to_parent: fr3v2_joint4
+    transform_xyz_m:   [ 0.0825,  0.0,  0.0]
+    transform_rpy_rad: [ 1.5708,  0.0,  0.0]
+    inertia_mass_kg: 2.43
+    usd_prim_path: /ai_cell/fr3v2_link4
+
+  fr3v2_link5:
+    description: "Arm link 5"
+    parent: fr3v2_link4
+    joint_to_parent: fr3v2_joint5
+    transform_xyz_m:   [-0.0825,  0.384,  0.0]
+    transform_rpy_rad: [-1.5708,  0.0,  0.0]
+    inertia_mass_kg: 3.50
+    usd_prim_path: /ai_cell/fr3v2_link5
+
+  fr3v2_link6:
+    description: "Arm link 6"
+    parent: fr3v2_link5
+    joint_to_parent: fr3v2_joint6
+    transform_xyz_m:   [ 0.0,  0.0,  0.0]
+    transform_rpy_rad: [ 1.5708,  0.0,  0.0]
+    inertia_mass_kg: 1.47
+    usd_prim_path: /ai_cell/fr3v2_link6
+
+  fr3v2_link7:
+    description: "Arm link 7"
+    parent: fr3v2_link6
+    joint_to_parent: fr3v2_joint7
+    transform_xyz_m:   [ 0.088,  0.0,  0.0]
+    transform_rpy_rad: [ 1.5708,  0.0,  0.0]
+    inertia_mass_kg: 0.45
+    usd_prim_path: /ai_cell/fr3v2_link7
+
+  fr3v2_link8:
+    description: "Arm flange / end-effector mount"
+    parent: fr3v2_link7
+    joint_to_parent: fr3v2_joint8_fixed
+    transform_xyz_m:   [ 0.0,  0.0,  0.107]
+    transform_rpy_rad: [ 0.0,  0.0, -0.7854]
+    inertia_mass_kg: 0.0
+    usd_prim_path: /ai_cell/fr3v2_link8
+
+notes: |
+  All transforms are expressed as parent-link-origin → child-link-origin at joint zero.
+  Matches standard Franka FR3v2 URDF DH parameters.
+  Base link (link0) is placed at world origin at pedestal height (0.89 m), facing forward.
+  USD prim paths reflect the flat /ai_cell/ hierarchy required by Isaac Sim 5.1 PhysX.

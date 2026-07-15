@@ -1,0 +1,106 @@
+embodiment_key: fr3
+version: "1.0"
+description: "Asset file references and USD articulation structure for the single FR3v2 fixed-base configuration."
+
+# ── Primary simulation asset ──────────────────────────────────────────────────
+
+primary_usd:
+  path: /workspace/assets/digital_twin_fr3.usd
+  format: usdc
+  description: "Compiled binary USD containing the single-arm ai_cell scene."
+  default_prim: ai_cell
+
+# ── USD articulation layout ───────────────────────────────────────────────────
+#
+# Isaac Sim 5.1 / PhysX constraint: a joint is included in an articulation only
+# when its body0 prim is a DIRECT child of the articulation root scope.
+# Therefore all arm link prims are placed flat under /ai_cell/ (not nested under
+# intermediate Xforms). Joints live in /ai_cell/joints/.
+#
+# Guide reference: USD_7DOF_Arm_Articulation_Guide.md
+
+usd_articulation:
+  scene_root: /ai_cell
+
+  articulation_root:
+    prim_path: /ai_cell/root_joint
+    prim_type: PhysicsFixedJoint
+    api_applied: ArticulationRootAPI
+    body0: null
+    body1: /ai_cell/base
+    self_collision: false
+    description: >
+      ArticulationRootAPI is applied to the fixed root joint that anchors the
+      entire ai_cell to the world. PhysX resolves this to body1 (/ai_cell/base)
+      as the articulation anchor at runtime.
+
+  isaac_robot_api:
+    apply_to: /ai_cell
+    status: required
+    description: >
+      IsaacRobotAPI must be applied to /ai_cell to auto-populate IsaacLinkAPI
+      and IsaacJointAPI on all discovered rigid bodies and joints, enabling
+      correct DOF ordering and joint name resolution. Re-apply after adding joints.
+
+  solver:
+    position_iterations: 64
+    velocity_iterations: 4
+    description: "Per USD_7DOF_Arm_Articulation_Guide.md recommendation for manipulation stability."
+
+  link_layout:
+    description: "All arm link prims are flat siblings directly under /ai_cell/."
+    arm:
+      - /ai_cell/fr3v2_link0
+      - /ai_cell/fr3v2_link1
+      - /ai_cell/fr3v2_link2
+      - /ai_cell/fr3v2_link3
+      - /ai_cell/fr3v2_link4
+      - /ai_cell/fr3v2_link5
+      - /ai_cell/fr3v2_link6
+      - /ai_cell/fr3v2_link7
+      - /ai_cell/fr3v2_link8
+
+  joint_layout:
+    scope: /ai_cell/joints
+    description: "All revolute joints in a single flat Scope. body0/body1 references are to /ai_cell/ sibling prims."
+    arm:
+      - /ai_cell/joints/fr3v2_joint1
+      - /ai_cell/joints/fr3v2_joint2
+      - /ai_cell/joints/fr3v2_joint3
+      - /ai_cell/joints/fr3v2_joint4
+      - /ai_cell/joints/fr3v2_joint5
+      - /ai_cell/joints/fr3v2_joint6
+      - /ai_cell/joints/fr3v2_joint7
+
+  articulation_checklist:
+    single_articulation_root: true
+    self_collision_disabled: true
+    no_nested_rigid_bodies: true
+    serial_chain_per_arm: true
+    isaac_robot_api_on_root: required
+    solver_iterations_set: true
+    dof_count_expected:
+      per_arm: 7
+      total_arms: 7
+
+# ── URDF source files ─────────────────────────────────────────────────────────
+
+urdf_sources:
+  arm:
+    path: /workspace/assets/franka_description/robots/fr3v2_1/fr3v2.urdf
+    description: "FR3v2 arm URDF — authoritative source for joint limits and inertia."
+
+# ── Runtime prim path resolution ─────────────────────────────────────────────
+
+runtime:
+  robot_prim_path: /World/ai_cell
+  description: >
+    The articulation handle is constructed on /World/ai_cell after Play.
+    The _resolve_robot_prim_path() helper in isaac_bridge_runtime.py scans
+    for ArticulationRootAPI prims and matches candidates containing 'ai_cell'.
+  home_pose_config: /workspace/assets/isaac_assets/config/data_collection_home_pose.yaml
+
+notes: |
+  Do NOT re-nest arm link prims under intermediate Xforms (e.g., base/).
+  This silently drops those joints from the articulation with no error message.
+  See CLAUDE.md "USD articulation structure (critical)" for full rationale.

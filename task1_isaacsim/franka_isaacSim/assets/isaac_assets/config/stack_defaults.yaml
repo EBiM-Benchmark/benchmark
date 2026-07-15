@@ -1,0 +1,117 @@
+# ================================================================================
+# DEPRECATED: Runtime configuration moved to embodiment configs
+# ================================================================================
+# This file is kept for backward compatibility with test suites only.
+# For runtime configuration, see: assets/embodiments/<embodiment_name>/embodiment_config.yaml
+#
+# Default embodiment: fr3duo_m+v
+# To use embodiment config, pass: --embodiment fr3duo_m+v
+#
+# Runtime settings (physics, control, cameras, etc.) are loaded from embodiment.
+# Test-specific settings remain below for test configuration.
+# ================================================================================
+
+simulation:
+  force_recreate: false
+  start_republisher: true
+  start_browser: true
+  stream: true
+  stream_ui: false
+  embedded_app: false
+  headless: false
+  assets_dir: /workspace/assets
+  asset_name: null
+  asset_index: null
+  usd_path: null
+  robot_prim_path: null
+  select_asset: false
+  list_assets: false
+  portable_root: /tmp/isaac_portable
+
+# Legacy bridge settings (deprecated - use embodiment config)
+# These are only loaded when --embodiment is NOT specified
+bridge:
+  ros_publish_rate: 60.0
+  physics_hz: 240.0
+  render_hz: 60.0
+  physics_substeps: 2
+  browser_command_hold_seconds: 0.25
+  controller_activity_topic: /isaac_controller_manager/activity
+  primary_effort_stale_after_s: 0.25
+  command_smoothing_alpha: 1.0
+  max_position_step_rad: 0.0
+  position_deadband_rad: 0.0
+  settle_position_window_rad: 0.0
+  settle_velocity_threshold_rad_s: 0.0
+
+# Legacy controller settings (deprecated - use embodiment config)
+controller:
+  mode: effort
+
+# Legacy isaac_joint_drives settings (deprecated - use embodiment config)
+isaac_joint_drives:
+  joint_drive_config: /workspace/assets/isaac_assets/config/fr3_duo_isaac_joint_drives.yaml
+  joint_drive_stiffness_scale: 0.65
+  joint_drive_damping_scale: 1.0
+  joint_drive_max_force_scale: 3.0
+
+# Legacy cameras settings (deprecated - use embodiment config)
+cameras:
+  camera_config: /workspace/assets/isaac_assets/config/fr3_duo_camera_sensors.yaml
+
+# Legacy controller settings (deprecated - use embodiment config)
+controller:
+  controller_name: position_passthrough
+  controller_manager: /isaac_controller_manager
+  controller_manager_node_name: isaac_controller_manager
+  update_rate: 240
+  arm_prefixes:
+    - left
+    - right
+  robot_types:
+    - fr3v2
+    - fr3v2
+  left_gripper_joint: left_robotiq_85_left_knuckle_joint
+  right_gripper_joint: right_robotiq_85_left_knuckle_joint
+  gripper_max_effort: 50.0
+  gripper_stall_timeout: 0.05
+  gripper_goal_tolerance: 0.02
+
+# Legacy real_to_sim_bridge settings (deprecated - use embodiment config)
+real_to_sim_bridge:
+  real_rmw: rmw_cyclonedds_cpp
+  real_domain_id: 100
+  cyclonedds_uri: file:///workspace/assets/isaac_assets/config/cyclonedds_localhost.xml
+  left_topic: /left/joint_states
+  right_topic: /right/joint_states
+  left_gripper_topic: null
+  right_gripper_topic: null
+  gripper_joint_index: 0
+
+# Legacy real_robot_follower settings (deprecated - use embodiment config)
+real_robot_follower:
+  left_topic: null
+  right_topic: null
+  left_gripper_topic: null
+  right_gripper_topic: null
+  gripper_joint_index: 0
+  stale_timeout: 0.5
+  publish_rate: 60.0
+
+# ================================================================================
+# Test-specific configuration
+# ================================================================================
+# Test configurations have been moved to: tests/test_config.yaml
+# 
+# The following test sections are now loaded from tests/test_config.yaml:
+#   - probe
+#   - current_target_hold_test
+#   - episode_replay_test
+#   - fr3v2_setup_audit
+#   - camera_output_test
+#   - burn_test
+#   - isaac_drive_optimization
+#
+# Test runners automatically load from tests/test_config.yaml when using
+# apply_config_defaults() with test section names.
+# ================================================================================

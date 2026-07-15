@@ -1,0 +1,7 @@
+# Omniverse asset cache — large, root-owned files, not needed in any build context
+assets/3D_assets/omniverse_asset_storage/
+
+# Other large/generated artifacts that don't belong in the build context
+extra/
+assets/3D_assets/*.usd
+assets/*.usd

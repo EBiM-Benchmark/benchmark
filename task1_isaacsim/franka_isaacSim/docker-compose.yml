@@ -1,0 +1,208 @@
+services:
+  isaac-sim:
+    image: nvcr.io/nvidia/isaac-sim:${ISAAC_SIM_VERSION:-6.0.0}
+    container_name: isaac-sim
+    entrypoint: bash
+    environment:
+      - ACCEPT_EULA=Y
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=all
+      - DISPLAY=${DISPLAY:-}
+      # ROS 2 Environment
+      - ROS_DISTRO=jazzy
+      - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+      - FASTDDS_BUILTIN_TRANSPORTS=UDPv4
+      - LD_LIBRARY_PATH=/isaac-sim/exts/isaacsim.ros2.core/jazzy/lib
+      - PYTHONPATH=/isaac-sim/exts/isaacsim.ros2.core/jazzy/rclpy
+      - PRIVACY_CONSENT=Y
+      - ISAAC_PHYSICS_BACKEND=${ISAAC_PHYSICS_BACKEND:-physx}
+      - OBJECT_SPAWNER_ENABLED=${OBJECT_SPAWNER_ENABLED:-false}
+    volumes:
+      - .:/workspace
+      - /tmp/.X11-unix:/tmp/.X11-unix
+      - ~/.Xauthority:/root/.Xauthority:rw
+      # Mount data to persist local settings and layout
+      # - ./docker/isaac-sim/data:/isaac-sim/kit/data/Kit/Isaac-Sim Python/
+      # - ./docker/isaac-sim/data:/isaac-sim/kit/data/Kit/Isaac-Sim/
+      # - ./docker/isaac-sim/data:/isaac-sim/kit/data/Kit/Isaac-Sim Streaming/
+      # - ./docker/isaac-sim/data/runtime_logs:/isaac-sim/kit/logs/
+      # Persist Omniverse downloaded assets and nucleus cache for offline use
+      # - ./assets/3D_assets/omniverse_asset_storage:/tmp/isaac_portable
+    network_mode: host
+    ipc: host
+    ulimits:
+      memlock: -1
+      stack: 67108864
+    privileged: true
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    tty: true
+    stdin_open: true
+
+  ros_republisher:
+    image: ros:jazzy-ros-base
+    container_name: ros_republisher
+    network_mode: host
+    ipc: host
+    depends_on:
+      - isaac-sim
+    working_dir: /workspace
+    command: >
+      bash -lc "source /opt/ros/jazzy/setup.bash &&
+      python3 /workspace/scripts/controllers/ros_joint_republisher.py --bridge-prefix ${REPUBLISHER_BRIDGE_PREFIX:-/bridge} --isaac-prefix ${REPUBLISHER_ISAAC_PREFIX:-/isaac} --gripper-open-position ${REPUBLISHER_GRIPPER_OPEN_POSITION:-0.0} --gripper-closed-position ${REPUBLISHER_GRIPPER_CLOSED_POSITION:-0.8} $([ \"${REPUBLISHER_GRIPPER_INVERT:-false}\" = \"true\" ] && echo '--gripper-invert') $([ \"${REPUBLISHER_DISABLE_BROWSER_COMMAND_TOPICS:-false}\" = \"true\" ] && echo '--disable-browser-command-topics')"
+    environment:
+      - ROS_DISTRO=jazzy
+      - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+      - FASTDDS_BUILTIN_TRANSPORTS=UDPv4
+      - PYTHONPATH=/workspace/scripts
+    volumes:
+      - .:/workspace
+    restart: unless-stopped
+    tty: true
+    stdin_open: true
+
+  position_controller:
+    image: ros:jazzy-ros-base
+    container_name: position_controller
+    network_mode: host
+    ipc: host
+    depends_on:
+      - isaac-sim
+    working_dir: /workspace
+    command: >
+      bash -lc "source /opt/ros/jazzy/setup.bash &&
+      python3 /workspace/scripts/controllers/joint_position_controller.py"
+    environment:
+      - ROS_DISTRO=jazzy
+      - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+      - FASTDDS_BUILTIN_TRANSPORTS=UDPv4
+    volumes:
+      - .:/workspace
+    restart: unless-stopped
+    tty: true
+    stdin_open: true
+    profiles:
+      - position
+
+  real_to_sim_bridge:
+    build:
+      context: .
+      dockerfile: services/real_to_sim_bridge/Dockerfile
+    container_name: real_to_sim_bridge
+    network_mode: host
+    init: true
+    ipc: host
+    working_dir: /workspace
+    command: >
+      bash -lc "source /opt/ros/jazzy/setup.bash &&
+      python3 /workspace/services/real_to_sim_bridge/real_to_sim_bridge.py --cyclonedds-uri ${TWIN_CYCLONEDDS_URI:-file:///workspace/assets/isaac_assets/config/cyclonedds_localhost.xml}"
+    environment:
+      - ROS_DISTRO=jazzy
+      - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+      - FASTDDS_BUILTIN_TRANSPORTS=UDPv4
+      - ROS_DOMAIN_ID=0
+      - PYTHONPATH=/workspace/scripts
+    volumes:
+      - .:/workspace
+      - ./assets/isaac_assets/config/cyclonedds_localhost.xml:/workspace/assets/isaac_assets/config/cyclonedds_localhost.xml:ro
+    profiles:
+      - follower
+    restart: unless-stopped
+    tty: true
+    stdin_open: true
+
+  gello_pedal_teleop:
+    build:
+      context: .
+      dockerfile: services/gello_pedal_teleop/Dockerfile
+    container_name: gello_pedal_teleop
+    network_mode: host
+    ipc: host
+    working_dir: /workspace/FRANKA_GELLO_ROS2
+    command: bash /workspace/services/gello_pedal_teleop/start_gello_pedal_teleop.sh
+    environment:
+      - ROS_DISTRO=jazzy
+      - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+      - FASTDDS_BUILTIN_TRANSPORTS=UDPv4
+      - ROS_DOMAIN_ID=0
+    volumes:
+      - .:/workspace
+      - /dev:/dev
+    privileged: true
+    profiles:
+      - teleop
+    restart: unless-stopped
+    tty: true
+    stdin_open: true
+
+  newton_cable:
+    build:
+      context: .
+      dockerfile: services/newton_cable/Dockerfile
+    container_name: newton_cable
+    network_mode: host
+    ipc: host
+    working_dir: /workspace/cable
+    command: bash /workspace/services/newton_cable/start_newton_cable.sh
+    environment:
+      - ROS_DISTRO=jazzy
+      - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+      - FASTDDS_BUILTIN_TRANSPORTS=UDPv4
+      - ROS_DOMAIN_ID=0
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=all
+      - CABLE_VIEWER=${CABLE_VIEWER:-null}
+      - CABLE_DEVICE=${CABLE_DEVICE:-cuda:0}
+      - CABLE_CONFIG_PATH=${CABLE_CONFIG_PATH:-/workspace/cable/configs/board_cable.yaml}
+      - CABLE_GRIPPER_CONFIG_PATH=${CABLE_GRIPPER_CONFIG_PATH:-/workspace/cable/configs/gripper_board_cable.yaml}
+      - CABLE_ENABLE_GRIPPER=${CABLE_ENABLE_GRIPPER:-true}
+      - CABLE_GRIPPER_MODE=${CABLE_GRIPPER_MODE:-proxy}
+      - CABLE_POINT_TOPIC=${CABLE_POINT_TOPIC:-/cable/body_centers}
+      - CABLE_GRIPPER_POSE_TOPIC=${CABLE_GRIPPER_POSE_TOPIC:-/isaac/left_gripper_pose}
+      - CABLE_GRIPPER_GAP_TOPIC=${CABLE_GRIPPER_GAP_TOPIC:-/isaac/left_gripper_gap}
+      - CABLE_EXTRA_ARGS=${CABLE_EXTRA_ARGS:-}
+    volumes:
+      - .:/workspace
+    privileged: true
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    profiles:
+      - cable
+    restart: unless-stopped
+    tty: true
+    stdin_open: true
+
+  browser_controller:
+    build:
+      context: .
+      dockerfile: services/browser_controller/Dockerfile
+    container_name: browser_controller
+    network_mode: host
+    ipc: host
+    depends_on:
+      - isaac-sim
+      - ros_republisher
+    working_dir: /workspace
+    command: >
+      bash -lc "source /opt/ros/jazzy/setup.bash &&
+      python3 /workspace/services/browser_controller/app.py --host 0.0.0.0 --port 8090 --publish-rate 60.0"
+    environment:
+      - ROS_DISTRO=jazzy
+      - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+      - FASTDDS_BUILTIN_TRANSPORTS=UDPv4
+      - PYTHONPATH=/workspace/services/browser_controller:/workspace/scripts
+    volumes:
+      - .:/workspace
+    restart: unless-stopped
+    tty: true
+    stdin_open: true

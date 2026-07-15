@@ -1,0 +1,98 @@
+embodiment_key: fr3duo_m+v
+version: "1.0"
+contract_name: fr3_duo_data_contract
+contract_version: "1.1.0"
+description: "Data structure and semantics for dual-arm fixed-base robot."
+
+sampling:
+  frequency_hz: 60
+  deterministic: true
+  jitter_tolerance_percent: 5
+
+state_structure:
+  arms:
+    left:
+      arm_id: 0
+      joint_count: 7
+      joint_names:
+        - left_fr3v2_joint1
+        - left_fr3v2_joint2
+        - left_fr3v2_joint3
+        - left_fr3v2_joint4
+        - left_fr3v2_joint5
+        - left_fr3v2_joint6
+        - left_fr3v2_joint7
+      fields:
+        - position_rad
+        - velocity_rad_s
+        - effort_nm
+      
+    right:
+      arm_id: 1
+      joint_count: 7
+      joint_names:
+        - right_fr3v2_joint1
+        - right_fr3v2_joint2
+        - right_fr3v2_joint3
+        - right_fr3v2_joint4
+        - right_fr3v2_joint5
+        - right_fr3v2_joint6
+        - right_fr3v2_joint7
+      fields:
+        - position_rad
+        - velocity_rad_s
+        - effort_nm
+  
+  gripper:
+    left:
+      arm_id: 0
+      joint_name: left_robotiq_85_left_knuckle_joint
+      normalized_semantics: open_fraction
+      range_min: 0.0
+      range_max: 1.0
+      description: "Left gripper: 1.0=fully open, 0.0=fully closed"
+    
+    right:
+      arm_id: 1
+      joint_name: right_robotiq_85_left_knuckle_joint
+      normalized_semantics: open_fraction
+      range_min: 0.0
+      range_max: 1.0
+      description: "Right gripper: 1.0=fully open, 0.0=fully closed"
+
+action_structure:
+  arm_targets:
+    count: 14
+    order: [left_0_6, right_0_6]
+    units: radians
+    description: "Target joint angles for both arms"
+  
+  gripper_targets:
+    count: 2
+    order: [left_opening, right_opening]
+    units: normalized_fraction
+    range: [0.0, 1.0]
+    description: "Gripper opening command (normalized)"
+
+wrench:
+  recorded_in_pose_tests: false
+  wrench_frame: left_link8_and_right_link8
+  units: "N for force, N·m for torque"
+
+episode_metadata:
+  episode_id_format: "{dataset_id}_{epoch_timestamp_seconds}"
+  episode_success_field: success
+  episode_success_values: [true, false]
+  episode_step_count_field: step_count
+
+data_types:
+  state_vector: float32
+  action_vector: float32
+  timestamps: float64
+  episode_id: string
+
+notes: |
+  - All positions are in radians; velocities in rad/s; efforts in N·m.
+  - Gripper commands are normalized [0, 1] for portability across gripper models.
+  - Episodes are atomic units of data collection (e.g., a single task execution).
+  - Wrench (6-axis force/torque) is optional; presence depends on task type.

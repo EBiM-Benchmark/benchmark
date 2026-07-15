@@ -1,0 +1,126 @@
+name: Generate URDFs and Release
+
+on:
+  push:
+    tags:
+      - '*.*.*'
+
+jobs:
+  generate-urdfs:
+    runs-on: ubuntu-latest
+    container:
+      image: osrf/ros:jazzy-desktop
+    permissions:
+      contents: write
+
+    steps:
+      - name: Install dependencies
+        shell: bash
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends liburdfdom-tools ros-jazzy-xacro
+          rm -rf /var/lib/apt/lists/*
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build colcon workspace
+        shell: bash
+        run: |
+          source /opt/ros/jazzy/setup.bash
+          COLCON_WS=$(mktemp -d)
+          mkdir -p "${COLCON_WS}/src"
+          ln -sf "${GITHUB_WORKSPACE}" "${COLCON_WS}/src/franka_description"
+          cd "${COLCON_WS}"
+          colcon build --packages-select franka_description
+          echo "COLCON_WS=${COLCON_WS}" >> "${GITHUB_ENV}"
+
+      - name: Generate URDFs
+        shell: bash
+        run: |
+          source /opt/ros/jazzy/setup.bash
+          source "${COLCON_WS}/install/setup.bash"
+
+          URDF_OUTPUT_DIR="${GITHUB_WORKSPACE}/generated_urdfs"
+          mkdir -p "${URDF_OUTPUT_DIR}"
+
+          ROBOTS=("fr3_duo" "mobile_fr3_duo_v0_2" "fr3v2_1")
+          for robot in "${ROBOTS[@]}"; do
+            echo "::group::Generating URDF for ${robot}"
+
+            EXTRA_ARGS=()
+            if [ "${robot}" = "fr3_duo" ]; then
+              EXTRA_ARGS+=("robot_types:=['fr3v2_1','fr3v2_1']")
+            fi
+
+            xacro "${GITHUB_WORKSPACE}/robots/${robot}/${robot}.urdf.xacro" \
+              gazebo:=false \
+              ros2_control:=false \
+              hand:=false \
+              "${EXTRA_ARGS[@]}" \
+              > "${URDF_OUTPUT_DIR}/${robot}.urdf"
+            echo "Generated ${robot}.urdf ($(wc -c < "${URDF_OUTPUT_DIR}/${robot}.urdf") bytes)"
+            echo "::endgroup::"
+          done
+
+      - name: Validate URDFs
+        shell: bash
+        run: |
+          source /opt/ros/jazzy/setup.bash
+
+          URDF_OUTPUT_DIR="${GITHUB_WORKSPACE}/generated_urdfs"
+          VALIDATION_FAILED=0
+
+          for urdf_file in "${URDF_OUTPUT_DIR}"/*.urdf; do
+            robot_name=$(basename "${urdf_file}" .urdf)
+            echo "::group::Validating ${robot_name}.urdf"
+
+            # check_urdf validates URDF structure (link/joint tree, attributes)
+            if check_urdf "${urdf_file}"; then
+              echo "✅ check_urdf passed for ${robot_name}"
+            else
+              echo "::error::check_urdf failed for ${robot_name}"
+              VALIDATION_FAILED=1
+            fi
+
+            # XML well-formedness and root tag check
+            if python3 -c "
+          import xml.etree.ElementTree as ET, sys, os
+          urdf_path = sys.argv[1]
+          tree = ET.parse(urdf_path)
+          root = tree.getroot()
+          assert root.tag == 'robot', f'Root tag is {root.tag}, expected robot'
+          assert len(root) > 0, 'URDF has no child elements'
+          print(f'✅ XML validation passed for {os.path.basename(urdf_path)}')
+          " "${urdf_file}"; then
+              :
+            else
+              echo "::error::XML validation failed for ${robot_name}"
+              VALIDATION_FAILED=1
+            fi
+
+            echo "::endgroup::"
+          done
+
+          if [ "${VALIDATION_FAILED}" -ne 0 ]; then
+            echo "::error::One or more URDF validations failed"
+            exit 1
+          fi
+
+      - name: Create release and upload URDFs
+        uses: softprops/action-gh-release@c95fe1489396fe8a9eb87c0abf8aa5b2ef267fda # v2.2.1
+        with:
+          files: generated_urdfs/*.urdf
+          fail_on_unmatched_files: true
+          body: |
+            ## Generated URDF Files
+
+            URDFs generated from `${{ github.ref_name }}` with parameters:
+            - `gazebo:=false`
+            - `ros2_control:=false`
+            - `hand:=false` (no end-effector)
+
+            ### Included robots
+            - `fr3_duo.urdf` — FR3 Duo (fr3v2_1) with head
+            - `mobile_fr3_duo_v0_2.urdf` — Mobile FR3 Duo v0.2 with head
+            - `fr3v2_1.urdf` — FR3 v2.1

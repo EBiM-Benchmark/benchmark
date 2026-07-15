@@ -1,0 +1,31 @@
+# Home pose for both FR3v2 arms — used to teleport the sim to a known safe position
+# at startup so the first real-robot commands don't cause a large snap.
+#
+# Values are in radians. This is the standard Franka FR3 "ready" pose:
+#   joint1: 0 rad
+#   joint2: -45 deg  (-π/4)
+#   joint3: 0 rad
+#   joint4: -135 deg (-3π/4)
+#   joint5: 0 rad
+#   joint6: 90 deg   (π/2)
+#   joint7: 45 deg   (π/4)
+
+left_arm:
+  positions:
+    - 0.0
+    - -0.7854
+    - 0.0
+    - -2.3562
+    - 0.0
+    - 1.5708
+    - 0.7854
+
+right_arm:
+  positions:
+    - 0.0
+    - -0.7854
+    - 0.0
+    - -2.3562
+    - 0.0
+    - 1.5708
+    - 0.7854

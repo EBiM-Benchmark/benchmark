@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="robotiq_2f_85">
+  <xacro:macro
+    name="robotiq_2f_85"
+    params="connected_to
+            arm_prefix:=''
+            robot_type
+            rpy_ee:='0 0 0'
+            xyz_ee:='0 0 0'
+            tcp_xyz:='0 0 0.145'
+            tcp_rpy:='0 0 0'
+            gazebo:='false'
+            use_fake_hardware:=false
+            fake_sensor_commands:=false">
+
+    <xacro:include filename="$(find robotiq_description)/urdf/robotiq_2f_85_macro.urdf.xacro"/>
+
+    <xacro:property name="ee_prefix" value="${arm_prefix}robotiq_2f_85_"/>
+    <xacro:robotiq_gripper
+      name="${arm_prefix}robotiq_2f_85"
+      prefix="${ee_prefix}"
+      parent="${connected_to}"
+      sim_gazebo="${gazebo}"
+      use_fake_hardware="${use_fake_hardware}"
+      mock_sensor_commands="${fake_sensor_commands}"
+      include_ros2_control="false">
+      <origin xyz="${xyz_ee}" rpy="${rpy_ee}"/>
+    </xacro:robotiq_gripper>
+
+    <link name="${arm_prefix}${robot_type}_robotiq_2f_85_tcp"/>
+    <joint name="${arm_prefix}${robot_type}_robotiq_2f_85_tcp_joint" type="fixed">
+      <origin xyz="${tcp_xyz}" rpy="${tcp_rpy}"/>
+      <parent link="${ee_prefix}robotiq_85_base_link"/>
+      <child link="${arm_prefix}${robot_type}_robotiq_2f_85_tcp"/>
+    </joint>
+  </xacro:macro>
+</robot>

@@ -1,0 +1,345 @@
+contract_name: fr3_duo_data_contract
+contract_version: 1.1.0
+status: ground_truth_for_data_generation
+date_utc: '2026-03-02'
+
+canonical_rules:
+  embodiment_keys_case: lowercase
+  naming: snake_case
+  side_prefixes:
+  - left_
+  - right_
+  timebase:
+    timestep_semantics: Video/state/language aligned to timestep t; action provides future horizon targets relative to t.
+    recommended_time_unit: seconds
+
+data_generation:
+  goal: Canonical recorded data (keys/types/units/shapes/alignment). All model formats derive via adapters.
+  global_properties:
+    synchronization: All signals MUST be time-aligned (video/state/language at t).
+    timestamps:
+      required: true
+      fields:
+      - timestamp_utc_ns
+      - timestep_index
+    episode_structure:
+      required: true
+      fields:
+      - episode_id
+      - step_count
+      - success
+    frames_and_units:
+      joint_angle_unit: rad
+      joint_velocity_unit: rad/s
+      joint_torque_unit: Nm
+      wrench_unit:
+      - N
+      - Nm
+      wrench_frame_rule: Dataset MUST declare wrench_frame (e.g., base/ee/sensor) and keep it consistent.
+    action_horizon:
+      default_horizon_steps: 16
+      meaning: At timestep t, store action targets for t..t+H-1 (H=16).
+  embodiments:
+    franka_fr3_duo:
+      description: FR3 Duo (Standard)
+      modalities:
+        video:
+          delta_indices:
+          - 0
+          keys:
+          - head
+          - wrist_left
+          - wrist_right
+          dtype: uint8
+          layout: HWC
+          color_space: RGB
+        state:
+          delta_indices:
+          - 0
+          keys:
+          - left_arm
+          - left_gripper
+          - right_arm
+          - right_gripper
+          semantics:
+            left_arm:
+              space: joint
+              representation: absolute
+              unit: rad
+              shape:
+              - 7
+            right_arm:
+              space: joint
+              representation: absolute
+              unit: rad
+              shape:
+              - 7
+            left_gripper:
+              space: gripper
+              representation: absolute
+              unit: defined_by_pipeline
+              shape:
+              - scalar
+            right_gripper:
+              space: gripper
+              representation: absolute
+              unit: defined_by_pipeline
+              shape:
+              - scalar
+        action:
+          delta_indices:
+          - 0
+          - 1
+          - 2
+          - 3
+          - 4
+          - 5
+          - 6
+          - 7
+          - 8
+          - 9
+          - 10
+          - 11
+          - 12
+          - 13
+          - 14
+          - 15
+          keys:
+          - left_arm
+          - left_gripper
+          - right_arm
+          - right_gripper
+          semantics:
+            representation: ABSOLUTE
+            type: NON_EEF
+            format: DEFAULT
+            target_alignment: action[t+k] for k in 0..15
+            units:
+              arm: rad
+              gripper: defined_by_pipeline
+        language:
+          delta_indices:
+          - 0
+          keys:
+          - annotation.human.action.task_description
+          dtype: string
+    franka_fr3_duo_full:
+      description: FR3 Duo (Full State)
+      modalities:
+        video:
+          delta_indices:
+          - 0
+          keys:
+          - head
+          - wrist_left
+          - wrist_right
+          dtype: uint8
+          layout: HWC
+          color_space: RGB
+        state:
+          delta_indices:
+          - 0
+          keys:
+          - left_arm_position
+          - left_arm_velocity
+          - left_gripper
+          - left_arm_external_joint_torque
+          - left_arm_wrench
+          - right_arm_position
+          - right_arm_velocity
+          - right_gripper
+          - right_arm_external_joint_torque
+          - right_arm_wrench
+          semantics:
+            left_arm_position:
+              unit: rad
+              shape:
+              - 7
+            left_arm_velocity:
+              unit: rad/s
+              shape:
+              - 7
+            left_arm_external_joint_torque:
+              unit: Nm
+              shape:
+              - 7
+            left_arm_wrench:
+              unit:
+              - N
+              - Nm
+              shape:
+              - 6
+              frame: declared_in_dataset_metadata
+            left_gripper:
+              unit: defined_by_pipeline
+              shape:
+              - scalar
+            right_arm_position:
+              unit: rad
+              shape:
+              - 7
+            right_arm_velocity:
+              unit: rad/s
+              shape:
+              - 7
+            right_arm_external_joint_torque:
+              unit: Nm
+              shape:
+              - 7
+            right_arm_wrench:
+              unit:
+              - N
+              - Nm
+              shape:
+              - 6
+              frame: declared_in_dataset_metadata
+            right_gripper:
+              unit: defined_by_pipeline
+              shape:
+              - scalar
+        action:
+          delta_indices:
+          - 0
+          - 1
+          - 2
+          - 3
+          - 4
+          - 5
+          - 6
+          - 7
+          - 8
+          - 9
+          - 10
+          - 11
+          - 12
+          - 13
+          - 14
+          - 15
+          keys:
+          - left_arm
+          - left_gripper
+          - right_arm
+          - right_gripper
+          semantics:
+            representation: ABSOLUTE
+            type: NON_EEF
+            format: DEFAULT
+            target_alignment: action[t+k] for k in 0..15
+            units:
+              arm: rad
+              gripper: defined_by_pipeline
+        language:
+          delta_indices:
+          - 0
+          keys:
+          - annotation.human.action.task_description
+          dtype: string
+  dataset_metadata:
+    required_fields:
+    - dataset_id
+    - contract_name
+    - contract_version
+    - embodiment_key
+    - wrench_frame
+    - gripper_semantics
+    - sampling_hz
+
+model_formats:
+  goal: Adapter views of canonical data_generation for different model families (Gr00t, PiZero, Gemini Robotics).
+  formats:
+
+    gr00t:
+      status: ground_truth
+      adapter_from_data_generation:
+        mapping: identity
+        notes:
+        - GR00T consumes canonical keys as-is; action uses full 16-step horizon.
+    pizero:
+      status: adapter_spec
+      expects:
+        inputs:
+          images_order:
+          - head
+          - wrist_left
+          - wrist_right
+          proprio_rule: flatten_and_concat(state keys in fixed order)
+          instruction: annotation.human.action.task_description
+        outputs:
+          action_time: single_step
+          action_keys:
+          - left_arm
+          - left_gripper
+          - right_arm
+          - right_gripper
+          action_representation: ABSOLUTE
+          action_space: joint
+      adapter_from_data_generation:
+        images:
+          from: video
+          rule: ordered_list
+        proprio:
+          from: state
+          rule: flatten_concat
+          key_order_by_embodiment:
+            franka_fr3_duo:
+            - left_arm
+            - left_gripper
+            - right_arm
+            - right_gripper
+            franka_fr3_duo_full:
+            - left_arm_position
+            - left_arm_velocity
+            - left_gripper
+            - left_arm_external_joint_torque
+            - left_arm_wrench
+            - right_arm_position
+            - right_arm_velocity
+            - right_gripper
+            - right_arm_external_joint_torque
+            - right_arm_wrench
+        instruction:
+          from: language
+          rule: use_string
+        action_target:
+          from: action
+          rule: select_horizon_step
+          k: 0
+
+    gemini_robotics:
+      status: adapter_spec
+      expects:
+        input_message:
+          instruction: string
+          observations:
+            timestamp_utc_ns: int
+            images:
+              head: image
+              wrist_left: image
+              wrist_right: image
+            state:
+              embodiment_key: string
+              signals: dict
+        output_action:
+          space: joint
+          representation: ABSOLUTE
+          horizon_steps: 16
+          targets: list[step]{left_arm:vec7,left_gripper:scalar,right_arm:vec7,right_gripper:scalar}
+      adapter_from_data_generation:
+        instruction:
+          from: annotation.human.action.task_description
+          rule: use_string
+        observations.images:
+          from: video
+          rule: keyed_images
+        observations.state:
+          from: state
+          rule: keyed_signals
+          include: all_state_keys_for_embodiment
+        observations.timestamp_utc_ns:
+          from: timestamp_utc_ns
+          rule: forward
+        output_action.targets:
+          from: action
+          rule: forward_full_horizon
+        notes:
+        - 'If a deployment expects single-step actions, apply pizero rule: select horizon step k=0.'

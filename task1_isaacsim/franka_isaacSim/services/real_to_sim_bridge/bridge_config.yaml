@@ -1,0 +1,94 @@
+# Real-to-Sim Bridge Configuration
+# =================================
+# This file defines topic mappings between real robot hardware (CycloneDDS/domain 100)
+# and the simulation bridge interface (FastRTPS/domain 0).
+#
+# The bridge reads joint states from real robots and republishes them as command topics
+# that the Republisher then forwards to Isaac Sim.
+
+# Bridge Domain Configuration
+# ---------------------------
+real_robot:
+  rmw_implementation: rmw_cyclonedds_cpp
+  domain_id: 100
+  # Optional: Path to CycloneDDS configuration XML
+  cyclonedds_uri: file:///workspace/assets/isaac_assets/config/cyclonedds_localhost.xml
+
+simulation:
+  rmw_implementation: rmw_fastrtps_cpp
+  domain_id: 0
+
+# Topic Mappings
+# --------------
+# Each mapping defines:
+#   - input_topic: Topic name on the real robot domain
+#   - output_topic: Topic name published to the bridge domain
+#   - type: ROS message type (currently only sensor_msgs/JointState supported)
+#   - description: Human-readable description
+
+mappings:
+  # Left Arm Mapping
+  - name: left_arm
+    input_topic: /left/franka_robot_state_broadcaster/measured_joint_states
+    output_topic: /bridge/left_joint_commands
+    type: sensor_msgs/JointState
+    description: "Left FR3 arm joint states from real robot → bridge commands"
+    # Number of joints to extract from JointState message
+    num_joints: 7
+    # Joint names expected in simulation (for validation)
+    expected_joint_names:
+      - left_fr3v2_joint1
+      - left_fr3v2_joint2
+      - left_fr3v2_joint3
+      - left_fr3v2_joint4
+      - left_fr3v2_joint5
+      - left_fr3v2_joint6
+      - left_fr3v2_joint7
+
+  # Right Arm Mapping
+  - name: right_arm
+    input_topic: /right/franka_robot_state_broadcaster/measured_joint_states
+    output_topic: /bridge/right_joint_commands
+    type: sensor_msgs/JointState
+    description: "Right FR3 arm joint states from real robot → bridge commands"
+    num_joints: 7
+    expected_joint_names:
+      - right_fr3v2_joint1
+      - right_fr3v2_joint2
+      - right_fr3v2_joint3
+      - right_fr3v2_joint4
+      - right_fr3v2_joint5
+      - right_fr3v2_joint6
+      - right_fr3v2_joint7
+
+  # Left Gripper Mapping (Optional)
+  - name: left_gripper
+    input_topic: /gripper/left/joint_states
+    output_topic: /bridge/left_robotiq_joint_commands
+    type: sensor_msgs/JointState
+    description: "Left Robotiq 2F-85 gripper joint state → bridge commands"
+    enabled: true  # Enabled for real robot grippers
+    # Index of the driver joint in the JointState message
+    gripper_joint_index: 0
+    # Name of the opening joint in simulation
+    gripper_opening_joint: left_robotiq_2f85_left_driver_joint
+
+  # Right Gripper Mapping (Optional)
+  - name: right_gripper
+    input_topic: /gripper/right/joint_states
+    output_topic: /bridge/right_robotiq_joint_commands
+    type: sensor_msgs/JointState
+    description: "Right Robotiq 2F-85 gripper joint state → bridge commands"
+    enabled: true  # Enabled for real robot grippers
+    gripper_joint_index: 0
+    gripper_opening_joint: right_robotiq_2f85_left_driver_joint
+
+# Gripper Normalization
+# ---------------------
+# Robotiq 2F-85 driver joint range: [0.0, 0.8] (closed → open)
+# Isaac sim expects normalized opening: [0.0, 1.0] (closed → open)
+gripper:
+  driver_joint_closed: 0.0
+  driver_joint_open: 0.8
+  # Invert normalization if gripper convention differs
+  invert: false

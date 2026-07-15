@@ -1,0 +1,136 @@
+cameras:
+  left_wrist_camera:
+    label: Left Wrist Camera
+    device_model: Intel RealSense D405
+    contract_video_key: wrist_left
+    attachment_frame_name: left_fr3v2_d405_color_frame
+    frame_id: left_fr3v2_d405_color_optical_frame
+    camera_prim_name: rgb_sensor
+    namespace: /isaac/left_wrist_camera
+    image_topic: /isaac/left_wrist_camera/image_raw
+    camera_info_topic: /isaac/left_wrist_camera/camera_info
+    aliases:
+      - left_wrist_camera
+      - left_wrist
+      - wrist_left
+      - left_d405
+      - d405_left
+    native_resolution:
+      width: 1280
+      height: 720
+    render_resolution:
+      width: 848
+      height: 480
+    publish_hz: 24.0
+    horizontal_fov_deg: 87.0
+    vertical_fov_deg: 58.0
+    sensor_width_mm: 4.8
+    focus_distance_m: 0.35
+    f_stop: 1.4
+    clip_range_m:
+      near: 0.04
+      far: 10.0
+    local_translation_m: [0.0, 0.0, 0.0]
+    local_rotation_deg: [0.0, 180.0, 0.0]
+    contract_dtype: uint8
+    contract_layout: HWC
+    contract_color_space: RGB
+    parameter_source:
+      optics: official_fov_and_native_resolution_plus_estimated_sensor_width
+      references:
+        - https://www.intelrealsense.com/stereo-depth-cameras/real-sense-depth-camera-d405/
+        - https://realsenseai.com/stereo-depth-cameras/real-sense-depth-camera-d405/
+    notes: >
+      FOV and native resolution come from official D405 product material. The
+      4.8 mm sensor width is an Isaac tuning estimate used to derive a stable
+      focal length while preserving the official field of view.
+
+  right_wrist_camera:
+    label: Right Wrist Camera
+    device_model: Intel RealSense D405
+    contract_video_key: wrist_right
+    attachment_frame_name: right_fr3v2_d405_color_frame
+    frame_id: right_fr3v2_d405_color_optical_frame
+    camera_prim_name: rgb_sensor
+    namespace: /isaac/right_wrist_camera
+    image_topic: /isaac/right_wrist_camera/image_raw
+    camera_info_topic: /isaac/right_wrist_camera/camera_info
+    aliases:
+      - right_wrist_camera
+      - right_wrist
+      - wrist_right
+      - right_d405
+      - d405_right
+    native_resolution:
+      width: 1280
+      height: 720
+    render_resolution:
+      width: 848
+      height: 480
+    publish_hz: 24.0
+    horizontal_fov_deg: 87.0
+    vertical_fov_deg: 58.0
+    sensor_width_mm: 4.8
+    focus_distance_m: 0.35
+    f_stop: 1.4
+    clip_range_m:
+      near: 0.04
+      far: 10.0
+    local_translation_m: [0.0, 0.0, 0.0]
+    local_rotation_deg: [0.0, 180.0, 0.0]
+    contract_dtype: uint8
+    contract_layout: HWC
+    contract_color_space: RGB
+    parameter_source:
+      optics: official_fov_and_native_resolution_plus_estimated_sensor_width
+      references:
+        - https://www.intelrealsense.com/stereo-depth-cameras/real-sense-depth-camera-d405/
+        - https://realsenseai.com/stereo-depth-cameras/real-sense-depth-camera-d405/
+    notes: >
+      Mirrors the left D405 wrist camera and uses the same vendor-backed FOV
+      with an estimated sensor width for Isaac intrinsics.
+
+  head_camera:
+    label: Head Camera
+    device_model: Stereolabs ZED Mini
+    contract_video_key: head
+    attachment_frame_name: zed_mini_left_camera_frame
+    frame_id: zed_mini_left_camera_optical_frame
+    camera_prim_name: rgb_sensor
+    namespace: /isaac/head_camera
+    image_topic: /isaac/head_camera/image_raw
+    camera_info_topic: /isaac/head_camera/camera_info
+    aliases:
+      - head_camera
+      - head
+      - zed_mini
+      - zed
+    native_resolution:
+      width: 1280
+      height: 720
+    render_resolution:
+      width: 1280
+      height: 720
+    publish_hz: 24.0
+    horizontal_fov_deg: 90.0
+    vertical_fov_deg: 60.0
+    sensor_width_mm: 4.8
+    focus_distance_m: 1.0
+    f_stop: 2.0
+    clip_range_m:
+      near: 0.10
+      far: 20.0
+    local_translation_m: [0.0, 0.0, 0.0]
+    local_rotation_deg: [90.0, 0.0, -90.0]
+    contract_dtype: uint8
+    contract_layout: HWC
+    contract_color_space: RGB
+    parameter_source:
+      optics: official_fov_and_native_resolution_plus_estimated_sensor_width
+      references:
+        - https://www.stereolabs.com/zed-mini/
+        - https://www.stereolabs.com/docs/video/camera-controls/
+    notes: >
+      The contract expects one head RGB stream, so the left optical channel is
+      used as the canonical head view. FOV and native 720p mode come from
+      official ZED Mini material; the sensor width is estimated for Isaac.

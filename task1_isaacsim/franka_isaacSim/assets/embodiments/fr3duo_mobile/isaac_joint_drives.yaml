@@ -1,0 +1,191 @@
+name: fr3_duo_ai_cell_handBoxing_arm_joint_drives
+description: Base Isaac FR3 arm joint-drive parameters extracted from ai_cell_handBoxing.usd on March 10, 2026.
+asset_path: /workspace/assets/ai_cell_handBoxing.usd
+drive_axis: angular
+joint_drives:
+  # joints 1–4: heavy (max_force 87 N·m).  ζ = 60 / (2√625) = 1.2 — slightly overdamped.
+  left_fr3v2_joint1:
+    prim_path: /ai_cell/left_FR3/left_fr3v2_link0/left_fr3v2_joint1
+    drive_axis: angular
+    drive_type: acceleration
+    stiffness: 625.0
+    damping: 60.0
+    max_force: 87.0
+  left_fr3v2_joint2:
+    prim_path: /ai_cell/left_FR3/left_fr3v2_link0/left_fr3v2_link1/left_fr3v2_joint2
+    drive_axis: angular
+    drive_type: acceleration
+    stiffness: 625.0
+    damping: 60.0
+    max_force: 87.0
+  left_fr3v2_joint3:
+    prim_path: /ai_cell/left_FR3/left_fr3v2_link0/left_fr3v2_link1/left_fr3v2_link2/left_fr3v2_joint3
+    drive_axis: angular
+    drive_type: acceleration
+    stiffness: 625.0
+    damping: 60.0
+    max_force: 87.0
+  left_fr3v2_joint4:
+    prim_path: /ai_cell/left_FR3/left_fr3v2_link0/left_fr3v2_link1/left_fr3v2_link2/left_fr3v2_link3/left_fr3v2_joint4
+    drive_axis: angular
+    drive_type: acceleration
+    stiffness: 625.0
+    damping: 60.0
+    max_force: 87.0
+  # joints 5–7: light (max_force 12 N·m).  ζ = 40 / (2√625) = 0.8 — near-critical.
+  left_fr3v2_joint5:
+    prim_path: /ai_cell/left_FR3/left_fr3v2_link0/left_fr3v2_link1/left_fr3v2_link2/left_fr3v2_link3/left_fr3v2_link4/left_fr3v2_joint5
+    drive_axis: angular
+    drive_type: acceleration
+    stiffness: 625.0
+    damping: 40.0
+    max_force: 12.0
+  left_fr3v2_joint6:
+    prim_path: /ai_cell/left_FR3/left_fr3v2_link0/left_fr3v2_link1/left_fr3v2_link2/left_fr3v2_link3/left_fr3v2_link4/left_fr3v2_link5/left_fr3v2_joint6
+    drive_axis: angular
+    drive_type: acceleration
+    stiffness: 625.0
+    damping: 40.0
+    max_force: 12.0
+  left_fr3v2_joint7:
+    prim_path: /ai_cell/left_FR3/left_fr3v2_link0/left_fr3v2_link1/left_fr3v2_link2/left_fr3v2_link3/left_fr3v2_link4/left_fr3v2_link5/left_fr3v2_link6/left_fr3v2_joint7
+    drive_axis: angular
+    drive_type: acceleration
+    stiffness: 625.0
+    damping: 40.0
+    max_force: 12.0
+  right_fr3v2_joint1:
+    prim_path: /ai_cell/right_FR3/right_fr3v2_link0/right_fr3v2_joint1
+    drive_axis: angular
+    drive_type: acceleration
+    stiffness: 625.0
+    damping: 60.0
+    max_force: 87.0
+  right_fr3v2_joint2:
+    prim_path: /ai_cell/right_FR3/right_fr3v2_link0/right_fr3v2_link1/right_fr3v2_joint2
+    drive_axis: angular
+    drive_type: acceleration
+    stiffness: 625.0
+    damping: 60.0
+    max_force: 87.0
+  right_fr3v2_joint3:
+    prim_path: /ai_cell/right_FR3/right_fr3v2_link0/right_fr3v2_link1/right_fr3v2_link2/right_fr3v2_joint3
+    drive_axis: angular
+    drive_type: acceleration
+    stiffness: 625.0
+    damping: 60.0
+    max_force: 87.0
+  right_fr3v2_joint4:
+    prim_path: /ai_cell/right_FR3/right_fr3v2_link0/right_fr3v2_link1/right_fr3v2_link2/right_fr3v2_link3/right_fr3v2_joint4
+    drive_axis: angular
+    drive_type: acceleration
+    stiffness: 625.0
+    damping: 60.0
+    max_force: 87.0
+  right_fr3v2_joint5:
+    prim_path: /ai_cell/right_FR3/right_fr3v2_link0/right_fr3v2_link1/right_fr3v2_link2/right_fr3v2_link3/right_fr3v2_link4/right_fr3v2_joint5
+    drive_axis: angular
+    drive_type: acceleration
+    stiffness: 625.0
+    damping: 40.0
+    max_force: 12.0
+  right_fr3v2_joint6:
+    prim_path: /ai_cell/right_FR3/right_fr3v2_link0/right_fr3v2_link1/right_fr3v2_link2/right_fr3v2_link3/right_fr3v2_link4/right_fr3v2_link5/right_fr3v2_joint6
+    drive_axis: angular
+    drive_type: acceleration
+    stiffness: 625.0
+    damping: 40.0
+    max_force: 12.0
+  right_fr3v2_joint7:
+    prim_path: /ai_cell/right_FR3/right_fr3v2_link0/right_fr3v2_link1/right_fr3v2_link2/right_fr3v2_link3/right_fr3v2_link4/right_fr3v2_link5/right_fr3v2_link6/right_fr3v2_joint7
+    drive_axis: angular
+    drive_type: acceleration
+    stiffness: 625.0
+    damping: 40.0
+    max_force: 12.0
+  # ── Left Robotiq 85 gripper joints ──────────────────────────────────────
+  left_fr3v2_robotiq_85_left_knuckle_joint:
+    prim_path: /ai_cell/joints/left_fr3v2_robotiq_85_left_knuckle_joint
+    drive_axis: angular
+    drive_type: acceleration
+    stiffness: 1000.0
+    damping: 100.0
+    max_force: 200.0
+  left_fr3v2_robotiq_85_right_knuckle_joint:
+    prim_path: /ai_cell/joints/left_fr3v2_robotiq_85_right_knuckle_joint
+    drive_axis: angular
+    drive_type: acceleration
+    stiffness: 1000.0
+    damping: 100.0
+    max_force: 200.0
+  left_fr3v2_robotiq_85_left_inner_knuckle_joint:
+    prim_path: /ai_cell/joints/left_fr3v2_robotiq_85_left_inner_knuckle_joint
+    drive_axis: angular
+    drive_type: acceleration
+    stiffness: 1000.0
+    damping: 100.0
+    max_force: 200.0
+  left_fr3v2_robotiq_85_right_inner_knuckle_joint:
+    prim_path: /ai_cell/joints/left_fr3v2_robotiq_85_right_inner_knuckle_joint
+    drive_axis: angular
+    drive_type: acceleration
+    stiffness: 1000.0
+    damping: 100.0
+    max_force: 200.0
+  left_fr3v2_robotiq_85_left_finger_tip_joint:
+    prim_path: /ai_cell/joints/left_fr3v2_robotiq_85_left_finger_tip_joint
+    drive_axis: angular
+    drive_type: acceleration
+    stiffness: 1000.0
+    damping: 100.0
+    max_force: 200.0
+  left_fr3v2_robotiq_85_right_finger_tip_joint:
+    prim_path: /ai_cell/joints/left_fr3v2_robotiq_85_right_finger_tip_joint
+    drive_axis: angular
+    drive_type: acceleration
+    stiffness: 1000.0
+    damping: 100.0
+    max_force: 200.0
+  # ── Right Robotiq 85 gripper joints ─────────────────────────────────────
+  right_fr3v2_robotiq_85_left_knuckle_joint:
+    prim_path: /ai_cell/joints/right_fr3v2_robotiq_85_left_knuckle_joint
+    drive_axis: angular
+    drive_type: acceleration
+    stiffness: 1000.0
+    damping: 100.0
+    max_force: 200.0
+  right_fr3v2_robotiq_85_right_knuckle_joint:
+    prim_path: /ai_cell/joints/right_fr3v2_robotiq_85_right_knuckle_joint
+    drive_axis: angular
+    drive_type: acceleration
+    stiffness: 1000.0
+    damping: 100.0
+    max_force: 200.0
+  right_fr3v2_robotiq_85_left_inner_knuckle_joint:
+    prim_path: /ai_cell/joints/right_fr3v2_robotiq_85_left_inner_knuckle_joint
+    drive_axis: angular
+    drive_type: acceleration
+    stiffness: 1000.0
+    damping: 100.0
+    max_force: 200.0
+  right_fr3v2_robotiq_85_right_inner_knuckle_joint:
+    prim_path: /ai_cell/joints/right_fr3v2_robotiq_85_right_inner_knuckle_joint
+    drive_axis: angular
+    drive_type: acceleration
+    stiffness: 1000.0
+    damping: 100.0
+    max_force: 200.0
+  right_fr3v2_robotiq_85_left_finger_tip_joint:
+    prim_path: /ai_cell/joints/right_fr3v2_robotiq_85_left_finger_tip_joint
+    drive_axis: angular
+    drive_type: acceleration
+    stiffness: 1000.0
+    damping: 100.0
+    max_force: 200.0
+  right_fr3v2_robotiq_85_right_finger_tip_joint:
+    prim_path: /ai_cell/joints/right_fr3v2_robotiq_85_right_finger_tip_joint
+    drive_axis: angular
+    drive_type: acceleration
+    stiffness: 1000.0
+    damping: 100.0
+    max_force: 200.0

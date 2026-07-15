@@ -1,0 +1,25 @@
+# Extensions configuration for Isaac Sim
+extensions:
+  # Critical Core Extensions
+  - isaacsim.asset.importer.urdf
+
+  # UI & Visualization (Required for GUI and Layouts)
+  - omni.kit.quicklayout
+  - omni.kit.menu.common
+  - omni.kit.menu.utils
+  - omni.kit.window.toolbar
+  # - omni.kit.window.console
+  - omni.kit.window.status_bar
+  - omni.kit.window.property
+  - omni.kit.window.preferences
+  - omni.kit.window.file
+  - omni.kit.context_menu
+  # - omni.kit.window.extensions
+
+  # ROS 2 Tools (Managed via runtime loading in script, kept commented here for reference)
+  - isaacsim.ros2.bridge
+  - isaacsim.ros2.sim_control
+  - isaacsim.ros2.urdf
+
+  # Additional Tools
+  # - omni.physx.bundle

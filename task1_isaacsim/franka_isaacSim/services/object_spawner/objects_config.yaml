@@ -1,0 +1,64 @@
+# Object Spawner Configuration - Objects to Spawn
+# Each object definition references an existing prim in the simulation
+
+objects:
+  - name: "test_cube"
+    prim_path: "/World/templates/test_cube"  # Path to existing prim in simulation
+    scale: 1.0  
+  - name: "traffic_cone"
+    prim_path: "/World/environment/full_warehouse/S_TrafficCone3/S_TrafficCone"  # Path to existing prim in simulation
+    scale: 0.005  
+  - name: "barrel_lid"
+    prim_path: "/World/environment/full_warehouse/Barrel_16075/SM_BarelPlastic_C_02"  # Path to existing prim in simulation
+    scale: 0.005  
+  - name: "bucket"
+    prim_path: "/World/environment/full_warehouse/SM_BucketPlastic_B_41/SM_BucketPlastic_B"  # Path to existing prim in simulation
+    scale: 0.005  
+  - name: "wet_floor_sign"
+    prim_path: "/World/environment/full_warehouse/S_WetFloorSign_2/S_WetFloorSign"  # Path to existing prim in simulation
+    scale: 0.005  
+  - name: "fire_extinguisher"
+    prim_path: "/World/environment/full_warehouse/SM_FireExtinguisher_20/SM_FireExtinguisher_02"  # Path to existing prim in simulation
+    scale: 0.005  
+  - name: "pushcart"
+    prim_path: "/World/environment/full_warehouse/SM_PushcartA_02_22/SM_PushcartA_02"  # Path to existing prim in simulation
+    scale: 0.003  
+  - name: "crate_plastic"
+    prim_path: "/World/environment/full_warehouse/SM_CratePlastic_D_01_47/SM_CratePlastic_D_01"  # Path to existing prim in simulation
+    scale: 0.005  
+  - name: "bottle_plastic"
+    prim_path: "/World/environment/full_warehouse/SM_BottlePlasticD_3/SM_BottlePlasticD_01"  # Path to existing prim in simulation
+    scale: 0.008  
+  - name: "cardboard_box"
+    prim_path: "/World/environment/full_warehouse/Box_20997/SM_CardBoxB_01/SM_CardBoxB_01"  # Path to existing prim in simulation
+    scale: 0.005  
+  - name: "bottle_plastic_a"
+    prim_path: "/World/environment/full_warehouse/Bottle_15874/SM_BottlePlasticA_02"  # Path to existing prim in simulation
+    scale: 0.01  
+  - name: "barrel_plastic_a"
+    prim_path: "/World/environment/full_warehouse/Barrel_16306/SM_BarelPlastic_A_01"  # Path to existing prim in simulation
+    scale: 0.005  
+  - name: "cardboard_box_d"
+    prim_path: "/World/environment/full_warehouse/SM_CardBoxD_04_6/SM_CardBoxD_04"  # Path to existing prim in simulation
+    scale: 0.007
+  - name: "forklift"
+    prim_path: "/World/environment/full_warehouse/forklift/S_ForkliftBody"  # Path to existing prim in simulation
+    scale: 0.002
+  - name: "crate_plastic_note"
+    prim_path: "/World/environment/full_warehouse/Crate_15936/SM_CratePlasticNote_A_01"  # Path to existing prim in simulation
+    scale: 0.006
+  - name: "cardboard_box_b_02"
+    prim_path: "/World/environment/full_warehouse/Box_13098/SM_CardBoxB_02/SM_CardBoxB_02"  # Path to existing prim in simulation
+    scale: 0.004
+  
+
+
+
+# Note: The prims referenced above must exist in your simulation.
+# They will be copied to /World/objects/ when spawned.
+
+# Physics properties (applied to spawned copies)
+physics:
+  mass: 1.0  # kg (typical traffic cone weight)
+  friction: 0.5
+  restitution: 0.3  # bounciness

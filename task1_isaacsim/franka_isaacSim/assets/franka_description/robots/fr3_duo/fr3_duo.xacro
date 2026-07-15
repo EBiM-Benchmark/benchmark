@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="utf-8"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <xacro:include filename="$(find franka_description)/robots/common/franka_robot.xacro"/>
+  <xacro:include filename="$(find franka_description)/accessories/fr3_duo_mount_v0_3/fr3_duo_mount.xacro"/>
+  <xacro:include filename="$(find franka_description)/accessories/franka_head_v0_2/franka_head.xacro"/>
+  <xacro:include filename="$(find franka_description)/robots/fr3_duo/fr3_duo.ros2_control.xacro"/>
+
+  <xacro:macro
+    name="fr3_duo"
+    params="name
+            robot_types
+            hand
+            ee_id
+            special_connection
+            xyz_ee
+            rpy_ee
+            tcp_xyz
+            tcp_rpy
+            safety_distance
+            with_sc
+            ros2_control
+            gazebo
+            gazebo_effort
+            use_fake_hardware
+            fake_sensor_commands
+            robot_ips
+            description_pkg
+            base_mount
+            connected_to
+            arm_prefixes
+            no_prefix:=false
+            is_async:=false
+            thread_priority:=50
+            is_mobile_fr3_duo:=false">
+
+    <xacro:property name="robot_types_list" value="${robot_types}"/>
+    <xacro:property name="robot_ips_list" value="${robot_ips}"/>
+    <xacro:property name="arm_prefixes_list" value="${arm_prefixes}"/>
+
+    <!-- For Gazebo: disable ros2_control on individual robots, use unified control instead -->
+    <xacro:if value="${gazebo}">
+      <xacro:property name="ros_control_flag_for_real_hardware" value="false"/>
+    </xacro:if>
+    <xacro:unless value="${gazebo}">
+      <xacro:property name="ros_control_flag_for_real_hardware" value="${ros2_control}"/>
+    </xacro:unless>
+
+    <xacro:mount
+      name="mount"
+      parent="${base_mount}"
+      left_prefix="${arm_prefixes_list[0]}"
+      right_prefix="${arm_prefixes_list[1]}">
+    </xacro:mount>
+
+    <xacro:head parent="fr3_duo_mount_mounting_point"/>
+
+    <xacro:property name="number_of_robots" value="2"/>
+    <xacro:macro name="fr3_duo_loop" params="i">
+      <xacro:unless value="${i == number_of_robots}">
+        <xacro:property name="robot_prefix" value="${arm_prefixes_list[i]}"/>
+        <xacro:property name="modified_prefix" value="${robot_prefix + '_' if robot_prefix else ''}"/>
+
+        <!-- Attach the robot arm to the mount -->
+        <joint name="${arm_prefixes_list[i]}_base_joint" type="fixed">
+          <parent link="fr3_duo_mount_${arm_prefixes_list[i]}"/>
+          <child link="${arm_prefixes_list[i]}_base"/>
+        </joint>
+
+        <!-- Spawn the robot -->
+        <xacro:property name="robot_type_i" value="${robot_types_list[i]}"/>
+        <xacro:franka_robot
+          robot_type="${robot_type_i}"
+          gazebo="${gazebo}"
+          hand="${hand}"
+          ee_id="${ee_id}"
+          special_connection="${special_connection}"
+          xyz_ee="${xyz_ee}"
+          rpy_ee="${rpy_ee}"
+          tcp_xyz="${tcp_xyz}"
+          tcp_rpy="${tcp_rpy}"
+          safety_distance="${safety_distance}"
+          with_sc="${with_sc}"
+          ros2_control="${ros_control_flag_for_real_hardware}"
+          robot_ip="${robot_ips_list[i]}"
+          use_fake_hardware="${use_fake_hardware}"
+          fake_sensor_commands="${fake_sensor_commands}"
+          gazebo_effort="${gazebo_effort}"
+          no_prefix="${no_prefix}"
+          arm_prefix="${modified_prefix}"
+          description_pkg="${description_pkg}"
+          connected_to="${arm_prefixes_list[i]}_base"
+          is_async="${is_async}"
+          thread_priority="${thread_priority}">
+        </xacro:franka_robot>
+        <xacro:fr3_duo_loop i="${i+1}"/>
+      </xacro:unless>
+    </xacro:macro>
+    <xacro:fr3_duo_loop i="0"/>
+
+    <!-- Unified ros2_control for both arms -->
+    <xacro:if value="${gazebo and not is_mobile_fr3_duo}">
+      <xacro:fr3_duo_ros2_control
+        robot_types="${robot_types}"
+        arm_prefixes="${arm_prefixes}"
+        robot_ips="${robot_ips}"
+        use_fake_hardware="${use_fake_hardware}"
+        fake_sensor_commands="${fake_sensor_commands}"
+        is_async="${is_async}"
+        thread_priority="${thread_priority}"
+        hand="${hand}"
+        gazebo="${gazebo}"
+        gazebo_effort="${gazebo_effort}"/>
+    </xacro:if>
+
+  </xacro:macro>
+</robot>

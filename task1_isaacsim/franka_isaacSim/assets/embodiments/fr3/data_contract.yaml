@@ -1,0 +1,74 @@
+embodiment_key: fr3
+version: "1.0"
+contract_name: fr3_data_contract
+contract_version: "1.0.0"
+description: "Data structure and semantics for single-arm fixed-base robot with Robotiq 2F-85 gripper."
+
+sampling:
+  frequency_hz: 60
+  deterministic: true
+  jitter_tolerance_percent: 5
+
+state_structure:
+  arms:
+    arm:
+      arm_id: 0
+      joint_count: 7
+      joint_names:
+        - fr3v2_joint1
+        - fr3v2_joint2
+        - fr3v2_joint3
+        - fr3v2_joint4
+        - fr3v2_joint5
+        - fr3v2_joint6
+        - fr3v2_joint7
+      fields:
+        - position_rad
+        - velocity_rad_s
+        - effort_nm
+
+  gripper:
+    arm:
+      arm_id: 0
+      joint_name: robotiq_85_left_knuckle_joint
+      normalized_semantics: open_fraction
+      range_min: 0.0
+      range_max: 1.0
+      description: "Gripper: 1.0=fully open, 0.0=fully closed"
+
+action_structure:
+  arm_targets:
+    count: 7
+    order: [arm_0_6]
+    units: radians
+    description: "Target joint angles for the arm"
+
+  gripper_targets:
+    count: 1
+    order: [arm_opening]
+    units: normalized_fraction
+    range: [0.0, 1.0]
+    description: "Gripper opening command (normalized)"
+
+wrench:
+  recorded_in_pose_tests: false
+  wrench_frame: fr3v2_link8
+  units: "N for force, N·m for torque"
+
+episode_metadata:
+  episode_id_format: "{dataset_id}_{epoch_timestamp_seconds}"
+  episode_success_field: success
+  episode_success_values: [true, false]
+  episode_step_count_field: step_count
+
+data_types:
+  state_vector: float32
+  action_vector: float32
+  timestamps: float64
+  episode_id: string
+
+notes: |
+  - All positions are in radians; velocities in rad/s; efforts in N·m.
+  - Gripper commands are normalized [0, 1] for portability across gripper models.
+  - Episodes are atomic units of data collection (e.g., a single task execution).
+  - Wrench (6-axis force/torque) is optional; presence depends on task type.

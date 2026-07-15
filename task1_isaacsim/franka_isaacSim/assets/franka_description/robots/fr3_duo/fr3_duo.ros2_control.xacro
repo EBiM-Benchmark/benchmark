@@ -1,0 +1,199 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <xacro:macro name="configure_arm_joint" params="joint_name initial_position gazebo gazebo_effort">
+    <joint name="${joint_name}">
+      <command_interface name="position"/>
+      <command_interface name="velocity"/>
+      <xacro:if value="${gazebo == 0 or gazebo_effort == 1}">
+        <command_interface name="effort"/>
+      </xacro:if>
+      <state_interface name="position">
+        <param name="initial_value">${initial_position}</param>
+      </state_interface>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+  </xacro:macro>
+
+  <xacro:macro name="fr3_duo_ros2_control"
+    params="robot_types
+            arm_prefixes
+            robot_ips
+            use_fake_hardware
+            fake_sensor_commands
+            is_async:=false
+            thread_priority:=50
+            hand
+            gazebo
+            gazebo_effort">
+    <ros2_control name="controller_manager" type="system" is_async="${is_async}">
+      <xacro:if value="${is_async}">
+        <properties>
+          <async scheduling_policy="detached" print_warnings="true" thread_priority="${thread_priority}"
+            manage_overruns="false"/>
+        </properties>
+      </xacro:if>
+      <hardware>
+        <param name="version">1.0.0</param>
+        <param name="robot_type">fr3_duo</param>
+        <xacro:if value="${use_fake_hardware}">
+          <plugin>mock_components/GenericSystem</plugin>
+          <param name="mock_sensor_commands">${fake_sensor_commands}</param>
+          <param name="state_following_offset">0.0</param>
+        </xacro:if>
+
+        <xacro:if value="${gazebo}">
+          <plugin>gz_ros2_control/GazeboSimSystem</plugin>
+        </xacro:if>
+
+        <xacro:if value="${use_fake_hardware == 0 and gazebo == 0}">
+          <!-- For real hardware -->
+        </xacro:if>
+      </hardware>
+
+      <!-- Arm joints -->
+      <xacro:property name="robot_types_list" value="${robot_types}"/>
+      <xacro:property name="arm_prefixes_list" value="${arm_prefixes}"/>
+
+      <xacro:property name="arm1_type" value="${robot_types_list[0]}"/>
+      <xacro:property name="arm2_type" value="${robot_types_list[1]}"/>
+      <xacro:property name="arm1_prefix" value="${arm_prefixes_list[0]}"/>
+      <xacro:property name="arm2_prefix" value="${arm_prefixes_list[1]}"/>
+
+      <!-- Left arm -->
+      <xacro:configure_arm_joint joint_name="${arm1_prefix}_${arm1_type}_joint1" initial_position="0.0"
+        gazebo="${gazebo}" gazebo_effort="${gazebo_effort}"/>
+      <xacro:configure_arm_joint joint_name="${arm1_prefix}_${arm1_type}_joint2" initial_position="${-pi/4}"
+        gazebo="${gazebo}" gazebo_effort="${gazebo_effort}"/>
+      <xacro:configure_arm_joint joint_name="${arm1_prefix}_${arm1_type}_joint3" initial_position="0.0"
+        gazebo="${gazebo}" gazebo_effort="${gazebo_effort}"/>
+      <xacro:configure_arm_joint joint_name="${arm1_prefix}_${arm1_type}_joint4" initial_position="${-3*pi/4}"
+        gazebo="${gazebo}" gazebo_effort="${gazebo_effort}"/>
+      <xacro:configure_arm_joint joint_name="${arm1_prefix}_${arm1_type}_joint5" initial_position="0.0"
+        gazebo="${gazebo}" gazebo_effort="${gazebo_effort}"/>
+      <xacro:configure_arm_joint joint_name="${arm1_prefix}_${arm1_type}_joint6" initial_position="${pi/2}"
+        gazebo="${gazebo}" gazebo_effort="${gazebo_effort}"/>
+      <xacro:configure_arm_joint joint_name="${arm1_prefix}_${arm1_type}_joint7" initial_position="${pi/4}"
+        gazebo="${gazebo}" gazebo_effort="${gazebo_effort}"/>
+
+      <!-- Right arm -->
+      <xacro:configure_arm_joint joint_name="${arm2_prefix}_${arm2_type}_joint1" initial_position="0.0"
+        gazebo="${gazebo}" gazebo_effort="${gazebo_effort}"/>
+      <xacro:configure_arm_joint joint_name="${arm2_prefix}_${arm2_type}_joint2" initial_position="${-pi/4}"
+        gazebo="${gazebo}" gazebo_effort="${gazebo_effort}"/>
+      <xacro:configure_arm_joint joint_name="${arm2_prefix}_${arm2_type}_joint3" initial_position="0.0"
+        gazebo="${gazebo}" gazebo_effort="${gazebo_effort}"/>
+      <xacro:configure_arm_joint joint_name="${arm2_prefix}_${arm2_type}_joint4" initial_position="${-3*pi/4}"
+        gazebo="${gazebo}" gazebo_effort="${gazebo_effort}"/>
+      <xacro:configure_arm_joint joint_name="${arm2_prefix}_${arm2_type}_joint5" initial_position="0.0"
+        gazebo="${gazebo}" gazebo_effort="${gazebo_effort}"/>
+      <xacro:configure_arm_joint joint_name="${arm2_prefix}_${arm2_type}_joint6" initial_position="${pi/2}"
+        gazebo="${gazebo}" gazebo_effort="${gazebo_effort}"/>
+      <xacro:configure_arm_joint joint_name="${arm2_prefix}_${arm2_type}_joint7" initial_position="${pi/4}"
+        gazebo="${gazebo}" gazebo_effort="${gazebo_effort}"/>
+
+      <!-- Hand fingers if present -->
+      <xacro:if value="${gazebo and hand}">
+        <joint name="${arm1_prefix}_${arm1_type}_finger_joint1">
+          <command_interface name="position"/>
+          <state_interface name="position">
+            <param name="initial_value">0.0</param>
+          </state_interface>
+          <state_interface name="velocity"/>
+          <state_interface name="effort"/>
+        </joint>
+        <joint name="${arm2_prefix}_${arm2_type}_finger_joint1">
+          <command_interface name="position"/>
+          <state_interface name="position">
+            <param name="initial_value">0.0</param>
+          </state_interface>
+          <state_interface name="velocity"/>
+          <state_interface name="effort"/>
+        </joint>
+      </xacro:if>
+
+      <!-- Cartesian velocity interfaces for left arm -->
+      <gpio name="${arm1_prefix}_vx">
+        <command_interface name="cartesian_velocity"/>
+        <param name="index">0</param>
+      </gpio>
+      <gpio name="${arm1_prefix}_vy">
+        <command_interface name="cartesian_velocity"/>
+        <param name="index">1</param>
+      </gpio>
+      <gpio name="${arm1_prefix}_vz">
+        <command_interface name="cartesian_velocity"/>
+        <param name="index">2</param>
+      </gpio>
+      <gpio name="${arm1_prefix}_wx">
+        <command_interface name="cartesian_velocity"/>
+        <param name="index">3</param>
+      </gpio>
+      <gpio name="${arm1_prefix}_wy">
+        <command_interface name="cartesian_velocity"/>
+        <param name="index">4</param>
+      </gpio>
+      <gpio name="${arm1_prefix}_wz">
+        <command_interface name="cartesian_velocity"/>
+        <param name="index">5</param>
+      </gpio>
+
+      <!-- Cartesian velocity interfaces for right arm -->
+      <gpio name="${arm2_prefix}_vx">
+        <command_interface name="cartesian_velocity"/>
+        <param name="index">6</param>
+      </gpio>
+      <gpio name="${arm2_prefix}_vy">
+        <command_interface name="cartesian_velocity"/>
+        <param name="index">7</param>
+      </gpio>
+      <gpio name="${arm2_prefix}_vz">
+        <command_interface name="cartesian_velocity"/>
+        <param name="index">8</param>
+      </gpio>
+      <gpio name="${arm2_prefix}_wx">
+        <command_interface name="cartesian_velocity"/>
+        <param name="index">9</param>
+      </gpio>
+      <gpio name="${arm2_prefix}_wy">
+        <command_interface name="cartesian_velocity"/>
+        <param name="index">10</param>
+      </gpio>
+      <gpio name="${arm2_prefix}_wz">
+        <command_interface name="cartesian_velocity"/>
+        <param name="index">11</param>
+      </gpio>
+
+      <!-- Elbow command interfaces for left arm -->
+      <gpio name="${arm1_prefix}_joint_3_position">
+        <command_interface name="elbow_command"/>
+        <param name="index">0</param>
+      </gpio>
+      <gpio name="${arm1_prefix}_joint_4_sign">
+        <command_interface name="elbow_command"/>
+        <param name="index">1</param>
+      </gpio>
+
+      <!-- Elbow command interfaces for right arm -->
+      <gpio name="${arm2_prefix}_joint_3_position">
+        <command_interface name="elbow_command"/>
+        <param name="index">2</param>
+      </gpio>
+      <gpio name="${arm2_prefix}_joint_4_sign">
+        <command_interface name="elbow_command"/>
+        <param name="index">3</param>
+      </gpio>
+
+    </ros2_control>
+
+    <xacro:if value="${gazebo}">
+      <gazebo>
+        <plugin filename="gz_ros2_control-system" name="gz_ros2_control::GazeboSimROS2ControlPlugin">
+          <parameters>$(find franka_gazebo_bringup)/config/franka_gazebo_controllers.yaml</parameters>
+        </plugin>
+      </gazebo>
+    </xacro:if>
+
+  </xacro:macro>
+</robot>

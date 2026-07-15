@@ -1,0 +1,55 @@
+embodiment_key: fr3
+version: "1.0"
+name: "Single FR3v2 with Robotiq 2F-85"
+description: "Single FR3v2 arm on fixed pedestal with Robotiq 2F-85 gripper."
+category: "fixed_base"
+
+platform:
+  has_mobile_base: false
+  arm_count: 1
+  total_controllable_dof: 7
+
+physics:
+  simulation_hz: 240
+  render_hz: 30.0
+  substeps: 2
+  gravity_m_s2: 9.81
+
+control:
+  controller_mode: position
+  ros_publish_rate_hz: 60.0
+  command_smoothing_alpha: 1.0
+  max_position_step_rad: 0.0
+  position_deadband_rad: 0.0
+  settle_position_window_rad: 0.0
+  settle_velocity_threshold_rad_s: 0.0
+  browser_command_hold_seconds: 0.25
+  controller_activity_topic: /isaac_controller_manager/activity
+  primary_effort_stale_after_s: 0.25
+
+cameras:
+  camera_config: null           # Set to null to disable loading camera config and sensors for faster startup when cameras are not needed.
+
+arm_groups:
+  arm:
+    gripper: robotiq_2f85
+
+real_to_sim_bridge:
+  real_rmw: rmw_cyclonedds_cpp
+  real_domain_id: 100
+  cyclonedds_uri: file:///workspace/assets/isaac_assets/config/cyclonedds_localhost.xml
+  arm_topic: /arm/joint_states
+  gripper_topic: null
+  gripper_joint_index: 0
+
+real_robot_follower:
+  arm_topic: null
+  gripper_topic: null
+  gripper_joint_index: 0
+  stale_timeout: 0.5
+  publish_rate: 60.0
+
+notes: |
+  IsaacSim-specific control and physics parameters.
+  Joint limits and kinematics sourced from URDF (asset_references.yaml).
+  Runtime configuration loaded from this file at startup.

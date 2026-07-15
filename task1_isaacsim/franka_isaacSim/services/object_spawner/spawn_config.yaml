@@ -1,0 +1,19 @@
+# Object Spawner Configuration - Spawn Locations
+
+# Spawn area above the table (objects will be spawned randomly within this box)
+spawn_area:
+  # Center position (x, y, z) in meters - world frame
+  center: [0.72, 0.0, 0.5]  # 0.5m in front, centered, 0.5m above ground
+  
+  # Random variation range (±x, ±y, ±z) in meters
+  # Objects will spawn within center ± range
+  range: [0.1, 0.1, 0.0]  # ±10cm in X, ±10cm in Y, no Z variation
+
+# Height threshold - if object falls below this Z height, it will despawn
+despawn_height: -0.6  # meters
+
+# Spawn interval - time between spawns in seconds
+spawn_interval: 40.0  # seconds
+
+# Maximum number of objects in scene at once
+max_objects: 1
