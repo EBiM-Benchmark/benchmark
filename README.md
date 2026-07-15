@@ -8,7 +8,7 @@
 |---|---|---|---|
 | Task 1 — Cable Routing & Plugging | Isaac Sim, MuJoCo | [`task1_isaacsim/`](task1_isaacsim/), [`task1_mujoco/`](task1_mujoco/) | see [STATUS.md](STATUS.md) |
 | Task 2 — Deformable Material Handling (Thermal Pad Placement) | Isaac Sim (Genesis committed) | [`task2_isaacsim/`](task2_isaacsim/), [`assets/task2_objects/`](assets/task2_objects/), [`scripts/evaluation/task2/`](scripts/evaluation/task2/) | see [STATUS.md](STATUS.md) |
-| Task 3 — Assisted Living & Feeding | Isaac Sim (MuJoCo committed) | Isaac Sim: [`scripts/scenes/scene_robot_room_keyboard.py`](scripts/scenes/scene_robot_room_keyboard.py), [`assets/robot_room.usd`](assets/robot_room.usd); MuJoCo: in development — see [STATUS.md](STATUS.md) | see [STATUS.md](STATUS.md) |
+| Task 3 — Assisted Living & Feeding | Isaac Sim (MuJoCo committed) | [`task3_isaacsim/`](task3_isaacsim/), [`scripts/evaluation/task3/`](scripts/evaluation/task3/) | see [STATUS.md](STATUS.md) |
 
 Full rules and official scoring are on the competition page: https://ebim-benchmark.github.io/competition.html#tasks . The evaluation code in this repository is a development facilitator; official scoring follows the rules published there.
 
@@ -83,6 +83,21 @@ bash task2_isaacsim/scripts/run_isaacsim_teleop.sh \
 See [`task2_isaacsim/README.md`](task2_isaacsim/README.md) for prerequisites,
 the GELLO + foot-pedal configuration, and the architecture.
 
+## Task 3 — Assisted Living & Feeding (Isaac Sim 5.1.0)
+
+[`task3_isaacsim/`](task3_isaacsim/README.md) contains the runnable Task 3
+preview with direct keyboard control and a ROS/browser/GELLO bridge. The ROS
+launcher selects the complete robot/gripper profile with `--gripper`: Robotiq
+is the competition default, while Panda preserves the current Franka-hand
+asset.
+
+```bash
+bash task3_isaacsim/scripts/run_isaacsim_teleop.sh --gripper robotiq
+```
+
+See [`task3_isaacsim/README.md`](task3_isaacsim/README.md) for Docker setup,
+no-hardware browser control, GELLO/pedal commands, and current limitations.
+
 ## Repository Layout
 
 ```text
@@ -90,6 +105,7 @@ benchmark/
 ├── task1_isaacsim/              # Task 1: mobile FR3 Duo teleoperation (Isaac Lab + Newton)
 ├── task1_mujoco/                # Task 1: cable-management teleoperation + eval (MuJoCo)
 ├── task2_isaacsim/              # Task 2: thermal-pad teleoperation (Isaac Sim 5.1.0 / PhysX)
+├── task3_isaacsim/              # Task 3: assisted-living teleoperation (Isaac Sim 5.1.0)
 ├── assets/                      # USD assets and generated scene files
 │   └── tabletop_task_scene_DEMO # Scene with Commandable via ROS mobile_Fr3_duo
 ├── docker/                      # Docker Compose runtimes for Isaac Sim and Isaac Lab
@@ -328,280 +344,10 @@ Typical GUI launch inside the container:
 
 ### Launch Mobile FR3 In The Robot Room
 
-The robot-room launch script loads `assets/robot_room.usd` by default and
-places the mobile FR3 from a task preset. Presets are `task1` at
-`(4.4, -2.5, 0.0)`, `task2` at `(4.4, 2.6, 0.0)`, and `task3` at
-`(-4.6, 2.7, 0.0)`. The preset robot yaw is `90` degrees for `task1` and
-`-90` degrees for `task2`/`task3`. For `task3`, the launcher also adds 300
-coffee beans to the bowl at `(-4.3, -1.467124258834126, 0.7542400587544876)`
-and sets the built-in
-Perspective viewport to
-`(-8.12589, -3.29067, 2.79653, 73.13762, 0.0, -50.88313)`.
-
-#### Task3 Feeding Workflow
-
-Task3 is a four-stage feeding task:
-
-1. Table Setup: move the plate holding the bowl, cup, disk, and spoon from the
-   Kitchen Area to the Dining Area.
-2. Feed: scoop coffee beans from the bowl with the spoon, move the spoon to a
-   feeding position in front of the robot head, and hold that feeding position
-   for at least 3 seconds. After feeding is complete, return the coffee beans to
-   the bowl.
-3. Bean Recovery: transfer the coffee beans from the bowl into the designated
-   recycling container in the Kitchen Area.
-4. Clean Up: return all utensils to the Kitchen Area and place them inside the
-   designated sink region, marked by the black tap area.
-
-Launch the keyboard-controlled Task3 Lula-IK demo from the host. Start its
-Isaac Lab container first:
-
-```bash
-docker compose --env-file docker/.env.base -f docker/docker-compose.yaml \
-  --profile isaac-lab-2.3.2 up -d isaac-lab-2-3-2
-```
-
-Then run the launcher:
-
-```bash
-docker exec -it isaac-lab-2-3-2-workshop bash -lc \
-  'cd /workspace/EBiM_Challenge && python scripts/scenes/scene_robot_room_keyboard.py --task task3'
-```
-
-The Isaac Lab and plain Isaac Sim launchers share this direct keyboard map:
-
-- Left arm: `W/S`, `A/D`, `Q/E` translate X/Y/Z; `Z/X`, `T/G`, `C/V` rotate
-  roll/pitch/yaw; `F` toggles the gripper.
-- Right arm: `O/L`, `K/;`, `I/P` translate X/Y/Z; `N/M`, `U/J`, `,/.` rotate
-  roll/pitch/yaw; `'` toggles the gripper.
-- Hold `Shift` for the mobile base: `H/N` forward/back, `B/M` left/right, and
-  `G/J` rotate counter-clockwise/clockwise. These overlapping arm rotation
-  keys are suppressed while the modifier is held.
-- `R` resets both arm targets. `Esc` or `Ctrl+C` exits.
-
-Motion keys are continuous and scaled by simulation time. Cartesian targets
-are stored in the moving robot-base frame, so moving or rotating the mobile
-base carries both end-effector targets with it. The mobile-base defaults are
-set to `0.25 m/s` translation and `0.75 rad/s` yaw.
-
-`task3` enables keyboard control by default. To load the scene as a passive
-Isaac Sim viewer instead, pass `--no-keyboard-control`; in that mode, click
-Play in the Isaac Sim GUI or add `--autoplay` to start the timeline.
-For real-time keyboard control, task3 coffee beans are static by default; pass
-`--dynamic-beans` to make them rigid bodies. Use `--stabilization-steps N` if
-you want to run warmup physics steps before enabling the keyboard loop.
-
-Isaac Sim remains the simulator and supplies the Lula motion-generation
-solvers. Isaac Lab owns scene stepping, measured joint state, and articulation
-actuator targets. A small raw-Lula bridge copies the first environment's
-current joint positions from the Isaac Lab CUDA tensor to a CPU NumPy warm
-start, slices each arm in exact cspace order, and maps solutions back to global
-joint indices. This avoids passing either CUDA tensors or an Isaac Lab
-`Articulation` through `ArticulationKinematicsSolver`. Dual-arm solver
-construction and portable configuration are adapted from
-[`EBiM-Benchmark/benchmark-archive`](https://github.com/EBiM-Benchmark/benchmark-archive),
-branch `Robotiq_DEMO` (commit `78c28ea`). The first version deliberately
-supports exactly one environment and keyboard input only.
-
-Each arm is solved independently. If one arm has no IK solution, its last
-valid joint target is retained while the other arm, grippers, spine, and base
-continue to operate; warnings are rate-limited. Persistent targets are seeded
-once from measured joint positions after stabilization, so the control loop
-does not restore the default arm pose every frame.
-
-Future ROS 2, GELLO, gripper, and foot-pedal integration belongs upstream of
-the simulator-independent `TeleopCommand` boundary. An adapter for the
-separate [`EBiM-Benchmark/teleoperation`](https://github.com/EBiM-Benchmark/teleoperation)
-repository can translate `/keyboard/state`, namespaced GELLO joint states,
-gripper values, and pedal state into that boundary without replacing target
-tracking, IK, joint composition, or the Isaac Sim/Isaac Lab runtime adapter.
-`TeleopCommand` already carries optional canonical seven-value left/right arm
-joint tuples for a direct GELLO-style source. A fresh absolute joint tuple has
-per-arm priority over Cartesian IK at the selective composer boundary, so one
-arm may use direct joints while the other uses IK. Every incoming direct tuple
-is clamped to that arm's configured articulation soft joint limits before it
-can be latched. Once a direct source owns an arm, stale or inactive input holds
-the last bounded direct target rather than silently falling back to an old
-Cartesian target. Future source arbitration must explicitly release that
-arm's direct ownership and reseed its Cartesian tracker before IK takeover;
-arbitration otherwise remains upstream of the winning command.
-
-For an isolated **plain Isaac Sim 5.1** dual-arm RMPflow demo (no Isaac Lab),
-start the plain Isaac Sim container:
-
-```bash
-docker compose --env-file docker/.env.base -f docker/docker-compose.yaml \
-  --profile isaac-sim-5.1.0 up -d isaac-sim-5-1-0
-```
-
-Then run the separate entry point:
-
-```bash
-docker exec -it isaac-sim-5-1-0-workshop bash -lc \
-  'cd /workspace/EBiM_Challenge && /isaac-sim/python.sh scripts/scenes/scene_robot_room_rmpflow.py'
-```
-
-This executable builds the same Task 3 robot room and Franka-hand robot USD,
-then uses two independent RMPflow policies with Kit-window keyboard control.
-Run it separately from `scene_robot_room_keyboard.py`; the two runtimes do not
-share an articulation or controller. `--headless` loads and steps the plain
-Isaac Sim scene but intentionally disables arm keyboard teleoperation. This
-isolated demo has no ROS/GELLO dependency. Hold `Shift` for mobile-base
-control: `H/N` forward/backward, `B/M` left/right, and `G/J`
-counter-clockwise/clockwise. The modifier prevents these keys from also
-commanding the overlapping arm rotations. Its default base speeds are `0.25
-m/s` and `0.75 rad/s`; override them with `--base-linear-speed` and
-`--base-angular-speed` only after confirming the robot remains stable.
-
-#### Task3 Grading Unit Tests
-
-The Task3 grading helpers live in `scripts/evaluation/task3/grading.py`, with
-direct unit tests in `scripts/evaluation/task3/tests/test_grading.py`. These
-tests validate the grading math for each stage; they do not launch the full
-Isaac Sim scene or run robot physics.
-
-Start the Isaac Lab container if it is not already running:
-
-```bash
-docker compose --env-file docker/.env.base -f docker/docker-compose.yaml \
-  --profile isaac-lab-2.3.2 up -d isaac-lab-2-3-2
-```
-
-Run all Task3 grading unit tests inside the container:
-
-```bash
-docker exec isaac-lab-2-3-2-workshop bash -lc \
-  'cd /workspace/EBiM_Challenge && python -B scripts/evaluation/task3/tests/test_grading.py'
-```
-
-Run a single stage by passing `stage1`, `stage2`, `stage3`, or `stage4`:
-
-```bash
-docker exec isaac-lab-2-3-2-workshop bash -lc \
-  'cd /workspace/EBiM_Challenge && python -B scripts/evaluation/task3/tests/test_grading.py stage1'
-
-docker exec isaac-lab-2-3-2-workshop bash -lc \
-  'cd /workspace/EBiM_Challenge && python -B scripts/evaluation/task3/tests/test_grading.py stage2'
-
-docker exec isaac-lab-2-3-2-workshop bash -lc \
-  'cd /workspace/EBiM_Challenge && python -B scripts/evaluation/task3/tests/test_grading.py stage3'
-
-docker exec isaac-lab-2-3-2-workshop bash -lc \
-  'cd /workspace/EBiM_Challenge && python -B scripts/evaluation/task3/tests/test_grading.py stage4'
-```
-
-#### Task3 Grading Integration Tests
-
-The integration runner launches a real Isaac Sim app, builds the Task3 robot
-room, drives live scene prims through stage-specific validation motions, lets
-the app update, and then grades the live stage. Use this when you want to
-confirm that the grading mechanism works against the actual USD scene.
-
-Run all four integration tests with the GUI enabled:
-
-```bash
-docker exec -it isaac-lab-2-3-2-workshop bash -lc \
-  'cd /workspace/EBiM_Challenge && exec python -B scripts/evaluation/task3/integration_test.py all'
-```
-
-GUI integration runs print the grade and then keep Isaac Sim open for
-inspection. Close the Isaac Sim window or press Ctrl+C in the terminal when you
-are done. Run the same tests without opening a GUI window when you want the
-runner to exit automatically:
-
-```bash
-docker exec isaac-lab-2-3-2-workshop bash -lc \
-  'cd /workspace/EBiM_Challenge && python -B scripts/evaluation/task3/integration_test.py --headless all'
-```
-
-Run a single GUI integration stage by passing `stage1`, `stage2`, `stage3`, or
-`stage4`:
-
-```bash
-docker exec -it isaac-lab-2-3-2-workshop bash -lc \
-  'cd /workspace/EBiM_Challenge && exec python -B scripts/evaluation/task3/integration_test.py stage1'
-```
-
-Add `--headless` to the single-stage command if you want it to shut down
-automatically after printing the result.
-
-Each integration stage prints one `STAGE_RESULT` JSON line with `score`,
-`max_score`, `passed`, and stage-specific measurements. For example, Stage 1
-prints utensil and bean dining-area counts, Stage 2 prints bean retention and
-hold-time details, Stage 3 prints the percentage of beans inside the recovery
-sphere, and Stage 4 prints sink-return counts. In the deterministic headless
-validation run, the stage grades were:
-
-```text
-stage1: 5/5
-stage2: 4/4
-stage3: 4/4
-stage4: 5/5
-```
-
-Stage 1 disables rigid bodies on the utensil set, keeps coffee beans rigid-body
-enabled but kinematic, then gradually translates the tray, bowl, spoon, plate,
-cup, and existing beans together into the Dining Area without rotating them,
-moving along y before x to avoid the wall. Stage 2 makes the spoon a kinematic
-rigid body, rotates it +90
-degrees around z to point toward the mouth, keeps the coffee beans as dynamic
-rigid bodies, moves the spoon to a pose 20 cm in front of the fake head, places
-five existing beans 1 cm above the spoon, moves the spoon forward 10 cm for
-three seconds, retracts 10 cm, and counts beans still on the spoon. Stage 3
-keeps beans dynamic and respawns them with the same bowl-style pattern used by
-`scene_robot_room_keyboard` above the recovery container. Stage 4 removes the
-coffee-bean scope before moving utensils to the sink boundary.
-
-To use a different room USD, pass `--room-usd`, for example:
-
-```bash
-docker exec -it isaac-sim-5-1-0-workshop bash -lc \
-  'cd /workspace/EBiM_Challenge && python scripts/scenes/scene_robot_room_keyboard.py --room-usd assets/robot_room.usd'
-```
-
-You can still override the preset with `--robot-x`, `--robot-y`, and
-`--robot-z` when manually checking a placement.
-
-The first launch can spend time compiling Isaac/RTX shader caches before the
-scene becomes interactive.
-
-The `--head-placement` option is only for the task3 head prop. Use `a` through
-`i` to select a fixed placement, or `random` to choose one automatically.
-Lowercase and uppercase letters are both accepted:
-
-```bash
-docker exec -it isaac-lab-2-3-2-workshop bash -lc \
-  'cd /workspace/EBiM_Challenge && python scripts/scenes/scene_robot_room_keyboard.py --task task3 --head-placement e'
-```
-
-For randomized task3 head placement:
-
-```bash
-docker exec -it isaac-lab-2-3-2-workshop bash -lc \
-  'cd /workspace/EBiM_Challenge && python scripts/scenes/scene_robot_room_keyboard.py --task task3 --head-placement random'
-```
-
-This option is unrelated to the keyboard `E` key used for rotation in the older
-keyboard-control demos.
-
-In passive viewer mode, the script launches native Isaac Sim and forwards the
-task preset into Kit, so switching `--task task1`, `--task task2`, or
-`--task task3` changes the spawn position without editing the command
-coordinates.
-
-For ROS2 bridge development, enable the bridge explicitly. The launcher sets
-`ROS_DISTRO`, `RMW_IMPLEMENTATION`, and the bundled bridge library path before
-Isaac Sim starts:
-
-```bash
-docker exec -it isaac-sim-5-1-0-workshop bash -lc \
-  'cd /workspace/EBiM_Challenge && python scripts/scenes/scene_robot_room_keyboard.py --task task3 --no-keyboard-control --ros2-bridge fastdds'
-```
-
-Use `--ros2-bridge cyclonedds` if you want CycloneDDS instead of FastDDS. The
-default `--experience base` avoids loading optional extensions such as the ROS2
-bridge unless requested; use `--experience full` when you need the full Isaac
-Sim extension set.
+After starting a runtime, use the participant launcher documented in the
+corresponding task folder. The shared robot-room builder is an implementation
+module, not the participant entry point. See the Task 1, Task 2, and Task 3
+README links in the task overview above.
 
 ### Start Isaac Sim 6.0.0-dev2
 
@@ -667,7 +413,7 @@ If GUI applications fail to open:
 ## Main Workshop Scripts
 
 ### Demo Scenes
-- `scripts/scenes/scene_robot_room_keyboard.py` — robot room scene launcher with task-based mobile FR3 spawn presets. `task3` includes coffee beans in the bowl and runs Isaac Lab keyboard base control by default; pass `--no-keyboard-control` for passive Isaac Sim viewing.
+- `scripts/scenes/scene_robot_room_keyboard.py` — shared robot-room stage builder used by task-specific launchers.
 
 ### Utilities
 - `scripts/tools/inspect_usd.py` — print the prim hierarchy of a USD file.
@@ -682,7 +428,7 @@ If GUI applications fail to open:
 - `scripts/deprecated/keyboard_control.py` — older reduced robot keyboard-control demo.
 - `scripts/deprecated/launch_random_heads_scene.py` — older tabletop head randomization launcher.
 - `scripts/deprecated/create_wall_room.py` — older wall-room USD generator. The current base room is `assets/robot_room.usd`.
-- `scripts/deprecated/compose_scene_usd.py` — deprecated tabletop scene composer kept for reference. The active task3 bean setup now lives in `scripts/scenes/scene_robot_room_keyboard.py`.
+- `scripts/deprecated/compose_scene_usd.py` — deprecated tabletop scene composer kept for reference. Active task scene composition is documented in each task folder.
 
 </details>
 
@@ -785,9 +531,10 @@ PYTHONPATH=submodules/lerobot/src python -m lerobot.scripts.visualize_dataset --
 
 ## Running Scripts
 
-Inside an Isaac Sim runtime, use the prebuilt `assets/robot_room.usd` base scene
-through `scripts/scenes/scene_robot_room_keyboard.py`. New workshop task work
-should build on that room instead of generating new base scenes.
+Task-specific launchers use the prebuilt `assets/robot_room.usd` base scene
+through the shared `scripts/scenes/scene_robot_room_keyboard.py` builder. New
+workshop task work should build on that room instead of generating new base
+scenes.
 
 Inspect the active robot-room USD hierarchy:
 
@@ -823,7 +570,8 @@ python scripts/deprecated/create_wall_room.py --length 30.0 --width 20.0 --heigh
 
 `scripts/deprecated/compose_scene_usd.py` composes the older tabletop task scene.
 It is kept for reference and for inspecting the previous coffee bean setup, but
-new robot-room task work should use `scripts/scenes/scene_robot_room_keyboard.py`.
+new robot-room task work should use the task-specific launcher and shared room
+builder.
 
 - `--output PATH`: USD file to write when `--save` is set. Default: `assets/tabletop_task_scene.usd`.
 - `--save`: write the composed scene to `--output`.
@@ -885,9 +633,8 @@ The mobile base follows a diagonal steer-drive layout. Shared helper logic in `s
 - heading-hold compensation during translation.
 
 This is still a simulation convenience layer, not a production-grade mobile
-base controller. The active Task3 robot-room launcher uses these helpers at
-runtime alongside selective dual-arm, gripper, and spine position targets.
-Physical-robot use still requires an external emergency stop and watchdog.
+base controller. Physical-robot use still requires an external emergency stop
+and watchdog.
 
 ### Simulation Performance
 
@@ -962,7 +709,7 @@ After changes, verify the following:
 1. `docker compose` resolves all configured profiles.
 2. The repository appears inside each container at `/workspace/EBiM_Challenge`.
 3. Isaac Sim GUI launches correctly through X11.
-4. `scripts/scenes/scene_robot_room_keyboard.py --task task3` starts and resolves all required USD assets.
+4. Each task-specific participant launcher starts and resolves its required USD assets.
 5. `third_party/franka_description/urdfs/mobile_fr3_duo_v0_2_franka_hand.usd` is available.
 6. No tools or docs still reference the removed `source/robot_lab` tree.
 
