@@ -255,5 +255,14 @@ if [[ -n "${TERM:-}" ]]; then
   DOCKER_EXEC_ENV+=("-e" "TERM=${TERM}")
 fi
 DOCKER_EXEC_ENV+=("-e" "QT_X11_NO_MITSHM=1")
+# WebRTC livestream: AppLauncher reads PUBLIC_IP to advertise the ICE candidate
+# address. Without this the container defaults to 127.0.0.1 and remote clients can
+# reach the signaling port but never establish the media stream.
+if [[ -n "${PUBLIC_IP:-}" ]]; then
+  DOCKER_EXEC_ENV+=("-e" "PUBLIC_IP=${PUBLIC_IP}")
+fi
+if [[ -n "${LIVESTREAM:-}" ]]; then
+  DOCKER_EXEC_ENV+=("-e" "LIVESTREAM=${LIVESTREAM}")
+fi
 docker exec -it "${DOCKER_EXEC_ENV[@]}" "${ISAACLAB_CONTAINER}" bash -lc \
   "cd ${ISAACLAB_CONTAINER_WS} && source /opt/ros/jazzy/setup.bash && ./isaaclab.sh -p ${CONTAINER_TASK1}/scripts/isaaclab_fr3duo_newton_bridge.py${BRIDGE_ARGS_QUOTED}"
