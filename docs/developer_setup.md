@@ -223,11 +223,15 @@ Inspect the active robot-room USD:
 python scripts/tools/inspect_usd.py assets/robot_room.usd
 ```
 
-Launch the active robot-room scene:
+Launch the participant-facing Task 3 ROS/browser scene:
 
 ```bash
-python scripts/scenes/scene_robot_room_keyboard.py --task task3
+bash task3_isaacsim/scripts/run_isaacsim_teleop.sh --gripper robotiq
 ```
+
+Use `--gripper panda` for the Franka-hand compatibility asset. The shared
+`scripts/scenes/scene_robot_room_keyboard.py` module remains the room-stage
+builder used by Task 2 and Task 3.
 
 Open Isaac Sim GUI from inside an Isaac Sim container:
 

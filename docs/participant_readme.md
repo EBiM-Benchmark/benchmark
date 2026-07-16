@@ -3,7 +3,7 @@
   Purpose: a participant-facing guide skeleton. Verifiable sections are filled from existing
   repo docs + the competition page. Per-task run commands are EXTRACTED from repo sources and
   marked "(extracted from <file:line> — verify)" — each task owner verifies/corrects the command
-  for the code they wrote. (Task 3's end-to-end run is coming soon — no participant command yet; see #13.)
+  for the code they wrote. Task 3 now has a runnable preview; end-to-end verification remains tracked in #13.
   Prerequisites, repo structure, integration, and final assembly/placement
   (including whether this graduates to the top-level README.md) are @Ju6276's as steward.
   NO run command in this file was invented; anything not extractable is left as an owner-tagged
@@ -36,7 +36,7 @@ Full rules and official scoring live on the **[competition page](https://ebim-be
 |---|---|---|---|
 | Task 1 — Cable Routing & Plugging | Isaac Sim, MuJoCo | [`task1_isaacsim/`](../task1_isaacsim/), [`task1_mujoco/`](../task1_mujoco/) | see [STATUS.md](../STATUS.md) |
 | Task 2 — Deformable Material Handling (Thermal Pad Placement) | Isaac Sim (Genesis committed) | [`task2_isaacsim/`](../task2_isaacsim/), [`assets/task2_objects/`](../assets/task2_objects/), [`scripts/evaluation/task2/`](../scripts/evaluation/task2/) | see [STATUS.md](../STATUS.md) |
-| Task 3 — Assisted Living & Feeding | Isaac Sim (MuJoCo committed) | Isaac Sim: [`scripts/scenes/scene_robot_room_keyboard.py`](../scripts/scenes/scene_robot_room_keyboard.py), [`assets/robot_room.usd`](../assets/robot_room.usd); MuJoCo: in development — see [STATUS.md](../STATUS.md) | see [STATUS.md](../STATUS.md) |
+| Task 3 — Assisted Living & Feeding | Isaac Sim (MuJoCo committed) | [`task3_isaacsim/`](../task3_isaacsim/), [`scripts/evaluation/task3/`](../scripts/evaluation/task3/) | see [STATUS.md](../STATUS.md) |
 
 Full rules and official scoring are on the competition page:
 <https://ebim-benchmark.github.io/competition.html#tasks> . The evaluation code in this repository is a
@@ -64,8 +64,7 @@ Note: Task 1 (Isaac Sim) uses a **Newton-enabled Isaac Lab overlay**, not the re
 
 ## Per-task quickstart
 
-> Each runnable block below starts from a command **extracted from a repo file** (Task 3 is coming
-> soon — no participant command yet). The task owner confirms it is the right participant entry point
+> Each runnable block below starts from a command **extracted from a repo file**. The task owner confirms it is the right participant entry point
 > and trims/expands as needed. Full setup for every task is in the task's own README, linked at the top
 > of each block.
 
@@ -128,17 +127,26 @@ bash scripts/evaluation/task2/run.sh evaluate
 
 ### Task 3 — Assisted Living & Feeding (Isaac Sim)
 
-Task overview: four stages — Table Setup → Feed → Bean Recovery → Clean Up (see
-[README.md:313-333](../README.md)).
+Full setup and controls: **[`task3_isaacsim/README.md`](../task3_isaacsim/README.md)**;
+grading helpers: **[`scripts/evaluation/task3/README.md`](../scripts/evaluation/task3/README.md)**.
 
-> **🕒 Coming soon.** Task 3 (Isaac Sim): scene composition is available; a teleoperable end-to-end run
-> is in development (tracked in [#13](https://github.com/EBiM-Benchmark/benchmark/issues/13)). MuJoCo
-> engine in development (tracked in [#14](https://github.com/EBiM-Benchmark/benchmark/issues/14)).
-<!-- @leochien1110: is the coming-soon framing correct, or is there a partial runnable path worth documenting now? -->
+```bash
+# From the repository root, after starting the shared Isaac Sim 5.1 container:
+# Robotiq is the benchmark default; use `--gripper panda` for the current
+# Franka-hand compatibility robot. Browser control needs no special hardware.
+bash task3_isaacsim/scripts/run_isaacsim_teleop.sh \
+  --gripper robotiq
+```
+
+Task 3 is a runnable preview: Table Setup → Feed → Bean Recovery → Clean Up.
+Keyboard and browser control are available; GELLO/pedal hardware, force-limited
+grasping, and a complete four-stage teleoperated run still require verification
+([#13](https://github.com/EBiM-Benchmark/benchmark/issues/13)). Task 3 MuJoCo
+remains in development ([#14](https://github.com/EBiM-Benchmark/benchmark/issues/14)).
 
 ## Local scoring
 
-The evaluation code in this repository (the Task 2 scoring module and the vendored ManipulationNet
+The evaluation code in this repository (Task 2 scoring, Task 3 grading helpers, and the vendored ManipulationNet
 client) is a **development facilitator**; official scoring follows the official rules and scoring
 published on the **[competition page](https://ebim-benchmark.github.io/competition.html#tasks)**.
 <!-- Facilitator note condensed (near-verbatim) from STATUS.md:25 + README.md:13. -->

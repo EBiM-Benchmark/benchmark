@@ -1,7 +1,7 @@
 # Copyright (c) 2026 The EBiM Benchmark Contributors
 # SPDX-License-Identifier: Apache-2.0
 
-"""Simulator-independent command values for Task 3 teleoperation."""
+"""Simulator-independent command values for the Task 3 runtime."""
 
 import math
 from dataclasses import dataclass, field

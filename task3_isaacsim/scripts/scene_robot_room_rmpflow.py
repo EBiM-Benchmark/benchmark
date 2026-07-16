@@ -20,6 +20,7 @@ from pathlib import Path
 import numpy as np
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+TASK3_ROOT = Path(__file__).resolve().parents[1]
 SCENES_DIR = REPO_ROOT / "scripts" / "scenes"
 if str(SCENES_DIR) not in sys.path:
     sys.path.insert(0, str(SCENES_DIR))
@@ -27,9 +28,8 @@ if str(SCENES_DIR) not in sys.path:
 import scene_robot_room_keyboard as room_scene  # noqa: E402
 
 ROBOT_PRIM_PATH = "/World/Robot"
-CONFIG_DIR = REPO_ROOT / "scripts" / "config"
-LULA_CONFIG_DIR = CONFIG_DIR / "task3_teleop"
-RMPFLOW_CONFIG_DIR = CONFIG_DIR / "task3_rmpflow"
+LULA_CONFIG_DIR = TASK3_ROOT / "assets" / "lula" / "mobile_fr3_duo"
+RMPFLOW_CONFIG_DIR = LULA_CONFIG_DIR
 LULA_URDF_PATH = LULA_CONFIG_DIR / "mobile_fr3_duo_v0_2_franka_hand.urdf"
 RMPFLOW_MAX_SUBSTEP_SIZE = 0.0034
 FULL_GUI_EXPERIENCE = "/isaac-sim/apps/isaacsim.exp.full.kit"

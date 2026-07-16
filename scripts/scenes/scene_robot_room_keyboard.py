@@ -18,8 +18,15 @@ from pathlib import Path
 from typing import Any
 
 COMMON_DIR = Path(__file__).resolve().parents[1] / "common"
-if str(COMMON_DIR) not in sys.path:
-    sys.path.insert(0, str(COMMON_DIR))
+TASK3_COMMON_DIR = (
+    Path(__file__).resolve().parents[2]
+    / "task3_isaacsim"
+    / "scripts"
+    / "common"
+)
+for module_dir in (COMMON_DIR, TASK3_COMMON_DIR):
+    if str(module_dir) not in sys.path:
+        sys.path.insert(0, str(module_dir))
 
 from path_utils import asset_path, franka_urdf_path
 
@@ -1176,6 +1183,7 @@ def build_stage(
     robot_rotation: tuple[float, float, float, float],
     robot_yaw: float,
     head_placement: str,
+    dynamic_beans: bool = True,
 ) -> Any:
     import omni.usd
 
@@ -1198,6 +1206,7 @@ def build_stage(
         robot_position=robot_position,
         robot_rotation=robot_rotation,
         robot_yaw=robot_yaw,
+        dynamic_beans=dynamic_beans,
     )
 
 

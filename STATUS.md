@@ -1,6 +1,6 @@
 # Simulation Development Status
 
-Last updated: 2026-07-08 — updated with each release; every checkmark is verifiable in this repository's history.
+Last updated: 2026-07-16 — updated with each release; every checkmark is verifiable in this repository's history.
 
 ## Legend
 
@@ -22,7 +22,7 @@ Capabilities tracked per task/engine:
 
 ✅ = verified working in the current release. This matrix covers what is built and verified; the competition page lists all committed engines per task (e.g., Genesis for Task 2), which may not yet appear here.
 
-Note: evaluation code in this repository (e.g., the Task 2 scoring module and the vendored ManipulationNet client) is a development facilitator; official scoring follows the official rules and scoring published on the competition page (https://ebim-benchmark.github.io/competition.html#tasks).
+Note: evaluation code in this repository (including the Task 2 scorer, Task 3 grading helpers, and vendored ManipulationNet client) is a development facilitator; official scoring follows the official rules and scoring published on the competition page (https://ebim-benchmark.github.io/competition.html#tasks).
 
 ## Capability × track matrix
 
@@ -30,8 +30,8 @@ Note: evaluation code in this repository (e.g., the Task 2 scoring module and th
 |---|:---:|:---:|:---:|:---:|:---:|
 | 1. Scene assets complete | — | ✅ | ✅ | ✅ | — |
 | 2. Robot asset in scene | ✅ | ✅ | ✅ | ✅ | — |
-| 3.1 Teleop — keyboard: gripper | — | ✅ | ✅ | — | — |
-| 3.2 Teleop — keyboard: base | — | ✅ | ✅ | — | — |
+| 3.1 Teleop — keyboard: gripper | — | ✅ | ✅ | ✅ | — |
+| 3.2 Teleop — keyboard: base | — | ✅ | ✅ | ✅ | — |
 | 3.3 Teleop — GELLO: gripper | ✅ | — | ✅ | — | — |
 | 3.4 Teleop — VR: gripper | — | — | — | — | — |
 | 3.5 Teleop — foot pedal: base | ✅ | — | ✅ | — | — |
@@ -43,6 +43,8 @@ Note: evaluation code in this repository (e.g., the Task 2 scoring module and th
 
 \* Task 3 MuJoCo: Committed engine — environment bring-up in progress; release will be announced on Discord and in this file. Tracked in [#14](https://github.com/EBiM-Benchmark/benchmark/issues/14).
 
+Task 3's ROS/browser/GELLO plumbing supports selectable Robotiq and Panda gripper profiles through [`task3_isaacsim/`](task3_isaacsim/). GELLO and foot-pedal rows remain unverified until a device owner completes the hardware test.
+
 ## What can I develop against today?
 
-Task 1 (MuJoCo) and Task 2 (Isaac Sim) are fully usable end-to-end; Task 2 teleoperation (keyboard/browser and GELLO + foot pedal on the mobile FR3 Duo) runs in plain Isaac Sim 5.1.0 via [`task2_isaacsim/`](task2_isaacsim/). Task 1 (Isaac Sim) is partially operational (GELLO/pedal teleoperation and grasping verified; end-to-end run pending). Task 3 environments are under active development — the Isaac Sim scene and robot are in place; MuJoCo is a committed engine with environment bring-up in progress, and its release will be announced on Discord and in this file. Baselines and the real-world dataset (200 episodes) release incrementally.
+Task 1 (MuJoCo) and Task 2 (Isaac Sim) are fully usable end-to-end; Task 2 teleoperation (keyboard/browser and GELLO + foot pedal on the mobile FR3 Duo) runs in plain Isaac Sim 5.1.0 via [`task2_isaacsim/`](task2_isaacsim/). Task 1 (Isaac Sim) is partially operational (GELLO/pedal teleoperation and grasping verified; end-to-end run pending). Task 3 now has a runnable Isaac Sim preview with direct keyboard control, ROS/browser helpers, selectable Robotiq/Panda robots, and deterministic grading helpers via [`task3_isaacsim/`](task3_isaacsim/); force-limited grasping, GELLO/pedal hardware, and the full four-stage teleoperated run remain unverified. Task 3 MuJoCo, baselines, and the real-world dataset continue to release incrementally.

@@ -332,7 +332,7 @@ def create_dual_arm_lula(
         if project_root is not None
         else Path(__file__).resolve().parents[2]
     )
-    config_dir = root / "scripts" / "config" / "task3_teleop"
+    config_dir = root / "assets" / "lula" / "mobile_fr3_duo"
     left_description = config_dir / "left_arm_description.yaml"
     right_description = config_dir / "right_arm_description.yaml"
     urdf = config_dir / "mobile_fr3_duo_v0_2_franka_hand.urdf"
@@ -384,7 +384,7 @@ def create_raw_dual_arm_lula(
         if project_root is not None
         else Path(__file__).resolve().parents[2]
     )
-    config_dir = root / "scripts" / "config" / "task3_teleop"
+    config_dir = root / "assets" / "lula" / "mobile_fr3_duo"
     left_description = config_dir / "left_arm_description.yaml"
     right_description = config_dir / "right_arm_description.yaml"
     urdf = config_dir / "mobile_fr3_duo_v0_2_franka_hand.urdf"

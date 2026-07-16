@@ -11,7 +11,8 @@ import numpy as np
 import pytest
 import yaml
 
-COMMON_DIR = Path(__file__).resolve().parents[1] / "common"
+TASK3_ROOT = Path(__file__).resolve().parents[1]
+COMMON_DIR = TASK3_ROOT / "scripts" / "common"
 sys.path.insert(0, str(COMMON_DIR))
 
 
@@ -444,7 +445,7 @@ def test_factory_resolves_project_paths_and_builds_two_isaac_sim_solvers(
 ):
     from dual_arm_lula import create_dual_arm_lula
 
-    config_dir = tmp_path / "scripts" / "config" / "task3_teleop"
+    config_dir = tmp_path / "assets" / "lula" / "mobile_fr3_duo"
     config_dir.mkdir(parents=True)
     (config_dir / "left_arm_description.yaml").touch()
     (config_dir / "right_arm_description.yaml").touch()
@@ -608,8 +609,7 @@ def test_current_fk_synchronizes_spawn_pose_and_adds_tilted_spine_offset():
 
 
 def test_repository_lula_configs_match_current_franka_hand_urdf():
-    root = Path(__file__).resolve().parents[2]
-    config_dir = root / "scripts" / "config" / "task3_teleop"
+    config_dir = TASK3_ROOT / "assets" / "lula" / "mobile_fr3_duo"
 
     urdf_path = config_dir / "mobile_fr3_duo_v0_2_franka_hand.urdf"
     root_element = ET.parse(urdf_path).getroot()
@@ -640,8 +640,7 @@ def test_repository_lula_configs_match_current_franka_hand_urdf():
 
 
 def test_lula_configs_classify_every_movable_urdf_joint_once():
-    root = Path(__file__).resolve().parents[2]
-    config_dir = root / "scripts" / "config" / "task3_teleop"
+    config_dir = TASK3_ROOT / "assets" / "lula" / "mobile_fr3_duo"
     urdf_root = ET.parse(
         config_dir / "mobile_fr3_duo_v0_2_franka_hand.urdf"
     ).getroot()
@@ -684,12 +683,11 @@ def test_lula_configs_classify_every_movable_urdf_joint_once():
 
 
 def test_tracked_lula_urdf_contains_only_portable_kinematics():
-    root = Path(__file__).resolve().parents[2]
     urdf_path = (
-        root
-        / "scripts"
-        / "config"
-        / "task3_teleop"
+        TASK3_ROOT
+        / "assets"
+        / "lula"
+        / "mobile_fr3_duo"
         / "mobile_fr3_duo_v0_2_franka_hand.urdf"
     )
     text = urdf_path.read_text()
