@@ -257,15 +257,16 @@ Then run the teleoperation repository's `keyboard_state_publisher` on the host.
 It publishes `w/a/s/d/q/e` state; Task 3 converts that input to the shared
 `/pedal/state` base contract.
 
-## Panda direct-keyboard RMPflow demo
+## Panda direct-keyboard RMPflow demo (deprecated)
 
-The pre-existing no-ROS Panda/Franka-hand demo remains available. With the
-Isaac Sim container running:
+**Deprecated:** the ROS teleop above is the supported path. This pre-existing
+no-ROS Panda/Franka-hand demo now lives under `deprecated/` and is kept for
+reference only. With the Isaac Sim container running:
 
 ```bash
 docker exec -it isaac-sim-5-1-0-workshop bash -lc \
   'cd /workspace/EBiM_Challenge && \
-   /isaac-sim/python.sh task3_isaacsim/scripts/scene_robot_room_rmpflow.py'
+   /isaac-sim/python.sh task3_isaacsim/deprecated/scene_robot_room_rmpflow.py'
 ```
 
 This path uses in-window dual-arm, gripper, and base keys. It does not start the
@@ -294,12 +295,11 @@ launcher once after confirming that the container and GPU remain available.
 task3_isaacsim/
 ├── assets/lula/mobile_fr3_duo/   # Panda direct-keyboard motion configs
 ├── scripts/
-│   ├── common/                   # Task 3 direct-keyboard command/IK helpers
 │   ├── gripper_profiles.py       # Atomic robot/gripper profile definitions
 │   ├── scene_room.py             # ROS-capable Task 3 room
-│   ├── scene_robot_room_rmpflow.py
 │   ├── run_helper_containers.sh
 │   └── run_isaacsim_teleop.sh
+├── deprecated/                   # Pre-ROS direct-keyboard RMPflow stack + tests
 ├── tests/
 ├── docker-compose.yml            # ROS/browser/GELLO helper services
 └── .env.example                  # Helper defaults
