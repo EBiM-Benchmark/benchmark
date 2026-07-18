@@ -29,6 +29,20 @@
       </section>
 
     </div>
+    <section class="overview-panel base-panel">
+      <h2>Mobile base</h2>
+      <div class="base-panel-body">
+        <div class="base-dpad">
+          <button type="button" class="base-btn base-rotccw" data-token="A+C" title="Rotate CCW">&#8634;</button>
+          <button type="button" class="base-btn base-fwd" data-token="FWD" title="Forward">&#8593;</button>
+          <button type="button" class="base-btn base-rotcw" data-token="B+C" title="Rotate CW">&#8635;</button>
+          <button type="button" class="base-btn base-left" data-token="A" title="Strafe left">&#8592;</button>
+          <button type="button" class="base-btn base-back" data-token="BACK" title="Backward">&#8595;</button>
+          <button type="button" class="base-btn base-right" data-token="B" title="Strafe right">&#8594;</button>
+        </div>
+        <div class="hint base-caption">Hold to drive at a fixed speed. Release (or leave the window) to stop automatically.</div>
+      </div>
+    </section>
     <div id="groups"></div>
     <div class="topic-overview">
       <section class="topic-panel">
@@ -500,6 +514,67 @@
         setStatus("Connection error: " + String(err));
       }
     }
+
+    // ── Mobile-base hold-to-drive ─────────────────────────────────────
+    const baseDrive = { timer: null, button: null };
+
+    async function postBaseDrive(token) {
+      try {
+        await fetch("/api/base_drive", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token })
+        });
+      } catch (err) {
+        setStatus("Base drive command failed: " + String(err));
+      }
+    }
+
+    function stopBaseDriveFor(button) {
+      // Releasing a button that already lost the drive (another button took
+      // over) must not stop the currently active one.
+      if (baseDrive.button && button !== baseDrive.button) return;
+      stopBaseDrive();
+    }
+
+    function stopBaseDrive() {
+      if (baseDrive.timer === null && !baseDrive.button) return;
+      if (baseDrive.timer !== null) {
+        clearInterval(baseDrive.timer);
+        baseDrive.timer = null;
+      }
+      if (baseDrive.button) {
+        baseDrive.button.classList.remove("active");
+        baseDrive.button = null;
+      }
+      postBaseDrive("STOP");
+    }
+
+    function startBaseDrive(button) {
+      const token = button.dataset.token;
+      if (!token) return;
+      if (baseDrive.button && baseDrive.button !== button) stopBaseDrive();
+      if (baseDrive.timer !== null) clearInterval(baseDrive.timer);
+      baseDrive.button = button;
+      button.classList.add("active");
+      postBaseDrive(token);
+      baseDrive.timer = setInterval(() => postBaseDrive(token), 150);
+    }
+
+    for (const button of document.querySelectorAll(".base-btn")) {
+      button.addEventListener("pointerdown", (event) => {
+        event.preventDefault();
+        startBaseDrive(button);
+      });
+      button.addEventListener("pointerup", () => stopBaseDriveFor(button));
+      button.addEventListener("pointercancel", () => stopBaseDriveFor(button));
+      button.addEventListener("pointerleave", () => stopBaseDriveFor(button));
+      button.addEventListener("contextmenu", (event) => event.preventDefault());
+    }
+    window.addEventListener("blur", stopBaseDrive);
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) stopBaseDrive();
+    });
 
     refresh();
     setInterval(refresh, 250);
