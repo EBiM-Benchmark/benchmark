@@ -1,3 +1,6 @@
+# Copyright (c) 2026 The EBiM Benchmark Contributors
+# SPDX-License-Identifier: Apache-2.0
+
 # Robot camera sensors for the Task 2 fr3duo mobile embodiment.
 #
 # Consumed by scripts/recording/camera_publishers.py, which reads
