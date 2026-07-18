@@ -4,10 +4,13 @@
 
 ```bash
 # every run — sim + remote 3D view
-PUBLIC_IP=<ec2-public-ip> CONTAINER_REPO=/workspace/EBiM_Challenge EMBODIMENT=fr3duo_mobile bash task1_isaacsim/scripts/run_isaaclab_newton_teleop.sh \
+PUBLIC_IP=54.237.209.65 CONTAINER_REPO=/workspace/EBiM_Challenge EMBODIMENT=fr3duo_mobile \
+bash task1_isaacsim/scripts/run_isaaclab_newton_teleop.sh \
   --usd-path assets/Robotiq_2f_85_with_d405_mobile_fr3_duo_v0_2.usd \
-  --controller-mode position \
-  -- --livestream 1 --no-spine-keyboard-control
+  --controller-mode position --with-keyboard-teleop --with-cable \
+  -- --spine-keyboard-control --spine-keyboard-step 0.02 \
+     --spine-keyboard-min 0.0 --spine-keyboard-max 0.5 --livestream 1 \
+     --cable-config-path cable_world/configs/table_board_fixture_cable.yaml
 ```
 
 EC2 security group (AWS console): inbound TCP `49100` + UDP `47998` from your IP.
