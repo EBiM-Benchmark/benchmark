@@ -534,7 +534,16 @@ def _compute_drive_targets(
         use_flipped = abs(flipped_delta) < abs(direct_delta)
         steering_delta = flipped_delta if use_flipped else direct_delta
 
-        steering_targets[module_index] = current_angle + steering_delta
+        # PhysX reduced-coordinate revolute drives reject targets outside
+        # [-2*pi, 2*pi]. These steering joints are continuous, so commanding
+        # current_angle + delta lets the target (and joint) wind past 2*pi
+        # after enough turning; PhysX then drops the target every step and the
+        # module goes uncontrolled (violent shake, persisting at idle because
+        # the joint stays wound). Command the equivalent wrapped angle instead
+        # of letting turns accumulate. Mirrors scripts/common/tmr_base_control.
+        steering_targets[module_index] = _wrap_to_pi(
+            current_angle + steering_delta
+        )
         wheel_speed = (speed_mps / WHEEL_RADIUS_M) * _steering_alignment_scale(
             abs(steering_delta)
         )
