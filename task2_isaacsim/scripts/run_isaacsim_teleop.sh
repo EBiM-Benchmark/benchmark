@@ -28,7 +28,7 @@ CONTAINER_REPO="${CONTAINER_REPO:-/workspace/EBiM_Challenge}"
 CONTAINER_TASK2="${CONTAINER_REPO}/${TASK2_DIRNAME}"
 
 USD_PATH="${USD_PATH:-../task1_isaacsim/assets/Robotiq_2f_85_with_d405_mobile_fr3_duo_v0_2.usd}"
-OBJECTS_USD_PATH="${OBJECTS_USD_PATH:-../assets/task2_objects/task2_objects.usda}"
+OBJECTS_USD_PATH="${OBJECTS_USD_PATH:-../assets/task2_objects/task2_objects_base.usda}"
 ROOM_USD_PATH="${ROOM_USD_PATH:-../assets/robot_room.usd}"
 SCENE="${SCENE:-room}"
 EMBODIMENT="fr3duo_mobile"

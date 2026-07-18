@@ -1,0 +1,46 @@
+# Copyright (c) 2026 The EBiM Benchmark Contributors
+# SPDX-License-Identifier: Apache-2.0
+#
+# Default settings for the Task 2 LeRobot demonstration recorder
+# (services/recording/record_task2.py). Keys mirror the recorder's CLI
+# flags; precedence is: argparse defaults < this file < explicit CLI flags
+# (so RECORDER_ARGS / `run_recorder.sh record -- ...` always win).
+#
+# Point the recorder at a different file with --config (or RECORDER_CONFIG
+# when launching through docker compose / scripts/run_recorder.sh).
+# resume/resume_version are per-invocation and must stay on the CLI.
+
+# Dataset identity: repo_id becomes <hub_namespace>/<repo_name>_vN, written
+# to <output_dir>/<repo_name>_vN/ (output_dir is relative to
+# task2_isaacsim/).
+repo_name: task2_thermalpad
+hub_namespace: ebim
+single_task: Pick up the thermal pad and place it on the target RAM board.
+output_dir: dataset/
+robot_id: fr3duo_mobile_task2
+
+# Sampling (paced on /clock simulation time).
+fps: 30
+cameras: head,wrist_left,wrist_right,eval_camera
+record_depth: false
+depth_every: 6          # store depth every N frames (6 = 5 Hz at 30 fps)
+
+# ROS interface.
+qos_depth: 10           # queue depth for non-image subscriptions
+stream_timeout_s: 15.0  # wait this long (s) for topics before warning
+
+# LeRobot image writer (0 processes -> threads inside the recorder).
+image_writer_processes: 0
+image_writer_threads: 8
+
+# Success labelling at episode save.
+suggest_success: true
+prompt_success: true
+eval_module_dir: null   # null -> <repo>/scripts/evaluation/task2
+thermalpad_label: thermalpad
+liner_label: liner
+target_label: target
+
+# Episode limits.
+max_episode_time_s: 300.0
+max_episodes: 200

@@ -172,72 +172,75 @@ ros2 run pedal_state_publisher pedal_state_publisher
 
 The spine keyboard control is `Up/Down`, with Isaac Sim GUI focused.
 
+## Demonstration recording (LeRobot dataset)
+
+Record teleoperation demonstrations as a **LeRobot dataset** (20-dim
+action, 37-dim state, four RGB video streams) plus a `task2_extras/`
+ground-truth sidecar. The recorder runs as its own docker compose service
+in [services/recording/](services/recording/); the dataset schema and
+stream details are documented in the
+[Pipeline Reference](PIPELINE_REF.md#dataset-schema).
+
+1. **Simulator** (Isaac Sim container) — room scene with all recording
+   publishers (`--record` enables the robot cameras + `/clock`, the
+   recording streams, the ground-truth publishers, and the scene-reset
+   hotkey):
+
+   ```bash
+   task2_isaacsim/scripts/run_isaacsim_teleop.sh --scene room -- --record --arm-keyboard-teleop
+   ```
+
+   (add `--randomize-objects` to jitter the object spawns on every reset,
+   and `--robot-camera-depth` if you want depth topics.)
+
+2. **Teleop helper stack** as needed (keyboard/GELLO/browser — see
+   Quickstart).
+
+3. **Recorder**:
+
+   ```bash
+   # first run builds its container image
+   task2_isaacsim/scripts/run_recorder.sh
+   ```
+
+   Terminal controls: `2` start episode · `5` reset/randomize the scene,
+   then start recording · `3` stop + save (confirms the success label,
+   showing the IoU suggestion) · `0` stop + discard · `1` clear buffer ·
+   `4` visualize · `q` quit. Pressing `5` **in the Isaac Sim window**
+   also resets the scene — only reset between episodes, never while
+   recording (the recorder detects the clock jump and discards).
+
+   Default dataset save path is `task2_isaacsim/dataset/task2_thermalpad_vN/`;
+   each launch starts a new version. Append to an existing version with
+   `run_recorder.sh record --resume` (or `--resume-version N`).
+
+   Recording defaults (repo name, fps, cameras, episode limits, …) live in
+   [services/recording/recording.yaml](services/recording/recording.yaml).
+   To override, put parameters after `--` when using helper script:
+
+   ```bash
+   task2_isaacsim/scripts/run_recorder.sh record -- --fps 20 --record-depth
+
+   # or when using docker compose
+   RECORDER_ARGS="--fps 20 --record-depth" \
+   cd task2_isaacsim && docker compose --profile record run --rm lerobot_recorder
+   ```
+
 ## Architecture
 
-Same pipeline as Task 1, only the last stage (the simulator process) differs.
-See [task1_isaacsim/README.md](../task1_isaacsim/README.md#architecture) for
-the documentation. The stages are:
+Same five-stage pipeline as Task 1, only the last stage (the simulator
+process) differs: host device publishers → teleop adapters (or the browser
+UI) → republisher / position controller → the scene script inside the Isaac
+Sim container. The scene scripts (`scene_room.py` / `scene_barebone.py`) are
+thin stage builders on top of the shared teleop runtime in
+`scripts/isaacsim_fr3duo_teleop_bridge_core.py`. All Task 2 ROS topic names
+come from a single contract file,
+[`config/topics.yaml`](config/topics.yaml).
 
-- **Host device publishers** (EBiM `teleoperation` repo, on the host) publish:
-  - `/keyboard/state` (`std_msgs/String`, keys `w/s/a/d/q/e`)
-  - `/{left,right}/gello/joint_states` (`sensor_msgs/JointState`)
-  - `/{left,right}/gripper/gripper_client/target_gripper_width_percent`
-  (`std_msgs/Float32`).
-- **Teleop adapters** (`task2_teleop_adapters`, `ros:jazzy-ros-base`) remap
-  device topics:
-  - `keyboard_to_base.py` turns `/keyboard/state` into
-  `/pedal/state` base-driving tokens
-  - `gello_to_bridge.py` turns the GELLO
-  topics into `/bridge/{left,right}_joint_commands` and
-  `/bridge/{left,right}_robotiq_joint_commands`.
-- **Browser controller** (`task2_browser_controller`, web UI on port 8090) is
-  the no-hardware alternative: it publishes the same `/bridge/*` command
-  topics from browser sliders.
-- **Republisher and position controller** move commands from `/bridge/*` to
-  `/isaac/*`:
-  - `ros_joint_republisher` (`task2_ros_republisher`) handles the
-  grippers with open/close calibration
-  - `joint_position_controller`
-  (`task2_position_controller`, compose profile `position`) forwards the arm
-  joint commands.
-- **Scene script** (`scene_room.py` or `scene_barebone.py`, run with
-  `/isaac-sim/python.sh` inside `isaac-sim-5-1-0-workshop` container).
-
-  It subscribes to:
-  - `/isaac/{left,right}_joint_commands`
-  - `/isaac/{left,right}_robotiq_joint_commands`
-  - `/isaac/browser/*` variants
-  - `/pedal/state` (swerve base)
-
-  It publishes:
-  - `/isaac/{left,right}_joint_states`
-  - `/isaac/{left,right}_robotiq_joint_states` at 60 Hz, plus — room scene only —
-  - `/isaac/eval_camera/{image_raw,depth,camera_info,semantic_segmentation,bbox_2d_tight}` for the Task 2 evaluation stack.
-
-The scene scripts are thin stage builders; the shared teleop runtime
-(`/isaac/*` ROS node, name-based joint resolution, Robotiq driver + PhysX
-mimic handling, swerve-base pedal driving, spine keyboard control, main loop)
-lives in `scripts/isaacsim_fr3duo_teleop_bridge_core.py`, with the shared CLI
-flags in `scripts/isaacsim_fr3duo_teleop_bridge_args.py`.
-
-### Mapping to Task 1 counterparts
-
-| Task 2 | Task 1 counterpart | Relationship |
-|---|---|---|
-| `scripts/scene_barebone.py`, `scripts/scene_room.py`, `scripts/isaacsim_fr3duo_teleop_bridge_core.py` | `scripts/isaaclab_fr3duo_newton_bridge.py` | Reimplementation for plain Isaac Sim 5.1.0 / PhysX (Isaac Lab + Newton cannot run the deformable pad). Same topics, joint names, defaults; ports task1's swerve-base math, spine keyboard control, and articulation-root fix. Imports task1's `isaac_bridge_constants.py` directly. |
-| `scripts/run_isaacsim_teleop.sh` | `scripts/run_isaaclab_newton_teleop.sh` | Same flag conventions; simpler (expects the Isaac Sim container to be already running; adds `--scene room\|barebone`). |
-| `docker-compose.yml` (containers `task2_*`) | Same-named services in `task1_isaacsim/docker-compose.yml` (containers `task1_*`) | Same images, commands, env, profiles — only the volume differs: task2 mounts `../task1_isaacsim` at `/workspace`, so the containers execute the Task 1 scripts unmodified. |
-| *(no copy — reused via mount)* | `scripts/adapters/keyboard_to_base.py`, `scripts/adapters/gello_to_bridge.py` | Pure topic remappers, task-agnostic. |
-| *(no copy — reused via mount)* | `scripts/controllers/ros_joint_republisher.py`, `scripts/controllers/joint_position_controller.py` | Isaac-agnostic rclpy nodes. |
-| *(no copy — reused via mount)* | `services/teleop_adapters/`, `services/browser_controller/` | Adapter launcher + web UI (port 8090). |
-| *(imported directly)* | `scripts/isaac_bridge_constants.py` | Joint name lists, Robotiq driver/coupled-joint constants, topic layout. |
-| `.env.example` | `task1_isaacsim/.env.example` | Same variables and defaults. |
-| Robot USD `task1_isaacsim/assets/Robotiq_2f_85_with_d405_mobile_fr3_duo_v0_2.usd` | (same file) | Shared asset. Under PhysX the bridge additionally deactivates the OmniGraph graphs embedded in this USD (they crash plain Isaac Sim) and relies on the USD-authored `PhysxMimicJointAPI` for the gripper linkage. |
-
-Task-2-only pieces with no Task 1 counterpart: the scene composition
-(`assets/task2_objects/` deformable thermal pad + RAM boards; the robot room
-via `scripts/scenes/scene_robot_room_keyboard.py`), PhysX GPU-dynamics setup,
-and the `/isaac/eval_camera/*` publishers for the Task 2 evaluation stack.
+The full technical reference — container topology, per-topic contract
+tables, configuration precedence, dataset schema, and the mapping to the
+reused Task 1 scripts — lives in the
+**[Pipeline Reference](PIPELINE_REF.md)**.
 
 ## Notes
 

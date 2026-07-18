@@ -27,7 +27,10 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from isaacsim_fr3duo_teleop_bridge_args import add_common_bridge_args
+from isaacsim_fr3duo_teleop_bridge_args import (
+    add_common_bridge_args,
+    resolve_recording_flags,
+)
 
 
 def _build_arg_parser() -> argparse.ArgumentParser:
@@ -40,9 +43,9 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--objects-usd-path",
         default="/workspace/EBiM_Challenge/assets/task2_objects/"
-        "task2_objects.usda",
+        "task2_objects_base.usda",
         help="Task 2 objects USD (RAM boards, target, deformable "
-        "thermal pad).",
+        "thermal pad, and thermal pad base).",
     )
     parser.add_argument(
         "--objects-position",
@@ -80,6 +83,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
 
 
 args_cli = _build_arg_parser().parse_args()
+resolve_recording_flags(args_cli)
 
 from isaacsim import SimulationApp  # noqa: E402
 
@@ -140,6 +144,21 @@ def main():
         args_cli.objects_yaw_deg,
     )
 
+    if args_cli.enable_robot_cameras:
+        from recording import camera_publishers  # noqa: PLC0415
+
+        try:
+            camera_publishers.setup_robot_camera_graphs(
+                stage,
+                args_cli.robot_prim_path,
+                franka_root,
+                args_cli.embodiment,
+                publish_depth=args_cli.robot_camera_depth,
+                frame_skip=args_cli.robot_camera_frame_skip,
+            )
+        except Exception as exc:  # noqa: BLE001 - recording is optional
+            camera_publishers.print_setup_failure(exc)
+
     world.scene.add_default_ground_plane()
     core._add_dome_light(stage)
     if not args_cli.headless:
@@ -166,6 +185,44 @@ def main():
         arm_keyboard_teleop,
     ) = core.setup_robot_control(robot, groups, args_cli)
 
+    tick_callbacks = []
+    if args_cli.publish_ground_truth:
+        from recording.scene_capture import (
+            GroundTruthPublisher,  # noqa: PLC0415
+        )
+
+        try:
+            tick_callbacks.append(
+                GroundTruthPublisher(
+                    stage,
+                    args_cli.objects_prim_path,
+                    pad_points_every=args_cli.ground_truth_pad_every,
+                )
+            )
+        except Exception as exc:  # noqa: BLE001 - recording is optional
+            print(f"Warning: ground-truth publisher unavailable: {exc}")
+    if args_cli.scene_reset_hotkey:
+        from recording.scene_capture import (
+            SceneResetController,  # noqa: PLC0415
+        )
+
+        try:
+            tick_callbacks.append(
+                SceneResetController(
+                    world,
+                    robot,
+                    stage,
+                    args_cli.objects_prim_path,
+                    spine_controller=spine_keyboard_controller,
+                    arm_teleop=arm_keyboard_teleop,
+                    randomize=args_cli.randomize_objects,
+                    xy_jitter_m=args_cli.randomize_xy_cm / 100.0,
+                    yaw_jitter_deg=args_cli.randomize_yaw_deg,
+                )
+            )
+        except Exception as exc:  # noqa: BLE001 - recording is optional
+            print(f"Warning: scene reset hotkey unavailable: {exc}")
+
     core.run_teleop_loop(
         simulation_app,
         world,
@@ -178,6 +235,7 @@ def main():
         spine_keyboard_controller,
         arm_keyboard_teleop,
         args_cli,
+        tick_callbacks=tick_callbacks,
     )
 
 

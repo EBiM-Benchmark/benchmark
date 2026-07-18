@@ -106,3 +106,46 @@ services:
     restart: unless-stopped
     tty: true
     stdin_open: true
+
+  # Interactive LeRobot demonstration recorder
+  # (services/recording/record_task2.py). Preferred entry point:
+  #   scripts/run_recorder.sh
+  # or start directly with an interactive terminal (stdin drives episode
+  # start/stop):
+  #   docker compose --profile record run --rm lerobot_recorder
+  # Datasets land in <repo>/task2_isaacsim/dataset/ on the host. Defaults
+  # come from services/recording/recording.yaml (override the file with
+  # RECORDER_CONFIG); individual CLI flags go through RECORDER_ARGS and win
+  # over the config file (e.g. RECORDER_ARGS="--fps 20 --record-depth").
+  lerobot_recorder:
+    build:
+      context: services/recording
+      dockerfile: Dockerfile
+    image: task2-lerobot-recorder
+    container_name: task2_lerobot_recorder
+    # Run as the host user so datasets land on the bind mount with the
+    # caller's ownership instead of root. scripts/run_recorder.sh exports
+    # HOST_UID/HOST_GID automatically; export them yourself first if
+    # invoking `docker compose --profile record` directly.
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    network_mode: host
+    ipc: host
+    working_dir: /repo/task2_isaacsim
+    command: >
+      bash -lc "source /opt/ros/jazzy/setup.bash &&
+      python3 services/recording/record_task2.py
+      --config ${RECORDER_CONFIG:-services/recording/recording.yaml}
+      ${RECORDER_ARGS:-}"
+    environment:
+      - ROS_DISTRO=jazzy
+      - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+      - FASTDDS_BUILTIN_TRANSPORTS=UDPv4
+      # The host uid has no passwd entry in the container; give HF/rerun
+      # caches a writable HOME.
+      - HOME=/tmp
+    volumes:
+      - ..:/repo
+    stdin_open: true
+    tty: true
+    profiles:
+      - record

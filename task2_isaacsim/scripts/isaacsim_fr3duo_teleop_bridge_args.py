@@ -140,3 +140,95 @@ def add_common_bridge_args(parser: argparse.ArgumentParser) -> None:
         "and their script node crashes plain Isaac Sim.",
     )
     parser.add_argument("--headless", action="store_true")
+    _add_recording_args(parser)
+
+
+def _add_recording_args(parser: argparse.ArgumentParser) -> None:
+    """Demonstration-recording options (see task2_isaacsim/README.md and
+    services/recording/record_task2.py)."""
+    parser.add_argument(
+        "--record",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Convenience switch: enables --publish-recording-topics, "
+        "--enable-robot-cameras, --publish-ground-truth, and "
+        "--scene-reset-hotkey for a demonstration-recording session.",
+    )
+    parser.add_argument(
+        "--publish-recording-topics",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Publish the recording streams (applied joint commands, "
+        "odometry, applied base twist, EE poses — names from "
+        "config/topics.yaml), all stamped with simulation time.",
+    )
+    parser.add_argument(
+        "--enable-robot-cameras",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Publish the head + wrist robot cameras and /clock over ROS 2 "
+        "(OmniGraph render products on the Camera prims authored in the "
+        "robot USD).",
+    )
+    parser.add_argument(
+        "--robot-camera-depth",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Also publish a depth topic per robot camera.",
+    )
+    parser.add_argument(
+        "--robot-camera-frame-skip",
+        type=int,
+        default=0,
+        help="Render frames skipped between camera messages (0 publishes "
+        "every render frame; 1 halves the publish rate).",
+    )
+    parser.add_argument(
+        "--publish-ground-truth",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Publish task-object world poses (/isaac/task2/object_poses) "
+        "and deformed thermal-pad vertices (/isaac/task2/pad_points).",
+    )
+    parser.add_argument(
+        "--ground-truth-pad-every",
+        type=int,
+        default=6,
+        help="Publish the thermal-pad vertices every N loop iterations "
+        "(6 = 10 Hz at the default 60 Hz render rate; 0 disables).",
+    )
+    parser.add_argument(
+        "--scene-reset-hotkey",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Enable the '5' key in the Isaac Sim window to reset (and "
+        "optionally randomize) the task objects between episodes.",
+    )
+    parser.add_argument(
+        "--randomize-objects",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Randomize the task-object spawn poses on each scene reset "
+        "(the thermal pad and its sticker base move as one group).",
+    )
+    parser.add_argument(
+        "--randomize-xy-cm",
+        type=float,
+        default=2.0,
+        help="Max +/- XY spawn jitter in centimeters for --randomize-objects.",
+    )
+    parser.add_argument(
+        "--randomize-yaw-deg",
+        type=float,
+        default=10.0,
+        help="Max +/- yaw spawn jitter in degrees for --randomize-objects.",
+    )
+
+
+def resolve_recording_flags(args) -> None:
+    """Fold the --record convenience switch into the individual flags."""
+    if getattr(args, "record", False):
+        args.publish_recording_topics = True
+        args.enable_robot_cameras = True
+        args.publish_ground_truth = True
+        args.scene_reset_hotkey = True
