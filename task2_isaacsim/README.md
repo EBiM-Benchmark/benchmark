@@ -224,7 +224,7 @@ stream details are documented in the
 
    Default dataset save path is `task2_isaacsim/dataset/task2_thermalpad_vN/`;
    each launch starts a new version. Append to an existing version with
-   `run_recorder.sh record --resume` (or `--resume-version N`).
+   `run_recorder.sh record -- --resume` (or `-- --resume_version N`).
 
    Recording defaults (repo name, fps, cameras, episode limits, …) live in
    [services/recording/recording.yaml](services/recording/recording.yaml).

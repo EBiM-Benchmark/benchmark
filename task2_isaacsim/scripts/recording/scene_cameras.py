@@ -16,16 +16,16 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from pxr import Gf, UsdGeom
-
-try:
-    import yaml
-except Exception:  # pragma: no cover - PyYAML ships with Isaac Sim
-    yaml = None
-
 from topics import load_topics
 
-from .camera_publishers import CAMERA_GRAPH_ROOT, _setup_single_camera_graph
+from pxr import Gf, UsdGeom
+
+from .camera_publishers import (
+    CAMERA_GRAPH_ROOT,
+    _setup_single_camera_graph,
+    contract_mismatches,
+    load_camera_configs,
+)
 
 _REQUIRED_FIELDS = (
     "prim_path",
@@ -35,39 +35,6 @@ _REQUIRED_FIELDS = (
     "rotation_xyz_deg",
     "render_resolution",
 )
-
-
-def load_scene_camera_configs(config_path: Path) -> dict:
-    """Camera entries from a scene camera yaml."""
-    if yaml is None:
-        raise RuntimeError("PyYAML is required to read scene camera configs")
-    config_path = Path(config_path)
-    if not config_path.is_file():
-        raise FileNotFoundError(
-            f"Scene camera config not found: {config_path}"
-        )
-    with config_path.open("r", encoding="utf-8") as f:
-        data = yaml.safe_load(f) or {}
-    cameras = data.get("cameras") or {}
-    if not cameras:
-        raise RuntimeError(f"{config_path} defines no cameras")
-    problems = []
-    for camera_key, config in cameras.items():
-        for field in _REQUIRED_FIELDS:
-            if not config.get(field):
-                problems.append(f"{camera_key}: missing '{field}'")
-        resolution = config.get("render_resolution") or {}
-        if isinstance(resolution, dict) and not (
-            resolution.get("width") and resolution.get("height")
-        ):
-            problems.append(
-                f"{camera_key}: render_resolution needs width and height"
-            )
-    if problems:
-        raise RuntimeError(
-            f"Invalid camera entries in {config_path}: " + "; ".join(problems)
-        )
-    return cameras
 
 
 def _check_contract(camera_key: str, config: dict) -> None:
@@ -88,24 +55,7 @@ def _check_contract(camera_key: str, config: dict) -> None:
             f"{camera_key}: unknown contract '{contract_key}' "
             "(no such cameras entry in config/topics.yaml)"
         )
-    mismatches = []
-    namespace = str(config["namespace"])
-    if namespace != contract["namespace"]:
-        mismatches.append(
-            f"{camera_key}: namespace {namespace!r} != contract "
-            f"{contract['namespace']!r}"
-        )
-    resolution = config["render_resolution"]
-    height, width = int(contract["shape"][0]), int(contract["shape"][1])
-    if (int(resolution["height"]), int(resolution["width"])) != (
-        height,
-        width,
-    ):
-        mismatches.append(
-            f"{camera_key}: render_resolution "
-            f"{resolution['width']}x{resolution['height']} != contract "
-            f"shape {width}x{height}"
-        )
+    mismatches = contract_mismatches(camera_key, config, contract)
     if mismatches:
         raise RuntimeError(
             "Scene camera config disagrees with config/topics.yaml: "
@@ -140,7 +90,9 @@ def _ensure_camera_prim(stage, camera_key: str, config: dict) -> None:
             str(config.get("projection", "perspective"))
         )
     xform_api = UsdGeom.XformCommonAPI(camera)
-    xform_api.SetTranslate(Gf.Vec3d(*(float(v) for v in config["translation"])))
+    xform_api.SetTranslate(
+        Gf.Vec3d(*(float(v) for v in config["translation"]))
+    )
     xform_api.SetRotate(
         Gf.Vec3f(*(float(v) for v in config["rotation_xyz_deg"])),
         UsdGeom.XformCommonAPI.RotationOrderXYZ,
@@ -153,7 +105,11 @@ def setup_scene_camera_graphs(stage, config_path: Path) -> dict[str, str]:
     Returns {camera_key: camera_prim_path} for the graphs this call built
     (cameras whose graph the scene already built are excluded).
     """
-    configs = load_scene_camera_configs(config_path)
+    configs = load_camera_configs(
+        config_path,
+        required_fields=_REQUIRED_FIELDS,
+        what="scene camera config",
+    )
     built: dict[str, str] = {}
     for camera_key, config in configs.items():
         _check_contract(camera_key, config)
@@ -176,10 +132,3 @@ def setup_scene_camera_graphs(stage, config_path: Path) -> dict[str, str]:
         )
         built[camera_key] = str(config["prim_path"])
     return built
-
-
-def print_setup_failure(exc: Exception) -> None:
-    print(
-        f"Warning: scene camera publishers unavailable: {exc}",
-        file=sys.stderr,
-    )

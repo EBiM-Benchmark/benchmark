@@ -41,23 +41,26 @@ _REQUIRED_SENSOR_FIELDS = (
 )
 
 
-def load_camera_configs(sensors_path: Path) -> dict:
-    """Camera entries from an embodiment camera_sensors.yaml."""
+def load_camera_configs(
+    path: Path,
+    *,
+    required_fields=_REQUIRED_SENSOR_FIELDS,
+    what: str = "camera_sensors.yaml",
+) -> dict:
+    """Validated camera entries from a camera yaml (robot or scene)."""
     if yaml is None:
-        raise RuntimeError("PyYAML is required to read camera_sensors.yaml")
-    sensors_path = Path(sensors_path)
-    if not sensors_path.is_file():
-        raise FileNotFoundError(
-            f"camera_sensors.yaml not found: {sensors_path}"
-        )
-    with sensors_path.open("r", encoding="utf-8") as f:
+        raise RuntimeError(f"PyYAML is required to read {what}")
+    path = Path(path)
+    if not path.is_file():
+        raise FileNotFoundError(f"{what} not found: {path}")
+    with path.open("r", encoding="utf-8") as f:
         data = yaml.safe_load(f) or {}
     cameras = data.get("cameras") or {}
     if not cameras:
-        raise RuntimeError(f"{sensors_path} defines no cameras")
+        raise RuntimeError(f"{path} defines no cameras")
     problems = []
     for camera_key, config in cameras.items():
-        for field in _REQUIRED_SENSOR_FIELDS:
+        for field in required_fields:
             if not config.get(field):
                 problems.append(f"{camera_key}: missing '{field}'")
         resolution = config.get("render_resolution") or {}
@@ -69,9 +72,35 @@ def load_camera_configs(sensors_path: Path) -> dict:
             )
     if problems:
         raise RuntimeError(
-            f"Invalid camera entries in {sensors_path}: " + "; ".join(problems)
+            f"Invalid camera entries in {path}: " + "; ".join(problems)
         )
     return cameras
+
+
+def contract_mismatches(
+    camera_key: str, config: dict, contract: dict
+) -> list[str]:
+    """Namespace/resolution mismatches between a camera entry and its
+    config/topics.yaml contract."""
+    mismatches = []
+    namespace = str(config["namespace"])
+    if namespace != contract["namespace"]:
+        mismatches.append(
+            f"{camera_key}: namespace {namespace!r} != contract "
+            f"{contract['namespace']!r}"
+        )
+    resolution = config["render_resolution"]
+    height, width = int(contract["shape"][0]), int(contract["shape"][1])
+    if (int(resolution["height"]), int(resolution["width"])) != (
+        height,
+        width,
+    ):
+        mismatches.append(
+            f"{camera_key}: render_resolution "
+            f"{resolution['width']}x{resolution['height']} != contract "
+            f"shape {width}x{height}"
+        )
+    return mismatches
 
 
 def _check_topic_contract(configs: dict) -> None:
@@ -91,23 +120,7 @@ def _check_topic_contract(configs: dict) -> None:
                 f"'{entry['sensors_key']}'"
             )
             continue
-        namespace = str(config["namespace"])
-        if namespace != entry["namespace"]:
-            mismatches.append(
-                f"{recorder_key}: namespace {namespace!r} != contract "
-                f"{entry['namespace']!r}"
-            )
-        resolution = config["render_resolution"]
-        height, width = int(entry["shape"][0]), int(entry["shape"][1])
-        if (int(resolution["height"]), int(resolution["width"])) != (
-            height,
-            width,
-        ):
-            mismatches.append(
-                f"{recorder_key}: render_resolution "
-                f"{resolution['width']}x{resolution['height']} != contract "
-                f"shape {width}x{height}"
-            )
+        mismatches.extend(contract_mismatches(recorder_key, config, entry))
     if mismatches:
         raise RuntimeError(
             "camera_sensors.yaml disagrees with config/topics.yaml: "
@@ -186,7 +199,6 @@ def _setup_single_camera_graph(
         ("RenderProduct", "isaacsim.core.nodes.IsaacCreateRenderProduct"),
         ("Context", "isaacsim.ros2.bridge.ROS2Context"),
         ("CameraInfoPublish", "isaacsim.ros2.bridge.ROS2CameraInfoHelper"),
-        ("RGBPublish", "isaacsim.ros2.bridge.ROS2CameraHelper"),
     ]
     connections = [
         ("OnPlaybackTick.outputs:tick", "RunOnce.inputs:execIn"),
@@ -200,12 +212,6 @@ def _setup_single_camera_graph(
             "CameraInfoPublish.inputs:renderProductPath",
         ),
         ("Context.outputs:context", "CameraInfoPublish.inputs:context"),
-        ("RenderProduct.outputs:execOut", "RGBPublish.inputs:execIn"),
-        (
-            "RenderProduct.outputs:renderProductPath",
-            "RGBPublish.inputs:renderProductPath",
-        ),
-        ("Context.outputs:context", "RGBPublish.inputs:context"),
     ]
     set_values = [
         ("RenderProduct.inputs:cameraPrim", camera_prim_path),
@@ -215,101 +221,51 @@ def _setup_single_camera_graph(
         ("CameraInfoPublish.inputs:frameId", frame_id),
         ("CameraInfoPublish.inputs:nodeNamespace", namespace),
         ("CameraInfoPublish.inputs:resetSimulationTimeOnStop", True),
-        ("RGBPublish.inputs:type", "rgb"),
-        ("RGBPublish.inputs:topicName", subtopics["image"]),
-        ("RGBPublish.inputs:frameId", frame_id),
-        ("RGBPublish.inputs:nodeNamespace", namespace),
-        ("RGBPublish.inputs:resetSimulationTimeOnStop", True),
     ]
-    if publish_depth:
-        create_nodes.append(
-            ("DepthPublish", "isaacsim.ros2.bridge.ROS2CameraHelper")
-        )
+    # (node name, helper type, topic, enabled, needs semantic labels)
+    helper_streams = [
+        ("RGBPublish", "rgb", subtopics["image"], True, False),
+        ("DepthPublish", "depth", subtopics["depth"], publish_depth, False),
+        (
+            "SemanticPublish",
+            "semantic_segmentation",
+            "semantic_segmentation",
+            publish_semantic,
+            True,
+        ),
+        (
+            "Bbox2dTightPublish",
+            "bbox_2d_tight",
+            "bbox_2d_tight",
+            publish_bbox,
+            True,
+        ),
+    ]
+    for name, helper_type, topic, enabled, semantic_labels in helper_streams:
+        if not enabled:
+            continue
+        create_nodes.append((name, "isaacsim.ros2.bridge.ROS2CameraHelper"))
         connections.extend(
             [
-                (
-                    "RenderProduct.outputs:execOut",
-                    "DepthPublish.inputs:execIn",
-                ),
+                ("RenderProduct.outputs:execOut", f"{name}.inputs:execIn"),
                 (
                     "RenderProduct.outputs:renderProductPath",
-                    "DepthPublish.inputs:renderProductPath",
+                    f"{name}.inputs:renderProductPath",
                 ),
-                ("Context.outputs:context", "DepthPublish.inputs:context"),
+                ("Context.outputs:context", f"{name}.inputs:context"),
             ]
         )
         set_values.extend(
             [
-                ("DepthPublish.inputs:type", "depth"),
-                ("DepthPublish.inputs:topicName", subtopics["depth"]),
-                ("DepthPublish.inputs:frameId", frame_id),
-                ("DepthPublish.inputs:nodeNamespace", namespace),
-                ("DepthPublish.inputs:resetSimulationTimeOnStop", True),
+                (f"{name}.inputs:type", helper_type),
+                (f"{name}.inputs:topicName", topic),
+                (f"{name}.inputs:frameId", frame_id),
+                (f"{name}.inputs:nodeNamespace", namespace),
+                (f"{name}.inputs:resetSimulationTimeOnStop", True),
             ]
         )
-    if publish_semantic:
-        create_nodes.append(
-            ("SemanticPublish", "isaacsim.ros2.bridge.ROS2CameraHelper")
-        )
-        connections.extend(
-            [
-                (
-                    "RenderProduct.outputs:execOut",
-                    "SemanticPublish.inputs:execIn",
-                ),
-                (
-                    "RenderProduct.outputs:renderProductPath",
-                    "SemanticPublish.inputs:renderProductPath",
-                ),
-                ("Context.outputs:context", "SemanticPublish.inputs:context"),
-            ]
-        )
-        set_values.extend(
-            [
-                ("SemanticPublish.inputs:type", "semantic_segmentation"),
-                (
-                    "SemanticPublish.inputs:topicName",
-                    "semantic_segmentation",
-                ),
-                ("SemanticPublish.inputs:frameId", frame_id),
-                ("SemanticPublish.inputs:nodeNamespace", namespace),
-                ("SemanticPublish.inputs:enableSemanticLabels", True),
-                ("SemanticPublish.inputs:resetSimulationTimeOnStop", True),
-            ]
-        )
-    if publish_bbox:
-        create_nodes.append(
-            ("Bbox2dTightPublish", "isaacsim.ros2.bridge.ROS2CameraHelper")
-        )
-        connections.extend(
-            [
-                (
-                    "RenderProduct.outputs:execOut",
-                    "Bbox2dTightPublish.inputs:execIn",
-                ),
-                (
-                    "RenderProduct.outputs:renderProductPath",
-                    "Bbox2dTightPublish.inputs:renderProductPath",
-                ),
-                (
-                    "Context.outputs:context",
-                    "Bbox2dTightPublish.inputs:context",
-                ),
-            ]
-        )
-        set_values.extend(
-            [
-                ("Bbox2dTightPublish.inputs:type", "bbox_2d_tight"),
-                ("Bbox2dTightPublish.inputs:topicName", "bbox_2d_tight"),
-                ("Bbox2dTightPublish.inputs:frameId", frame_id),
-                ("Bbox2dTightPublish.inputs:nodeNamespace", namespace),
-                ("Bbox2dTightPublish.inputs:enableSemanticLabels", True),
-                (
-                    "Bbox2dTightPublish.inputs:resetSimulationTimeOnStop",
-                    True,
-                ),
-            ]
-        )
+        if semantic_labels:
+            set_values.append((f"{name}.inputs:enableSemanticLabels", True))
 
     keys = og.Controller.Keys
     og.Controller.edit(
@@ -387,10 +343,3 @@ def setup_robot_camera_graphs(
             flush=True,
         )
     return prim_paths
-
-
-def print_setup_failure(exc: Exception) -> None:
-    print(
-        f"Warning: robot camera publishers unavailable: {exc}",
-        file=sys.stderr,
-    )

@@ -108,7 +108,6 @@ from isaacsim.core.utils.viewports import set_camera_view  # noqa: E402
 def main():
     usd_path = Path(args_cli.usd_path).expanduser()
     objects_usd_path = Path(args_cli.objects_usd_path).expanduser()
-    franka_root = Path(args_cli.franka_root).expanduser()
     if not usd_path.exists():
         raise FileNotFoundError(f"USD path does not exist: {usd_path}")
     if not objects_usd_path.exists():
@@ -117,8 +116,6 @@ def main():
         )
 
     groups = core._load_joint_groups(
-        franka_root,
-        args_cli.embodiment,
         include_browser_commands=not args_cli.disable_browser_command_topics,
     )
 
@@ -144,32 +141,11 @@ def main():
         args_cli.objects_yaw_deg,
     )
 
-    if args_cli.enable_robot_cameras:
-        from recording import camera_publishers  # noqa: PLC0415
+    import recording  # noqa: PLC0415
 
-        try:
-            camera_publishers.setup_robot_camera_graphs(
-                stage,
-                args_cli.robot_prim_path,
-                args_cli.camera_sensors_yaml,
-                publish_depth=args_cli.robot_camera_depth,
-                frame_skip=args_cli.robot_camera_frame_skip,
-            )
-        except Exception as exc:  # noqa: BLE001 - recording is optional
-            camera_publishers.print_setup_failure(exc)
-
-    if args_cli.enable_scene_cameras:
-        from recording import scene_cameras  # noqa: PLC0415
-
-        scene_cameras_config = args_cli.scene_cameras_config or (
-            Path(__file__).resolve().parents[1]
-            / "config"
-            / "cameras_barebone.yaml"
-        )
-        try:
-            scene_cameras.setup_scene_camera_graphs(stage, scene_cameras_config)
-        except Exception as exc:  # noqa: BLE001 - recording is optional
-            scene_cameras.print_setup_failure(exc)
+    recording.setup_recording_cameras(
+        stage, args_cli, args_cli.robot_prim_path, "cameras_barebone.yaml"
+    )
 
     world.scene.add_default_ground_plane()
     core._add_dome_light(stage)
@@ -197,43 +173,15 @@ def main():
         arm_keyboard_teleop,
     ) = core.setup_robot_control(robot, groups, args_cli)
 
-    tick_callbacks = []
-    if args_cli.publish_ground_truth:
-        from recording.scene_capture import (
-            GroundTruthPublisher,  # noqa: PLC0415
-        )
-
-        try:
-            tick_callbacks.append(
-                GroundTruthPublisher(
-                    stage,
-                    args_cli.objects_prim_path,
-                    pad_points_every=args_cli.ground_truth_pad_every,
-                )
-            )
-        except Exception as exc:  # noqa: BLE001 - recording is optional
-            print(f"Warning: ground-truth publisher unavailable: {exc}")
-    if args_cli.scene_reset_hotkey:
-        from recording.scene_capture import (
-            SceneResetController,  # noqa: PLC0415
-        )
-
-        try:
-            tick_callbacks.append(
-                SceneResetController(
-                    world,
-                    robot,
-                    stage,
-                    args_cli.objects_prim_path,
-                    spine_controller=spine_keyboard_controller,
-                    arm_teleop=arm_keyboard_teleop,
-                    randomize=args_cli.randomize_objects,
-                    xy_jitter_m=args_cli.randomize_xy_cm / 100.0,
-                    yaw_jitter_deg=args_cli.randomize_yaw_deg,
-                )
-            )
-        except Exception as exc:  # noqa: BLE001 - recording is optional
-            print(f"Warning: scene reset hotkey unavailable: {exc}")
+    tick_callbacks = recording.build_recording_tick_callbacks(
+        world,
+        robot,
+        stage,
+        args_cli,
+        args_cli.objects_prim_path,
+        spine_controller=spine_keyboard_controller,
+        arm_teleop=arm_keyboard_teleop,
+    )
 
     core.run_teleop_loop(
         simulation_app,

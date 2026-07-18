@@ -42,6 +42,7 @@ from rclpy.node import Node  # noqa: E402
 from rosgraph_msgs.msg import Clock  # noqa: E402
 from sensor_msgs.msg import JointState  # noqa: E402
 from std_msgs.msg import String  # noqa: E402
+from topics import TOPICS_YAML, load_topics  # noqa: E402
 
 import omni.usd  # noqa: E402
 from isaacsim.core.prims import SingleArticulation  # noqa: E402
@@ -54,13 +55,6 @@ from isaacsim.robot_motion.motion_generation.lula.motion_policies import (  # no
     RmpFlow,
 )
 from pxr import Gf, UsdGeom, UsdLux, UsdPhysics  # noqa: E402
-
-try:
-    import yaml
-except Exception:  # pragma: no cover - PyYAML ships with Isaac Sim
-    yaml = None
-
-from topics import TOPICS_YAML, load_topics  # noqa: E402
 
 # All topic names come from the shared contract (config/topics.yaml);
 # load_topics() fails hard if the file or a required key is missing.
@@ -190,36 +184,12 @@ def _command_topics(
 
 
 def _load_joint_groups(
-    franka_root: Path,
-    embodiment: str,
     *,
     include_browser_commands: bool = True,
 ) -> list[JointGroup]:
-    contract_path = (
-        franka_root
-        / "assets"
-        / "embodiments"
-        / embodiment
-        / "data_contract_recording.yaml"
-    )
-    left_names = list(LEFT_JOINTS)
-    right_names = list(RIGHT_JOINTS)
-
-    if contract_path.exists() and yaml is not None:
-        with contract_path.open("r", encoding="utf-8") as f:
-            contract = yaml.safe_load(f) or {}
-        state = contract.get("state_structure", {})
-        arms = state.get("arms", {})
-        left_names = list(
-            arms.get("left", {}).get("joint_names") or left_names
-        )
-        right_names = list(
-            arms.get("right", {}).get("joint_names") or right_names
-        )
-
     requested_names = {
-        "left_arm": left_names,
-        "right_arm": right_names,
+        "left_arm": list(LEFT_JOINTS),
+        "right_arm": list(RIGHT_JOINTS),
         "left_gripper": [LEFT_GRIPPER_DRIVER_JOINT],
         "right_gripper": [RIGHT_GRIPPER_DRIVER_JOINT],
     }

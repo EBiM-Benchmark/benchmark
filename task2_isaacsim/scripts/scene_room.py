@@ -127,15 +127,12 @@ TASK2_VIEW_EYE = (1.0, 2.5, 1.35)
 def main():
     room_path = Path(args_cli.room_usd).expanduser()
     robot_path = Path(args_cli.robot_usd).expanduser()
-    franka_root = Path(args_cli.franka_root).expanduser()
     if not room_path.is_file():
         raise FileNotFoundError(f"Room USD not found: {room_path}")
     if not robot_path.is_file():
         raise FileNotFoundError(f"Robot USD not found: {robot_path}")
 
     groups = core._load_joint_groups(
-        franka_root,
-        args_cli.embodiment,
         include_browser_commands=not args_cli.disable_browser_command_topics,
     )
 
@@ -162,33 +159,14 @@ def main():
         )
 
     stage = omni.usd.get_context().get_stage()
-    if args_cli.enable_robot_cameras:
-        from recording import camera_publishers  # noqa: PLC0415
+    import recording  # noqa: PLC0415
 
-        try:
-            camera_publishers.setup_robot_camera_graphs(
-                stage,
-                ROBOT_PRIM_PATH,
-                args_cli.camera_sensors_yaml,
-                publish_depth=args_cli.robot_camera_depth,
-                frame_skip=args_cli.robot_camera_frame_skip,
-            )
-        except Exception as exc:  # noqa: BLE001 - recording is optional
-            camera_publishers.print_setup_failure(exc)
-
-    if args_cli.enable_scene_cameras:
-        from recording import scene_cameras  # noqa: PLC0415
-
-        # build_stage already created the eval camera prim + graph; the
-        # config pass adopts them (pose from yaml) and only builds graphs
-        # for cameras the scene did not author.
-        scene_cameras_config = args_cli.scene_cameras_config or (
-            Path(__file__).resolve().parents[1] / "config" / "cameras_room.yaml"
-        )
-        try:
-            scene_cameras.setup_scene_camera_graphs(stage, scene_cameras_config)
-        except Exception as exc:  # noqa: BLE001 - recording is optional
-            scene_cameras.print_setup_failure(exc)
+    # build_stage already created the eval camera prim + graph; the scene
+    # camera config pass adopts them (pose from yaml) and only builds
+    # graphs for cameras the scene did not author.
+    recording.setup_recording_cameras(
+        stage, args_cli, ROBOT_PRIM_PATH, "cameras_room.yaml"
+    )
 
     # Adopt the room's authored PhysicsScene rather than creating a second one.
     physics_scene_path = core._find_physics_scene_path() or "/physicsScene"
@@ -222,43 +200,15 @@ def main():
         arm_keyboard_teleop,
     ) = core.setup_robot_control(robot, groups, args_cli)
 
-    tick_callbacks = []
-    if args_cli.publish_ground_truth:
-        from recording.scene_capture import (
-            GroundTruthPublisher,  # noqa: PLC0415
-        )
-
-        try:
-            tick_callbacks.append(
-                GroundTruthPublisher(
-                    stage,
-                    TASK_OBJECTS_ROOT,
-                    pad_points_every=args_cli.ground_truth_pad_every,
-                )
-            )
-        except Exception as exc:  # noqa: BLE001 - recording is optional
-            print(f"Warning: ground-truth publisher unavailable: {exc}")
-    if args_cli.scene_reset_hotkey:
-        from recording.scene_capture import (
-            SceneResetController,  # noqa: PLC0415
-        )
-
-        try:
-            tick_callbacks.append(
-                SceneResetController(
-                    world,
-                    robot,
-                    stage,
-                    TASK_OBJECTS_ROOT,
-                    spine_controller=spine_keyboard_controller,
-                    arm_teleop=arm_keyboard_teleop,
-                    randomize=args_cli.randomize_objects,
-                    xy_jitter_m=args_cli.randomize_xy_cm / 100.0,
-                    yaw_jitter_deg=args_cli.randomize_yaw_deg,
-                )
-            )
-        except Exception as exc:  # noqa: BLE001 - recording is optional
-            print(f"Warning: scene reset hotkey unavailable: {exc}")
+    tick_callbacks = recording.build_recording_tick_callbacks(
+        world,
+        robot,
+        stage,
+        args_cli,
+        TASK_OBJECTS_ROOT,
+        spine_controller=spine_keyboard_controller,
+        arm_teleop=arm_keyboard_teleop,
+    )
 
     core.run_teleop_loop(
         simulation_app,

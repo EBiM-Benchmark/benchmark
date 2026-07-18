@@ -61,7 +61,6 @@ import argparse  # noqa: E402
 import json  # noqa: E402
 import logging  # noqa: E402
 import math  # noqa: E402
-import pickle  # noqa: E402
 import select  # noqa: E402
 import shutil  # noqa: E402
 import subprocess  # noqa: E402
@@ -133,6 +132,10 @@ CAMERAS = _build_camera_table(_TOPICS)
 
 # Recording defaults ship next to this script; --config selects another file.
 DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent / "recording.yaml"
+# Task2 evaluation modules (evaluation.py, image_utils.py, config.py).
+EVAL_MODULE_DIR = (
+    Path(__file__).resolve().parents[3] / "scripts" / "evaluation" / "task2"
+)
 # Keys that only make sense per-invocation and are rejected in the YAML.
 CONFIG_CLI_ONLY_KEYS = {"help", "config", "resume", "resume_version"}
 
@@ -234,7 +237,6 @@ class Task2RecorderNode(Node):
         self.lock = threading.Lock()
         self.sim_time = None
         self.joint_states = {}
-        self.joint_velocities = {}
         self.applied_commands = {}
         self.odom = None  # (x, y, z, qx, qy, qz, qw, vx, vy, vz, wz)
         self.cmd_vel = (0.0, 0.0, 0.0)
@@ -325,8 +327,6 @@ class Task2RecorderNode(Node):
             for idx, name in enumerate(msg.name):
                 if idx < len(msg.position):
                     self.joint_states[name] = float(msg.position[idx])
-                if idx < len(msg.velocity):
-                    self.joint_velocities[name] = float(msg.velocity[idx])
             self._count("joint_states_full")
 
     def _on_applied(self, msg):
@@ -645,14 +645,7 @@ def load_eval_modules(eval_dir: Path):
         return None
 
 
-def suggest_success(
-    eval_modules,
-    node: Task2RecorderNode,
-    *,
-    thermalpad_label,
-    liner_label,
-    target_label,
-):
+def suggest_success(eval_modules, node: Task2RecorderNode):
     if eval_modules is None:
         return None
     bbox, labels, segmentation = node.eval_snapshot()
@@ -668,9 +661,9 @@ def suggest_success(
         return eval_modules["evaluate"](
             bbox,
             labels.data,
-            thermalpad_label=thermalpad_label,
-            liner_label=liner_label,
-            target_label=target_label,
+            thermalpad_label="thermalpad",
+            liner_label="liner",
+            target_label="target",
             semantic_hints=eval_modules["hints"],
             label_array=label_array,
         )
@@ -910,8 +903,7 @@ def setup_recording_tmp(dataset_path) -> Path:
     lerobot dumps camera frames as temporary PNGs under <root>/images/
     (hardcoded) before video encoding; symlinking that into the sibling
     tmp dir keeps the dataset directory itself limited to the actual
-    dataset format (meta/, data/, videos/, task2_extras/). The tmp dir
-    also holds the in-flight per-episode stream (crash recovery).
+    dataset format (meta/, data/, videos/, task2_extras/).
 
     With --streaming-encoding no PNGs are written; a crashed run instead
     leaves per-camera tmp*/ dirs holding partial (fragmented, hence
@@ -921,7 +913,6 @@ def setup_recording_tmp(dataset_path) -> Path:
     dataset_path = Path(dataset_path)
     tmp_dir = dataset_path.parent / (dataset_path.name + ".tmp")
     (tmp_dir / "images").mkdir(parents=True, exist_ok=True)
-    (tmp_dir / "inflight").mkdir(parents=True, exist_ok=True)
 
     dataset_path.mkdir(parents=True, exist_ok=True)
     stray_streaming = [
@@ -974,48 +965,7 @@ def cleanup_recording_tmp(dataset_path, tmp_dir) -> None:
     if not any(p.is_file() for p in tmp_dir.rglob("*")):
         shutil.rmtree(tmp_dir, ignore_errors=True)
     else:
-        logging.warning(
-            "Keeping %s: it still contains in-flight/salvage data", tmp_dir
-        )
-
-
-class InflightFrameStore:
-    """Streams the current episode's non-image data to disk as it records.
-
-    One pickle stream per episode under <tmp>/inflight/. The file is
-    deleted once the episode is saved into the dataset (or discarded);
-    if the recorder dies mid-episode it remains, together with the
-    not-yet-encoded PNGs in <tmp>/images/ (or, with --streaming-encoding,
-    the partial fragmented MP4s swept into <tmp>/streaming_leftover/ on
-    the next start), for salvage.
-    """
-
-    def __init__(self, inflight_dir):
-        self._dir = Path(inflight_dir)
-        self._fh = None
-        self._path = None
-
-    def start(self, episode_index: int, header: dict) -> None:
-        self.close(keep=True)
-        self._path = self._dir / f"episode-{episode_index:06d}.pkl"
-        self._fh = self._path.open("wb")
-        pickle.dump({"record": "header", **header}, self._fh)
-        self._fh.flush()
-
-    def append(self, record: dict) -> None:
-        if self._fh is None:
-            return
-        pickle.dump({"record": "frame", **record}, self._fh)
-        self._fh.flush()
-
-    def close(self, keep: bool) -> None:
-        if self._fh is None:
-            return
-        self._fh.close()
-        self._fh = None
-        path, self._path = self._path, None
-        if not keep and path is not None:
-            path.unlink(missing_ok=True)
+        logging.warning("Keeping %s: it still contains salvage data", tmp_dir)
 
 
 def build_features(camera_keys) -> dict:
@@ -1069,39 +1019,32 @@ def launch_dataset_visualization(repo_id, dataset_path, episode_index):
 # ---------------------------------------------------------------------------
 # Console controls
 
-# Keybinds are kept separate from the actions they trigger so they can be
-# rebound by editing these tables; the printed menus and prompts are
-# generated from them. "reset" deliberately shares its key with the Isaac
-# Sim window's own scene-reset key.
+# key -> (action, menu text); the printed menus and prompts are generated
+# from these. "reset" deliberately shares its key with the Isaac Sim
+# window's own scene-reset key.
 IDLE_KEYBINDS = {
-    "1": "reset_record",
-    "2": "record",
-    "4": "visualize",
-    "5": "reset",
-    "q": "quit",
+    "1": ("reset_record", "reset/randomize the scene, then start recording"),
+    "2": (
+        "record",
+        "start recording without reset (episode starts at the current sim "
+        "time; use after manually reposing)",
+    ),
+    "4": ("visualize", "visualize a saved episode"),
+    "5": (
+        "reset",
+        "reset/randomize the scene (same key as in the sim window)",
+    ),
+    "q": ("quit", "quit"),
 }
 RECORDING_KEYBINDS = {
-    "3": "save",
-    "0": "discard",
-    "q": "quit",
-}
-IDLE_MENU = {
-    "reset_record": "reset/randomize the scene, then start recording",
-    "record": "start recording without reset (episode starts at the "
-    "current sim time; use after manually reposing)",
-    "reset": "reset/randomize the scene (same key as in the sim window)",
-    "visualize": "visualize a saved episode",
-    "quit": "quit",
-}
-RECORDING_MENU = {
-    "save": "stop + save episode",
-    "discard": "stop + discard episode",
-    "quit": "quit (discards the episode)",
+    "3": ("save", "stop + save episode"),
+    "0": ("discard", "stop + discard episode"),
+    "q": ("quit", "quit (discards the episode)"),
 }
 
 
 def key_for(keybinds: dict, action: str) -> str:
-    return next(key for key, bound in keybinds.items() if bound == action)
+    return next(k for k, (bound, _) in keybinds.items() if bound == action)
 
 
 class KeyInput:
@@ -1407,11 +1350,11 @@ def print_controls_menu(camera_keys, fps) -> None:
         f"cameras: {', '.join(camera_keys)}, fps={fps} (sim time)"
     )
     print(f" Idle keys ({key_hint}):")
-    for key, action in IDLE_KEYBINDS.items():
-        print(f"   [{key}] {IDLE_MENU[action]}")
+    for key, (_, menu) in IDLE_KEYBINDS.items():
+        print(f"   [{key}] {menu}")
     print(" While recording:")
-    for key, action in RECORDING_KEYBINDS.items():
-        print(f"   [{key}] {RECORDING_MENU[action]}")
+    for key, (_, menu) in RECORDING_KEYBINDS.items():
+        print(f"   [{key}] {menu}")
     print("   (reset between episodes, never while recording)")
     print("=" * 66 + "\n")
 
@@ -1424,7 +1367,6 @@ def save_episode_with_metadata(
     extras,
     extras_dir,
     meta_path,
-    inflight,
     *,
     frame_count,
     dropped_stale,
@@ -1435,13 +1377,7 @@ def save_episode_with_metadata(
 ) -> None:
     """Label success, save the buffered episode, and append its extras
     sidecar metadata line."""
-    suggestion = suggest_success(
-        eval_modules,
-        node,
-        thermalpad_label=args.thermalpad_label,
-        liner_label=args.liner_label,
-        target_label=args.target_label,
-    )
+    suggestion = suggest_success(eval_modules, node)
     success = (
         prompt_success(suggestion)
         if args.prompt_success
@@ -1455,7 +1391,6 @@ def save_episode_with_metadata(
     print(f"💾 Saving episode {episode_index} ...")
     dataset.save_episode()
     extras_info = extras.save(extras_dir, episode_index)
-    inflight.close(keep=False)
     meta_line = {
         "episode_index": episode_index,
         "success": success,
@@ -1524,16 +1459,13 @@ def run_recording(args):
     spin_thread.start()
 
     eval_modules = (
-        load_eval_modules(Path(args.eval_module_dir))
-        if args.suggest_success
-        else None
+        load_eval_modules(EVAL_MODULE_DIR) if args.suggest_success else None
     )
 
     dataset, dataset_path, dataset_repo_id = open_dataset(args, camera_keys)
     # After creation: LeRobotDataset.create requires a not-yet-existing
     # root, and no images are written before the first add_frame.
     tmp_dir = setup_recording_tmp(dataset_path)
-    inflight = InflightFrameStore(tmp_dir / "inflight")
     extras_dir = Path(dataset_path) / "task2_extras"
     meta_path = extras_dir / "episodes_task2.jsonl"
     extras = ExtrasBuffer()
@@ -1546,7 +1478,7 @@ def run_recording(args):
     recorded_episodes = 0
     visualization_process = None
     idle_prompt = ", ".join(
-        f"{key}={action}" for key, action in IDLE_KEYBINDS.items()
+        f"{key}={action}" for key, (action, _) in IDLE_KEYBINDS.items()
     )
 
     CONSOLE.activate()
@@ -1559,7 +1491,7 @@ def run_recording(args):
                 end="",
                 flush=True,
             )
-            action = IDLE_KEYBINDS.get(CONSOLE.read_key())
+            action, _ = IDLE_KEYBINDS.get(CONSOLE.read_key(), (None, None))
             if action is None:
                 continue
             if action == "visualize":
@@ -1605,18 +1537,6 @@ def run_recording(args):
             next_sample = episode_start_sim
             frame_count = 0
             dropped_stale = 0
-            inflight.start(
-                dataset.num_episodes,
-                {
-                    "episode_index": dataset.num_episodes,
-                    "fps": args.fps,
-                    "task": args.single_task,
-                    "action_names": ACTION_NAMES,
-                    "state_names": STATE_NAMES,
-                    "sim_time_start": episode_start_sim,
-                    "wall_time_start": time.time(),
-                },
-            )
             print(
                 f"● Recording (sim t0={episode_start_sim:.2f}s). "
                 f"Press {key_for(RECORDING_KEYBINDS, 'save')} to save, "
@@ -1657,7 +1577,7 @@ def run_recording(args):
                         break
                     pressed = CONSOLE.read_key(timeout=0.0)
                     if pressed in RECORDING_KEYBINDS:
-                        stop_cmd = RECORDING_KEYBINDS[pressed]
+                        stop_cmd = RECORDING_KEYBINDS[pressed][0]
                         break
                     time.sleep(0.001)
                 if stop_cmd is not None:
@@ -1681,22 +1601,13 @@ def run_recording(args):
                     dropped_stale += 1
                 else:
                     dataset.add_frame(frame)
-                    extras_added = extras.add_frame(
+                    extras.add_frame(
                         frame_count,
                         snap,
                         depth_this_frame=(
                             args.record_depth
                             and frame_count % max(args.depth_every, 1) == 0
                         ),
-                    )
-                    inflight.append(
-                        {
-                            "frame_index": frame_count,
-                            "sim_time": snap["sim_time"],
-                            "action": frame["action"],
-                            "state": frame["observation.state"],
-                            **extras_added,
-                        }
                     )
                     frame_count += 1
                 next_sample += sample_period
@@ -1729,7 +1640,6 @@ def run_recording(args):
                     extras,
                     extras_dir,
                     meta_path,
-                    inflight,
                     frame_count=frame_count,
                     dropped_stale=dropped_stale,
                     encoder_dropped=encoder_dropped,
@@ -1742,7 +1652,6 @@ def run_recording(args):
                 clear_episode_buffer(dataset)
                 extras.reset()
                 node.drain_reset_events()
-                inflight.close(keep=False)
                 print("🗑  Episode discarded.")
             if stop_cmd == "quit":
                 break
@@ -1750,9 +1659,6 @@ def run_recording(args):
         logging.warning("Interrupted; shutting down.")
     finally:
         CONSOLE.restore()
-        # If a stream is still open, we were interrupted mid-episode: keep
-        # the file for salvage. Saved/discarded episodes already closed it.
-        inflight.close(keep=True)
         # Flush buffered episode metadata; without this the dataset is only
         # readable if the interpreter happens to run __del__ on exit.
         dataset.finalize()
@@ -1915,38 +1821,6 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=True,
         help="Confirm the success label on the console at episode save "
         "(otherwise the suggestion is stored directly).",
-    )
-    parser.add_argument(
-        "--eval-module-dir",
-        type=str,
-        default=str(
-            Path(__file__).resolve().parents[3]
-            / "scripts"
-            / "evaluation"
-            / "task2"
-        ),
-        help="Directory containing the task2 evaluation modules "
-        "(evaluation.py, image_utils.py, config.py).",
-    )
-    parser.add_argument(
-        "--thermalpad-label",
-        type=str,
-        default="thermalpad",
-        help="Semantic label of the thermal pad in the eval camera "
-        "annotations.",
-    )
-    parser.add_argument(
-        "--liner-label",
-        type=str,
-        default="liner",
-        help="Semantic label of the pad liner in the eval camera annotations.",
-    )
-    parser.add_argument(
-        "--target-label",
-        type=str,
-        default="target",
-        help="Semantic label of the target board in the eval camera "
-        "annotations.",
     )
     parser.add_argument("--max_episode_time_s", type=float, default=300.0)
     parser.add_argument("--max_episodes", type=int, default=200)

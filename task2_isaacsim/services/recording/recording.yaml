@@ -52,10 +52,6 @@ rgb_vcodec: null           # null -> libsvtav1; "auto"/"h264_nvenc"/... use the 
 # Success labelling at episode save.
 suggest_success: true
 prompt_success: true
-eval_module_dir: null   # null -> <repo>/scripts/evaluation/task2
-thermalpad_label: thermalpad
-liner_label: liner
-target_label: target
 
 # Episode limits.
 max_episode_time_s: 300.0

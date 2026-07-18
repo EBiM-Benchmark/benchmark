@@ -34,14 +34,12 @@ Options for `record`:
                       services/recording/recording.yaml). Must live inside
                       the repository — the container reads it through the
                       /repo bind mount.
-  --resume            Append to the latest existing dataset version
-  --resume-version N  Append to version N (implies resume)
-  --build             Rebuild the recorder image before running
 
 Everything after `--` goes to record_task2.py verbatim and overrides the
 config file (precedence: argparse defaults < config YAML < CLI flags),
 e.g.:
   run_recorder.sh record -- --fps 20 --record-depth
+  run_recorder.sh record -- --resume
   run_recorder.sh record --config my_recording.yaml -- --max_episodes 5
 
 Requires the Isaac Sim scene running with recording topics enabled
@@ -76,7 +74,6 @@ cmd_shell() {
 }
 
 cmd_record() {
-  local build_first=false
   local recorder_args=()
 
   while [[ $# -gt 0 ]]; do
@@ -101,19 +98,6 @@ cmd_record() {
         export RECORDER_CONFIG="/repo/${config_path#"${REPO_ROOT}/"}"
         shift 2
         ;;
-      --resume)
-        recorder_args+=("--resume")
-        shift
-        ;;
-      --resume-version)
-        [[ $# -ge 2 ]] || { echo "--resume-version needs a number" >&2; exit 2; }
-        recorder_args+=("--resume_version" "$2")
-        shift 2
-        ;;
-      --build)
-        build_first=true
-        shift
-        ;;
       --help|-h)
         usage
         exit 0
@@ -130,8 +114,6 @@ cmd_record() {
         ;;
     esac
   done
-
-  ${build_first} && cmd_build
 
   # Append to any RECORDER_ARGS already in the environment so existing
   # RECORDER_ARGS-based workflows keep working.

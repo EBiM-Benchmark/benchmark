@@ -153,7 +153,7 @@ argparse defaults  <  recording.yaml (--config)  <  explicit CLI flags
   (`run_recorder.sh`) and win over the YAML.
 - Unknown keys, CLI-only keys (`resume`, `resume_version`, `config`), or
   type mismatches (booleans especially) are hard errors.
-- `null` means "use the built-in default" (e.g. `eval_module_dir`).
+- `null` means "use the built-in default" (e.g. `encoder_threads`).
 
 ### `.env`
 
@@ -235,16 +235,14 @@ grasp visible in the wrist video, and base twist with odometry motion.
 - `validate_task2_dataset.py` — offline dataset checker.
 
 `scripts/run_recorder.sh` wraps the compose service: `record` (default,
-foreground + TTY), `build`, `shell`; `--config`, `--resume`,
-`--resume-version N`, `--build`; args after `--` are appended to
-`RECORDER_ARGS`. The container runs as `HOST_UID:HOST_GID` with `HOME=/tmp`
+foreground + TTY), `build`, `shell`; `--config`; args after `--` are
+appended to `RECORDER_ARGS` (e.g. `-- --resume`). The container runs as `HOST_UID:HOST_GID` with `HOME=/tmp`
 (the host uid has no passwd entry inside, and HF/rerun need a writable
 cache dir).
 
 ## Recipes
 
-**Rename / add a topic** — edit `config/topics.yaml`; if the key is new, add
-it to `_REQUIRED_KEYS` in `scripts/topics.py` and wire the
+**Rename / add a topic** — edit `config/topics.yaml` and wire the
 consumer. For command topics, also update the Task 1 republisher/browser
 services (see Coupled values) — the bridge startup log + `ros2 topic list`
 verify the result.
