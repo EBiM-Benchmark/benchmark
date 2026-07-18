@@ -2,18 +2,18 @@
 # SPDX-License-Identifier: Apache-2.0
 """ROS 2 publishers for the robot cameras.
 
-Builds one OmniGraph per robot camera (head ZED Mini + both D405 wrist
-cameras) following the same RenderProduct -> ROS2CameraHelper pattern as the
-Task 2 eval camera (scripts/scenes/scene_robot_room_keyboard.py,
-setup_deformable_camera). The sim clock publisher lives on the bridge node
-(isaacsim_fr3duo_teleop_bridge_core.py, world.current_time) — an OmniGraph
-IsaacReadSimulationTime clock produces jumping values after a scene
+Builds one RenderProduct -> ROS2CameraHelper OmniGraph per camera listed in
+the embodiment's camera_sensors.yaml. The sim clock publisher lives on the
+bridge node (isaacsim_fr3duo_teleop_bridge_core.py, world.current_time) — an
+OmniGraph IsaacReadSimulationTime clock produces jumping values after a scene
 reset (world.stop clears its time samples), so it must not be used.
 
-The robot USD already authors the Camera prims (head_Camera, left_Camera,
-right_Camera) with the correct optics, so the graphs attach render products
-to those existing prims; only the render resolution and ROS topic layout come
-from the embodiment's camera_sensors.yaml.
+The robot USD already authors the Camera prims with the correct optics, so
+the graphs attach render products to those existing prims; the render
+resolution, ROS topic layout, and the prim_path_tokens used to locate each
+prim all come from camera_sensors.yaml. Scene-level (non-robot) cameras are
+handled by scene_cameras.py, which creates prims from config and reuses this
+module's graph builder.
 """
 
 from __future__ import annotations
@@ -32,27 +32,20 @@ from topics import load_topics
 
 CAMERA_GRAPH_ROOT = "/ROS2_CameraGraphs"
 
-# Path tokens that identify each embodiment camera among the Camera prims
-# authored in the robot USD (all tokens must appear in the lowercased prim
-# path).
-CAMERA_PRIM_PATH_TOKENS = {
-    "left_wrist_camera": ("left", "d405"),
-    "right_wrist_camera": ("right", "d405"),
-    "head_camera": ("zed",),
-}
+# Fields each camera_sensors.yaml entry must provide for the graph builder.
+_REQUIRED_SENSOR_FIELDS = (
+    "namespace",
+    "frame_id",
+    "render_resolution",
+    "prim_path_tokens",
+)
 
 
-def load_camera_configs(franka_root: Path, embodiment: str) -> dict:
-    """Camera entries from the embodiment's camera_sensors.yaml."""
+def load_camera_configs(sensors_path: Path) -> dict:
+    """Camera entries from an embodiment camera_sensors.yaml."""
     if yaml is None:
         raise RuntimeError("PyYAML is required to read camera_sensors.yaml")
-    sensors_path = (
-        Path(franka_root)
-        / "assets"
-        / "embodiments"
-        / embodiment
-        / "camera_sensors.yaml"
-    )
+    sensors_path = Path(sensors_path)
     if not sensors_path.is_file():
         raise FileNotFoundError(
             f"camera_sensors.yaml not found: {sensors_path}"
@@ -60,10 +53,23 @@ def load_camera_configs(franka_root: Path, embodiment: str) -> dict:
     with sensors_path.open("r", encoding="utf-8") as f:
         data = yaml.safe_load(f) or {}
     cameras = data.get("cameras") or {}
-    missing = sorted(set(CAMERA_PRIM_PATH_TOKENS) - set(cameras))
-    if missing:
+    if not cameras:
+        raise RuntimeError(f"{sensors_path} defines no cameras")
+    problems = []
+    for camera_key, config in cameras.items():
+        for field in _REQUIRED_SENSOR_FIELDS:
+            if not config.get(field):
+                problems.append(f"{camera_key}: missing '{field}'")
+        resolution = config.get("render_resolution") or {}
+        if isinstance(resolution, dict) and not (
+            resolution.get("width") and resolution.get("height")
+        ):
+            problems.append(
+                f"{camera_key}: render_resolution needs width and height"
+            )
+    if problems:
         raise RuntimeError(
-            f"camera_sensors.yaml is missing camera entries: {missing}"
+            f"Invalid camera entries in {sensors_path}: " + "; ".join(problems)
         )
     return cameras
 
@@ -107,9 +113,19 @@ def _check_topic_contract(configs: dict) -> None:
             "camera_sensors.yaml disagrees with config/topics.yaml: "
             + "; ".join(mismatches)
         )
+    contracted = {entry["sensors_key"] for entry in contract.values()}
+    for camera_key in sorted(set(configs) - contracted):
+        print(
+            f"Warning: camera '{camera_key}' has no cameras.robot entry in "
+            "config/topics.yaml; it will publish but the recorder will not "
+            "record it",
+            file=sys.stderr,
+        )
 
 
-def find_robot_camera_prims(stage, robot_prim_path: str) -> dict[str, str]:
+def find_robot_camera_prims(
+    stage, robot_prim_path: str, configs: dict
+) -> dict[str, str]:
     """Locate the authored Camera prims under the robot for each camera key.
 
     Fails loudly with the list of Camera prims found so a robot USD change
@@ -125,7 +141,10 @@ def find_robot_camera_prims(stage, robot_prim_path: str) -> dict[str, str]:
         if prim.IsA(UsdGeom.Camera)
     ]
     resolved: dict[str, str] = {}
-    for camera_key, tokens in CAMERA_PRIM_PATH_TOKENS.items():
+    for camera_key, config in configs.items():
+        tokens = tuple(
+            str(token).lower() for token in config["prim_path_tokens"]
+        )
         matches = [
             path
             for path in camera_paths
@@ -148,6 +167,8 @@ def _setup_single_camera_graph(
     config: dict,
     *,
     publish_depth: bool,
+    publish_semantic: bool = False,
+    publish_bbox: bool = False,
 ) -> None:
     import omni.graph.core as og
 
@@ -226,6 +247,69 @@ def _setup_single_camera_graph(
                 ("DepthPublish.inputs:resetSimulationTimeOnStop", True),
             ]
         )
+    if publish_semantic:
+        create_nodes.append(
+            ("SemanticPublish", "isaacsim.ros2.bridge.ROS2CameraHelper")
+        )
+        connections.extend(
+            [
+                (
+                    "RenderProduct.outputs:execOut",
+                    "SemanticPublish.inputs:execIn",
+                ),
+                (
+                    "RenderProduct.outputs:renderProductPath",
+                    "SemanticPublish.inputs:renderProductPath",
+                ),
+                ("Context.outputs:context", "SemanticPublish.inputs:context"),
+            ]
+        )
+        set_values.extend(
+            [
+                ("SemanticPublish.inputs:type", "semantic_segmentation"),
+                (
+                    "SemanticPublish.inputs:topicName",
+                    "semantic_segmentation",
+                ),
+                ("SemanticPublish.inputs:frameId", frame_id),
+                ("SemanticPublish.inputs:nodeNamespace", namespace),
+                ("SemanticPublish.inputs:enableSemanticLabels", True),
+                ("SemanticPublish.inputs:resetSimulationTimeOnStop", True),
+            ]
+        )
+    if publish_bbox:
+        create_nodes.append(
+            ("Bbox2dTightPublish", "isaacsim.ros2.bridge.ROS2CameraHelper")
+        )
+        connections.extend(
+            [
+                (
+                    "RenderProduct.outputs:execOut",
+                    "Bbox2dTightPublish.inputs:execIn",
+                ),
+                (
+                    "RenderProduct.outputs:renderProductPath",
+                    "Bbox2dTightPublish.inputs:renderProductPath",
+                ),
+                (
+                    "Context.outputs:context",
+                    "Bbox2dTightPublish.inputs:context",
+                ),
+            ]
+        )
+        set_values.extend(
+            [
+                ("Bbox2dTightPublish.inputs:type", "bbox_2d_tight"),
+                ("Bbox2dTightPublish.inputs:topicName", "bbox_2d_tight"),
+                ("Bbox2dTightPublish.inputs:frameId", frame_id),
+                ("Bbox2dTightPublish.inputs:nodeNamespace", namespace),
+                ("Bbox2dTightPublish.inputs:enableSemanticLabels", True),
+                (
+                    "Bbox2dTightPublish.inputs:resetSimulationTimeOnStop",
+                    True,
+                ),
+            ]
+        )
 
     keys = og.Controller.Keys
     og.Controller.edit(
@@ -236,11 +320,19 @@ def _setup_single_camera_graph(
             keys.SET_VALUES: set_values,
         },
     )
+    extras = "".join(
+        f", +{name}"
+        for name, enabled in (
+            ("depth", publish_depth),
+            ("semantic", publish_semantic),
+            ("bbox", publish_bbox),
+        )
+        if enabled
+    )
     print(
         f"Recording: camera graph {graph_path} -> "
         f"{namespace}/{subtopics['image']} "
-        f"({width}x{height}, prim {camera_prim_path}"
-        f"{', +depth' if publish_depth else ''})",
+        f"({width}x{height}, prim {camera_prim_path}{extras})",
         flush=True,
     )
 
@@ -268,8 +360,7 @@ def _set_frame_skip(camera_keys, frame_skip: int) -> None:
 def setup_robot_camera_graphs(
     stage,
     robot_prim_path: str,
-    franka_root: Path,
-    embodiment: str,
+    sensors_path: Path,
     *,
     publish_depth: bool = False,
     frame_skip: int = 0,
@@ -278,9 +369,9 @@ def setup_robot_camera_graphs(
 
     Returns {camera_key: camera_prim_path}.
     """
-    configs = load_camera_configs(franka_root, embodiment)
+    configs = load_camera_configs(sensors_path)
     _check_topic_contract(configs)
-    prim_paths = find_robot_camera_prims(stage, robot_prim_path)
+    prim_paths = find_robot_camera_prims(stage, robot_prim_path, configs)
     for camera_key, camera_prim_path in prim_paths.items():
         _setup_single_camera_graph(
             camera_key,

@@ -18,10 +18,13 @@
 #    (--bridge-prefix/--isaac-prefix), the browser_controller service, and
 #    the teleop adapters.
 #  * cameras.robot.*.namespace and shape must match
-#    task1_isaacsim/assets/embodiments/<embodiment>/camera_sensors.yaml
-#    (cross-checked at startup by scripts/recording/camera_publishers.py).
-#  * cameras.eval.* must match the room scene's eval-camera setup and the
-#    Task 2 evaluation stack configuration.
+#    assets/embodiments/fr3duo_mobile_task2/camera_sensors.yaml (or the
+#    file passed via --camera-sensors-yaml; cross-checked at startup by
+#    scripts/recording/camera_publishers.py).
+#  * cameras.eval.* must match the scene camera configs
+#    (config/cameras_<scene>.yaml, cross-checked by
+#    scripts/recording/scene_cameras.py), the room scene's hardcoded
+#    eval-camera setup, and the Task 2 evaluation stack configuration.
 version: 1
 
 # Simulation time; published by the bridge node from world.current_time,

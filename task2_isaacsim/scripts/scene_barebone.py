@@ -151,13 +151,25 @@ def main():
             camera_publishers.setup_robot_camera_graphs(
                 stage,
                 args_cli.robot_prim_path,
-                franka_root,
-                args_cli.embodiment,
+                args_cli.camera_sensors_yaml,
                 publish_depth=args_cli.robot_camera_depth,
                 frame_skip=args_cli.robot_camera_frame_skip,
             )
         except Exception as exc:  # noqa: BLE001 - recording is optional
             camera_publishers.print_setup_failure(exc)
+
+    if args_cli.enable_scene_cameras:
+        from recording import scene_cameras  # noqa: PLC0415
+
+        scene_cameras_config = args_cli.scene_cameras_config or (
+            Path(__file__).resolve().parents[1]
+            / "config"
+            / "cameras_barebone.yaml"
+        )
+        try:
+            scene_cameras.setup_scene_camera_graphs(stage, scene_cameras_config)
+        except Exception as exc:  # noqa: BLE001 - recording is optional
+            scene_cameras.print_setup_failure(exc)
 
     world.scene.add_default_ground_plane()
     core._add_dome_light(stage)
@@ -235,6 +247,11 @@ def main():
         spine_keyboard_controller,
         arm_keyboard_teleop,
         args_cli,
+        # Camera OmniGraphs only publish on rendered frames; keep rendering
+        # in headless sessions when any cameras are enabled.
+        force_render=(
+            args_cli.enable_robot_cameras or args_cli.enable_scene_cameras
+        ),
         tick_callbacks=tick_callbacks,
     )
 

@@ -169,13 +169,26 @@ def main():
             camera_publishers.setup_robot_camera_graphs(
                 stage,
                 ROBOT_PRIM_PATH,
-                franka_root,
-                args_cli.embodiment,
+                args_cli.camera_sensors_yaml,
                 publish_depth=args_cli.robot_camera_depth,
                 frame_skip=args_cli.robot_camera_frame_skip,
             )
         except Exception as exc:  # noqa: BLE001 - recording is optional
             camera_publishers.print_setup_failure(exc)
+
+    if args_cli.enable_scene_cameras:
+        from recording import scene_cameras  # noqa: PLC0415
+
+        # build_stage already created the eval camera prim + graph; the
+        # config pass adopts them (pose from yaml) and only builds graphs
+        # for cameras the scene did not author.
+        scene_cameras_config = args_cli.scene_cameras_config or (
+            Path(__file__).resolve().parents[1] / "config" / "cameras_room.yaml"
+        )
+        try:
+            scene_cameras.setup_scene_camera_graphs(stage, scene_cameras_config)
+        except Exception as exc:  # noqa: BLE001 - recording is optional
+            scene_cameras.print_setup_failure(exc)
 
     # Adopt the room's authored PhysicsScene rather than creating a second one.
     physics_scene_path = core._find_physics_scene_path() or "/physicsScene"

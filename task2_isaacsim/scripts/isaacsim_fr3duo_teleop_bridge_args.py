@@ -8,6 +8,7 @@ Import-safe before SimulationApp is created (no Isaac Sim imports here).
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
 
 
 def add_common_bridge_args(parser: argparse.ArgumentParser) -> None:
@@ -151,8 +152,9 @@ def _add_recording_args(parser: argparse.ArgumentParser) -> None:
         action=argparse.BooleanOptionalAction,
         default=False,
         help="Convenience switch: enables --publish-recording-topics, "
-        "--enable-robot-cameras, --publish-ground-truth, and "
-        "--scene-reset-hotkey for a demonstration-recording session.",
+        "--enable-robot-cameras, --enable-scene-cameras, "
+        "--publish-ground-truth, and --scene-reset-hotkey for a "
+        "demonstration-recording session.",
     )
     parser.add_argument(
         "--publish-recording-topics",
@@ -182,6 +184,33 @@ def _add_recording_args(parser: argparse.ArgumentParser) -> None:
         default=0,
         help="Render frames skipped between camera messages (0 publishes "
         "every render frame; 1 halves the publish rate).",
+    )
+    parser.add_argument(
+        "--camera-sensors-yaml",
+        type=Path,
+        default=Path(__file__).resolve().parents[1]
+        / "assets"
+        / "embodiments"
+        / "fr3duo_mobile_task2"
+        / "camera_sensors.yaml",
+        help="Robot camera_sensors.yaml consumed by the camera publishers "
+        "(replaces the --franka-root/--embodiment derived lookup; those "
+        "flags still select the joint contract).",
+    )
+    parser.add_argument(
+        "--enable-scene-cameras",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Build the scene cameras (e.g. the eval camera) described in "
+        "the scene camera config: create the Camera prim when missing, "
+        "apply the configured pose, and publish over ROS 2.",
+    )
+    parser.add_argument(
+        "--scene-cameras-config",
+        type=Path,
+        default=None,
+        help="Scene camera yaml; defaults to the scene script's "
+        "config/cameras_<scene>.yaml.",
     )
     parser.add_argument(
         "--publish-ground-truth",
@@ -230,5 +259,6 @@ def resolve_recording_flags(args) -> None:
     if getattr(args, "record", False):
         args.publish_recording_topics = True
         args.enable_robot_cameras = True
+        args.enable_scene_cameras = True
         args.publish_ground_truth = True
         args.scene_reset_hotkey = True

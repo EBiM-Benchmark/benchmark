@@ -71,8 +71,8 @@ Isaac Sim; the recorder imports it through
 |---|---|---|
 | `/isaac/clock` | `rosgraph_msgs/Clock` | bridge node, from `world.current_time` (recorder paces on sim time; rebases to 0 on scene reset) |
 | `<namespace>/image_raw`, `<namespace>/camera_info`, `<namespace>/depth` | `sensor_msgs/Image`, `sensor_msgs/CameraInfo` | per-camera OmniGraph; namespaces `/isaac/head_camera` (1280×720), `/isaac/{left,right}_wrist_camera` (848×480); depth only with `--robot-camera-depth` |
-| `/isaac/eval_camera/{image_raw,depth,camera_info}` | `sensor_msgs/*` | room scene (1280×720 static room camera) |
-| `/isaac/eval_camera/{bbox_2d_tight,semantic_labels,semantic_segmentation}` | `vision_msgs/Detection2DArray`, `std_msgs/String`, `sensor_msgs/Image` | room scene; feeds the recorder's `--suggest-success` IoU suggestion |
+| `/isaac/eval_camera/{image_raw,depth,camera_info}` | `sensor_msgs/*` | scene camera (1280×720 static top-down camera) from `config/cameras_<scene>.yaml`, both scenes with `--enable-scene-cameras` (implied by `--record`) |
+| `/isaac/eval_camera/{bbox_2d_tight,semantic_labels,semantic_segmentation}` | `vision_msgs/Detection2DArray`, `std_msgs/String`, `sensor_msgs/Image` | scene camera `publish_bbox`/`publish_semantic` flags; feeds the recorder's `--suggest-success` IoU suggestion |
 
 ### Coupled values (renaming in topics.yaml is NOT enough)
 
@@ -82,12 +82,14 @@ Isaac Sim; the recorder imports it through
   controller, the teleop adapters). The bridge logs its loaded contract at
   startup — compare against `ros2 topic list` when in doubt.
 - **Robot camera namespaces/resolutions** are duplicated in
-  `task1_isaacsim/assets/embodiments/<embodiment>/camera_sensors.yaml`;
-  `camera_publishers.py` cross-checks the two at graph-build time and raises
-  on any mismatch.
-- **`/isaac/eval_camera/*`** must match the room scene's eval-camera setup
-  (`scripts/scenes/scene_robot_room_keyboard.py`) and the Task 2 evaluation
-  stack (`scripts/evaluation/task2/`).
+  `assets/embodiments/fr3duo_mobile_task2/camera_sensors.yaml` (overridable
+  via `--camera-sensors-yaml`); `camera_publishers.py` cross-checks the two
+  at graph-build time and raises on any mismatch.
+- **`/isaac/eval_camera/*`** must match the scene camera configs
+  (`config/cameras_room.yaml` / `config/cameras_barebone.yaml` — the room
+  values mirror the hardcoded setup in
+  `scripts/scenes/scene_robot_room_keyboard.py`, which stays authoritative
+  there) and the Task 2 evaluation stack (`scripts/evaluation/task2/`).
 
 ## Mapping to Task 1 counterparts
 
@@ -117,6 +119,22 @@ stack, and the whole recording pipeline (`scripts/recording/`,
 Topic contract, see above. Resolved relative to `topics.py`
 (`<task2_isaacsim>/config/topics.yaml`), which works under both container
 mounts. Missing file or key → immediate startup error naming the path/keys.
+
+### Camera configs
+
+- `assets/embodiments/fr3duo_mobile_task2/camera_sensors.yaml` — the robot
+  cameras (head + wrists). `camera_publishers.py` consumes `namespace`,
+  `frame_id`, `render_resolution`, and `prim_path_tokens` (substrings that
+  locate the Camera prim authored in the robot USD) per entry; select
+  another file with `--camera-sensors-yaml`.
+- `config/cameras_room.yaml` / `config/cameras_barebone.yaml` — the scene
+  cameras (`eval_camera` plus any user-added ones), built by
+  `scripts/recording/scene_cameras.py` when `--enable-scene-cameras`
+  (implied by `--record`) is set: the Camera prim is created when missing,
+  the pose always comes from the yaml, and a `/ROS2_CameraGraphs/<name>`
+  graph already built by the scene (the room's eval camera) is left
+  untouched. Select another file with `--scene-cameras-config`; see the
+  recipes below for the per-entry schema.
 
 ### `services/recording/recording.yaml`
 
@@ -231,12 +249,23 @@ consumer. For command topics, also update the Task 1 republisher/browser
 services (see Coupled values) — the bridge startup log + `ros2 topic list`
 verify the result.
 
-**Add a robot camera** — add the camera to the embodiment's
-`camera_sensors.yaml` (namespace, frame_id, render_resolution), a prim-token
-entry in `CAMERA_PRIM_PATH_TOKENS` (`camera_publishers.py`), and a
-`cameras.robot.<recorder_key>` entry (namespace, `sensors_key`, shape) in
-`config/topics.yaml`; the startup cross-check catches disagreements. The
-recorder picks it up via `--cameras`/`cameras:` automatically.
+**Add a robot camera** — add the camera to
+`assets/embodiments/fr3duo_mobile_task2/camera_sensors.yaml` (namespace,
+frame_id, render_resolution, `prim_path_tokens` matching the Camera prim
+authored in the robot USD) and a `cameras.robot.<recorder_key>` entry
+(namespace, `sensors_key`, shape) in `config/topics.yaml`; the startup
+cross-check catches disagreements, and cameras without a contract entry
+publish with a warning but are not recorded. The recorder picks contracted
+cameras up via `--cameras`/`cameras:` automatically.
+
+**Add a scene camera** — append an entry to `config/cameras_<scene>.yaml`
+(prim_path, namespace, frame_id, translation, rotation_xyz_deg,
+render_resolution; optional optics and `publish_depth`/`publish_semantic`/
+`publish_bbox` flags). The prim is created if the scene did not author it,
+the pose always comes from the yaml, and an existing
+`/ROS2_CameraGraphs/<name>` graph (e.g. the room's eval camera) is left
+untouched. Add a `cameras.*` entry in `config/topics.yaml` plus a
+`contract:` key only if the recorder should record it.
 
 **Change recording defaults** — edit `services/recording/recording.yaml`
 (one-off runs: pass flags after `--` instead). For a personal variant, copy

@@ -181,10 +181,10 @@ in [services/recording/](services/recording/); the dataset schema and
 stream details are documented in the
 [Pipeline Reference](PIPELINE_REF.md#dataset-schema).
 
-1. **Simulator** (Isaac Sim container) — room scene with all recording
-   publishers (`--record` enables the robot cameras + `/isaac/clock`, the
-   recording streams, the ground-truth publishers, and the scene-reset
-   hotkey):
+1. **Simulator** (Isaac Sim container) — room or barebone scene with all
+   recording publishers (`--record` enables the robot cameras + the scene
+   cameras + `/isaac/clock`, the recording streams, the ground-truth
+   publishers, and the scene-reset hotkey):
 
    ```bash
    task2_isaacsim/scripts/run_isaacsim_teleop.sh --scene room -- --record --arm-keyboard-teleop
@@ -192,6 +192,15 @@ stream details are documented in the
 
    (add `--randomize-objects` to jitter the object spawns on every reset,
    and `--robot-camera-depth` if you want depth topics.)
+
+   Robot cameras are described by
+   [assets/embodiments/fr3duo_mobile_task2/camera_sensors.yaml](assets/embodiments/fr3duo_mobile_task2/camera_sensors.yaml)
+   (override with `--camera-sensors-yaml`); scene cameras — the top-down
+   `eval_camera` and any you add — by
+   [config/cameras_room.yaml](config/cameras_room.yaml) /
+   [config/cameras_barebone.yaml](config/cameras_barebone.yaml)
+   (`--enable-scene-cameras` to turn them on without the full `--record`
+   bundle, `--scene-cameras-config` to point at your own file).
 
 2. **Teleop helper stack** as needed (keyboard/GELLO/browser — see
    Quickstart).

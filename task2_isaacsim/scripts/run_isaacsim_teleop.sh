@@ -51,6 +51,8 @@ Options:
                              barebone: robot + task2 objects on a ground plane
                              room:     full robot room scene + eval camera
                              (scene_room.py, --task task2)
+                             Both scenes publish /isaac/eval_camera/* when
+                             recording; see config/cameras_<scene>.yaml.
   --usd-path PATH            Robot USD path relative to task2_isaacsim/ or absolute
   --objects-usd-path PATH    Task 2 objects USD path (barebone scene only)
   --room-usd-path PATH       Room USD path (room scene only)
