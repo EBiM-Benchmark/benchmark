@@ -3,7 +3,8 @@
 """Sim-side helpers for Task 2 demonstration recording.
 
 camera_publishers -- robot camera (head + wrists) OmniGraph ROS publishers
-                     (/clock is published by the bridge node itself).
+                     (the sim clock topic is published by the bridge node
+                     itself).
 scene_capture     -- ground-truth object/pad publishers and the scene
                      reset/randomize hotkey, run as run_teleop_loop tick
                      callbacks.

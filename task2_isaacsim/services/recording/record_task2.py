@@ -11,9 +11,10 @@ and writes a LeRobot dataset plus a task2_extras/ ground-truth sidecar:
   position targets from /isaac/applied_joint_commands (whatever produced
   them: ROS/GELLO commands, keyboard RMPflow teleop, spine keys) plus the
   applied base twist -- not measured poses.
-* Sim-time pacing: frames are sampled on /clock, so a deformable scene that
+* Sim-time pacing: frames are sampled on the sim clock topic
+  (topics.yaml "clock", /isaac/clock), so a deformable scene that
   runs below real time still yields uniformly spaced samples in sim time.
-  Episode start latches on a fresh /clock message (never the cached value,
+  Episode start latches on a fresh clock message (never the cached value,
   which goes stale around scene resets), and a clock jump in either
   direction while recording discards the episode.
 * Ground truth: task-object world poses, deformed thermal-pad vertices,
@@ -65,8 +66,10 @@ import select  # noqa: E402
 import shutil  # noqa: E402
 import subprocess  # noqa: E402
 import sys  # noqa: E402
+import termios  # noqa: E402
 import threading  # noqa: E402
 import time  # noqa: E402
+import tty  # noqa: E402
 from pathlib import Path  # noqa: E402
 
 import numpy as np  # noqa: E402
@@ -143,12 +146,13 @@ GRIPPER_CLOSED_RAD = 0.8
 ACTION_DIM = 20
 STATE_DIM = 37
 
-# /clock carries world.current_time from the bridge main loop and rebases
-# to ~0 on a scene reset. A gap beyond this tolerance ahead of the sampling
-# schedule while recording means a reset happened mid-episode or the clock
-# source misbehaved (the retired OmniGraph clock emitted jumping values
-# after resets); catching it prevents a silent burst of duplicate
-# catch-up frames.
+# The clock topic carries world.current_time from the bridge main loop and
+# rebases to ~0 on a scene reset. A gap beyond this tolerance ahead of the
+# sampling schedule while recording means a reset happened mid-episode or
+# the clock source misbehaved (the robot USD's embedded OmniGraph clock —
+# a leaked publisher stuck at 0.0 — is why the topic is /isaac/clock, not
+# /clock); catching it prevents a silent burst of duplicate catch-up
+# frames.
 CLOCK_FORWARD_JUMP_TOLERANCE_S = 2.0
 
 ACTION_NAMES = (
@@ -678,6 +682,154 @@ def suggest_success(
 # ---------------------------------------------------------------------------
 # Dataset helpers
 # ---------------------------------------------------------------------------
+_FRAG_MP4_OPTIONS = {
+    # Fragmented MP4 (OBS-style): ftyp+moov up front, then self-contained
+    # moof/mdat fragments, so a killed recorder leaves a playable file.
+    "movflags": "+frag_keyframe+empty_moov+default_base_moof",
+    # Flush the muxer's IO buffer per packet; without this up to 32 KB of
+    # tail (or the whole file, early in an episode) sits in memory and a
+    # crash truncates the last fragment mid-write.
+    "flush_packets": "1",
+}
+
+
+def install_fragmented_mp4_shim() -> bool:
+    """Make lerobot's streaming encoder write fragmented temp MP4s.
+
+    lerobot 0.6.0 opens the per-episode temp container with
+    av.open(path, "w") and no muxer options, so the moov atom is written
+    only at close and a killed recorder leaves an unplayable file.
+    VideoEncoderConfig.extra_options are codec options, not muxer
+    options, so there is no public hook; instead replace the
+    module-level ``av`` reference in lerobot.datasets.video_utils with a
+    proxy whose open() injects the fragmented-MP4 muxer options for
+    '*_streaming.mp4' write targets and delegates everything else to the
+    real av module. The options are muxer-level and codec-independent
+    (libsvtav1, h264/hevc, NVENC alike). Final chunk files are mostly
+    unaffected: episode appends re-mux to a standard MP4; a chunk file
+    that received exactly one whole episode stays fragmented but valid.
+
+    Returns True if installed; on any layout mismatch it logs a warning
+    and returns False (recording still works, but interrupted episodes
+    leave unplayable temp MP4s).
+    """
+    try:
+        import av
+        from lerobot.datasets import video_utils
+    except ImportError as exc:
+        logging.warning("Fragmented-MP4 shim not installed (%s)", exc)
+        return False
+    current = getattr(video_utils, "av", None)
+    if getattr(current, "_task2_frag_shim", False):
+        return True
+    if current is not av or not hasattr(video_utils, "StreamingVideoEncoder"):
+        logging.warning(
+            "Fragmented-MP4 shim not installed: lerobot.datasets."
+            "video_utils does not match the expected lerobot 0.6.0 "
+            "layout; interrupted episodes will leave unplayable temp "
+            "MP4s."
+        )
+        return False
+
+    class _FragmentedAvProxy:
+        _task2_frag_shim = True
+
+        def __getattr__(self, name):
+            return getattr(av, name)
+
+        @staticmethod
+        def open(file, mode="r", *open_args, **open_kwargs):
+            if mode == "w" and str(file).endswith("_streaming.mp4"):
+                options = dict(open_kwargs.pop("options", None) or {})
+                for key, value in _FRAG_MP4_OPTIONS.items():
+                    options.setdefault(key, value)
+                open_kwargs["options"] = options
+            return av.open(file, mode, *open_args, **open_kwargs)
+
+    video_utils.av = _FragmentedAvProxy()
+    logging.info(
+        "Streaming temp MP4s will be fragmented (movflags=%s)",
+        _FRAG_MP4_OPTIONS["movflags"],
+    )
+    return True
+
+
+# Encoder name -> stream codec family, for comparing a requested encoder
+# against the "video.codec" probed from files of an existing dataset.
+_VCODEC_FAMILIES = {
+    "h264_nvenc": "h264",
+    "h264_vaapi": "h264",
+    "h264_qsv": "h264",
+    "h264_videotoolbox": "h264",
+    "libx264": "h264",
+    "hevc_nvenc": "hevc",
+    "hevc_videotoolbox": "hevc",
+    "libx265": "hevc",
+    "libsvtav1": "av1",
+    "libaom-av1": "av1",
+}
+
+
+def build_rgb_encoder(vcodec):
+    """RGBEncoderConfig for --rgb-vcodec (None -> lerobot defaults)."""
+    if not vcodec:
+        return None
+    from lerobot.configs.video import RGBEncoderConfig
+
+    # The constructor resolves "auto" to a concrete encoder and raises on
+    # unknown/unavailable codecs.
+    encoder = RGBEncoderConfig(vcodec=vcodec)
+    if encoder.vcodec.endswith("_nvenc"):
+        # NVENC rejects lerobot's universal GOP g=2 with its default
+        # B-frames ("Gop Length should be greater than number of B frames
+        # + 1"); bf=0 also matches the fast-random-access intent of g=2.
+        encoder = RGBEncoderConfig(
+            vcodec=encoder.vcodec, extra_options={"bf": 0}
+        )
+    if encoder.vcodec != vcodec:
+        logging.info("--rgb-vcodec %s resolved to %s", vcodec, encoder.vcodec)
+    return encoder
+
+
+def dataset_write_kwargs(args):
+    """Writer kwargs shared by every LeRobotDataset.create/resume call."""
+    return {
+        "image_writer_processes": args.image_writer_processes,
+        "image_writer_threads": args.image_writer_threads,
+        "streaming_encoding": args.streaming_encoding,
+        "encoder_queue_maxsize": args.encoder_queue_maxsize,
+        "encoder_threads": args.encoder_threads,
+        "rgb_encoder": build_rgb_encoder(args.rgb_vcodec),
+    }
+
+
+def check_rgb_vcodec_consistency(dataset, rgb_vcodec):
+    """Refuse to append episodes with a different codec family.
+
+    At recording time lerobot appends episodes to the chunked video files
+    with a stream-copy concat and no compatibility check, so a codec
+    switch would corrupt them silently."""
+    encoder = build_rgb_encoder(rgb_vcodec)
+    if encoder is None or dataset.num_episodes == 0:
+        return
+    requested = _VCODEC_FAMILIES.get(encoder.vcodec, encoder.vcodec)
+    depth_keys = set(getattr(dataset.meta, "depth_keys", []) or [])
+    for key, feature in dataset.meta.features.items():
+        if feature.get("dtype") != "video" or key in depth_keys:
+            continue
+        stored = (feature.get("info") or {}).get("video.codec")
+        if stored is None:
+            continue
+        stored_family = _VCODEC_FAMILIES.get(stored, stored)
+        if stored_family != requested:
+            raise SystemExit(
+                f"--rgb-vcodec {rgb_vcodec} ({requested}) does not match "
+                f"the existing dataset's codec ({key} is {stored}); "
+                "appending would corrupt the chunked video files. Resume "
+                "without --rgb-vcodec or keep it consistent."
+            )
+
+
 def get_next_dataset_version_path(output_dir, repo_name):
     output_root = Path(output_dir)
     version = 1
@@ -760,6 +912,11 @@ def setup_recording_tmp(dataset_path) -> Path:
     tmp dir keeps the dataset directory itself limited to the actual
     dataset format (meta/, data/, videos/, task2_extras/). The tmp dir
     also holds the in-flight per-episode stream (crash recovery).
+
+    With --streaming-encoding no PNGs are written; a crashed run instead
+    leaves per-camera tmp*/ dirs holding partial (fragmented, hence
+    playable) *_streaming.mp4 files in the dataset root, which are swept
+    into <tmp>/streaming_leftover/ here.
     """
     dataset_path = Path(dataset_path)
     tmp_dir = dataset_path.parent / (dataset_path.name + ".tmp")
@@ -767,6 +924,25 @@ def setup_recording_tmp(dataset_path) -> Path:
     (tmp_dir / "inflight").mkdir(parents=True, exist_ok=True)
 
     dataset_path.mkdir(parents=True, exist_ok=True)
+    stray_streaming = [
+        p
+        for p in dataset_path.glob("tmp*")
+        if p.is_dir() and any(p.glob("*_streaming.mp4"))
+    ]
+    if stray_streaming:
+        # Timestamped so repeated crashes cannot collide on the random
+        # mkdtemp names.
+        salvage = (
+            tmp_dir / "streaming_leftover" / time.strftime("%Y%m%d-%H%M%S")
+        )
+        salvage.mkdir(parents=True, exist_ok=True)
+        logging.warning(
+            "Moving %d stray streaming temp dir(s) from a crashed run into %s",
+            len(stray_streaming),
+            salvage,
+        )
+        for p in stray_streaming:
+            shutil.move(str(p), str(salvage / p.name))
     images_link = dataset_path / "images"
     if images_link.is_symlink():
         images_link.unlink()
@@ -809,7 +985,9 @@ class InflightFrameStore:
     One pickle stream per episode under <tmp>/inflight/. The file is
     deleted once the episode is saved into the dataset (or discarded);
     if the recorder dies mid-episode it remains, together with the
-    not-yet-encoded PNGs in <tmp>/images/, for salvage.
+    not-yet-encoded PNGs in <tmp>/images/ (or, with --streaming-encoding,
+    the partial fragmented MP4s swept into <tmp>/streaming_leftover/ on
+    the next start), for salvage.
     """
 
     def __init__(self, inflight_dir):
@@ -888,6 +1066,98 @@ def launch_dataset_visualization(repo_id, dataset_path, episode_index):
     return subprocess.Popen(cmd, env=env)
 
 
+# ---------------------------------------------------------------------------
+# Console controls
+
+# Keybinds are kept separate from the actions they trigger so they can be
+# rebound by editing these tables; the printed menus and prompts are
+# generated from them. "reset" deliberately shares its key with the Isaac
+# Sim window's own scene-reset key.
+IDLE_KEYBINDS = {
+    "1": "reset_record",
+    "2": "record",
+    "4": "visualize",
+    "5": "reset",
+    "q": "quit",
+}
+RECORDING_KEYBINDS = {
+    "3": "save",
+    "0": "discard",
+    "q": "quit",
+}
+IDLE_MENU = {
+    "reset_record": "reset/randomize the scene, then start recording",
+    "record": "start recording without reset (episode starts at the "
+    "current sim time; use after manually reposing)",
+    "reset": "reset/randomize the scene (same key as in the sim window)",
+    "visualize": "visualize a saved episode",
+    "quit": "quit",
+}
+RECORDING_MENU = {
+    "save": "stop + save episode",
+    "discard": "stop + discard episode",
+    "quit": "quit (discards the episode)",
+}
+
+
+def key_for(keybinds: dict, action: str) -> str:
+    return next(key for key, bound in keybinds.items() if bound == action)
+
+
+class KeyInput:
+    """Single-keypress console input with a line-mode fallback.
+
+    On a TTY, activate() holds the terminal in cbreak mode so menu keys
+    act without Enter (cbreak keeps ISIG, so Ctrl-C still raises
+    KeyboardInterrupt); line_input() drops back to the saved cooked mode
+    for full-line prompts. Without a TTY (piped stdin) reads stay
+    line-buffered and EOF reads as the quit key, so automated runs keep
+    working.
+    """
+
+    def __init__(self):
+        self.is_tty = sys.stdin.isatty()
+        self._fd = sys.stdin.fileno() if self.is_tty else None
+        self._saved = None
+
+    def activate(self) -> None:
+        if self.is_tty and self._saved is None:
+            self._saved = termios.tcgetattr(self._fd)
+            tty.setcbreak(self._fd)
+
+    def restore(self) -> None:
+        if self._saved is not None:
+            termios.tcsetattr(self._fd, termios.TCSADRAIN, self._saved)
+            self._saved = None
+
+    def read_key(self, timeout=None):
+        """One pressed key (lowercased), or None if the timeout expires."""
+        if timeout is not None:
+            if not select.select([sys.stdin], [], [], timeout)[0]:
+                return None
+        if self._saved is not None:
+            key = os.read(self._fd, 1).decode(errors="replace")
+            print(key)  # cbreak disables ECHO; show what was pressed
+            return key.lower()
+        line = sys.stdin.readline()
+        if not line:  # EOF on piped stdin
+            return key_for(IDLE_KEYBINDS, "quit")
+        return line.strip()[:1].lower()
+
+    def line_input(self, prompt: str) -> str:
+        """input() with the terminal temporarily back in cooked mode."""
+        if self._saved is None:
+            return input(prompt)
+        termios.tcsetattr(self._fd, termios.TCSADRAIN, self._saved)
+        try:
+            return input(prompt)
+        finally:
+            tty.setcbreak(self._fd)
+
+
+CONSOLE = KeyInput()
+
+
 def prompt_success(suggestion) -> bool:
     default = None
     if suggestion is not None:
@@ -901,12 +1171,55 @@ def prompt_success(suggestion) -> bool:
         )
     while True:
         hint = f"[Enter={default}, y, n]" if default is not None else "[y, n]"
-        answer = input(f"   Episode successful? {hint}: ").strip().lower()
+        answer = (
+            CONSOLE.line_input(f"   Episode successful? {hint}: ")
+            .strip()
+            .lower()
+        )
         if not answer and default is not None:
             return default
         if answer in ("y", "yes"):
             return True
         if answer in ("n", "no"):
+            return False
+
+
+def get_streaming_dropped_frames(dataset) -> dict:
+    """Per-camera dropped-frame counts of the current episode.
+
+    Reads private lerobot internals (the container pins lerobot 0.6.0;
+    the counts are cleared at each episode start). Returns {} when
+    streaming encoding is off or the internals moved."""
+    writer = getattr(dataset, "writer", None)
+    encoder = getattr(writer, "_streaming_encoder", None)
+    dropped = getattr(encoder, "_dropped_frames", None)
+    if not isinstance(dropped, dict):
+        return {}
+    return {key: int(count) for key, count in dropped.items() if count}
+
+
+def confirm_save_despite_drops(dropped, *, interactive) -> bool:
+    """Warn about encoder frame drops; ask (or refuse) to save anyway.
+
+    A dropped frame leaves the episode's video shorter than its
+    action/state rows, desyncing every later frame of that episode."""
+    total = sum(dropped.values())
+    detail = ", ".join(f"{key}: {n}" for key, n in sorted(dropped.items()))
+    print(
+        f"⚠️  Streaming encoder dropped {total} video frame(s) ({detail}).\n"
+        "   Dropped frames desync video from the action/state rows; "
+        "saving is NOT recommended.\n"
+        "   (Increase --encoder-queue-maxsize or use --rgb-vcodec auto "
+        "for hardware encoding.)"
+    )
+    if not interactive:
+        print("   Refusing to save (--no-prompt-success).")
+        return False
+    while True:
+        answer = CONSOLE.line_input("   Save anyway? [y, N]: ").strip().lower()
+        if answer in ("y", "yes"):
+            return True
+        if answer in ("n", "no", ""):
             return False
 
 
@@ -998,7 +1311,7 @@ def handle_visualize_command(
         print("ℹ️  Visualization already running.")
         return dataset, visualization_process
     latest = dataset.num_episodes - 1
-    raw = input(
+    raw = CONSOLE.line_input(
         f"   Episode to visualize [0-{latest}, Enter={latest}]: "
     ).strip()
     episode_to_view = latest
@@ -1023,8 +1336,7 @@ def handle_visualize_command(
     dataset = LeRobotDataset.resume(
         dataset_repo_id,
         root=dataset_path,
-        image_writer_processes=args.image_writer_processes,
-        image_writer_threads=args.image_writer_threads,
+        **dataset_write_kwargs(args),
     )
     return dataset, visualization_process
 
@@ -1038,11 +1350,158 @@ def clear_episode_buffer(dataset) -> None:
         dataset.episode_buffer = dataset.create_episode_buffer()
 
 
+def open_dataset(args, camera_keys):
+    """Create a new dataset version or resume an existing one.
+
+    Returns (dataset, dataset_path, dataset_repo_id).
+    """
+    resuming = args.resume or args.resume_version is not None
+    if resuming:
+        dataset_path, versioned_repo_name = get_resume_dataset_version_path(
+            args.output_dir, args.repo_name, args.resume_version
+        )
+        validate_resume_dataset(
+            dataset_path, args.fps, camera_keys, args.robot_id
+        )
+    else:
+        dataset_path, versioned_repo_name = get_next_dataset_version_path(
+            args.output_dir, args.repo_name
+        )
+    dataset_repo_id = f"{args.hub_namespace}/{versioned_repo_name}"
+    if resuming:
+        dataset = LeRobotDataset.resume(
+            dataset_repo_id,
+            root=dataset_path,
+            **dataset_write_kwargs(args),
+        )
+        check_rgb_vcodec_consistency(dataset, args.rgb_vcodec)
+        logging.info(
+            "Resuming dataset at: %s (%d episode(s) already recorded)",
+            dataset_path,
+            dataset.num_episodes,
+        )
+    else:
+        logging.info("Recording dataset to: %s", dataset_path)
+        dataset = LeRobotDataset.create(
+            repo_id=dataset_repo_id,
+            fps=args.fps,
+            root=dataset_path,
+            robot_type=args.robot_id,
+            features=build_features(camera_keys),
+            use_videos=True,
+            **dataset_write_kwargs(args),
+        )
+    return dataset, dataset_path, dataset_repo_id
+
+
+def print_controls_menu(camera_keys, fps) -> None:
+    key_hint = (
+        "press once, no Enter needed"
+        if CONSOLE.is_tty
+        else "no TTY: type + Enter"
+    )
+    print("\n" + "=" * 66)
+    print(" Task 2 LeRobot recorder (sim-time paced)")
+    print(
+        f"   action {ACTION_DIM}-dim / state {STATE_DIM}-dim, "
+        f"cameras: {', '.join(camera_keys)}, fps={fps} (sim time)"
+    )
+    print(f" Idle keys ({key_hint}):")
+    for key, action in IDLE_KEYBINDS.items():
+        print(f"   [{key}] {IDLE_MENU[action]}")
+    print(" While recording:")
+    for key, action in RECORDING_KEYBINDS.items():
+        print(f"   [{key}] {RECORDING_MENU[action]}")
+    print("   (reset between episodes, never while recording)")
+    print("=" * 66 + "\n")
+
+
+def save_episode_with_metadata(
+    dataset,
+    node,
+    args,
+    eval_modules,
+    extras,
+    extras_dir,
+    meta_path,
+    inflight,
+    *,
+    frame_count,
+    dropped_stale,
+    encoder_dropped,
+    pre_reset_events,
+    episode_start_sim,
+    sim_time_end,
+) -> None:
+    """Label success, save the buffered episode, and append its extras
+    sidecar metadata line."""
+    suggestion = suggest_success(
+        eval_modules,
+        node,
+        thermalpad_label=args.thermalpad_label,
+        liner_label=args.liner_label,
+        target_label=args.target_label,
+    )
+    success = (
+        prompt_success(suggestion)
+        if args.prompt_success
+        else bool(
+            suggestion
+            and suggestion.get("is_orientation_correct")
+            and suggestion.get("iou_thermalpad_vs_target_current", 0.0) > 0.0
+        )
+    )
+    episode_index = dataset.num_episodes
+    print(f"💾 Saving episode {episode_index} ...")
+    dataset.save_episode()
+    extras_info = extras.save(extras_dir, episode_index)
+    inflight.close(keep=False)
+    meta_line = {
+        "episode_index": episode_index,
+        "success": success,
+        "frames": frame_count,
+        "dropped_stale_frames": dropped_stale,
+        "encoder_dropped_frames": encoder_dropped or None,
+        "fps_sim": args.fps,
+        "task": args.single_task,
+        "sim_time_start": episode_start_sim,
+        "sim_time_end": sim_time_end,
+        "wall_time_saved": time.time(),
+        "scene_reset_events": [
+            json.loads(event)
+            for event in (pre_reset_events + node.drain_reset_events())
+        ],
+        "success_suggestion": {
+            key: suggestion[key]
+            for key in (
+                "iou_thermalpad_vs_target_current",
+                "is_orientation_correct",
+                "orientation_case",
+            )
+        }
+        if suggestion
+        else None,
+        **extras_info,
+    }
+    extras_dir.mkdir(parents=True, exist_ok=True)
+    with meta_path.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(meta_line) + "\n")
+    print(
+        f"✔ Saved episode {episode_index} "
+        f"({frame_count} frames, success={success}, "
+        f"{dropped_stale} stale frames dropped)"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Main recording loop
 # ---------------------------------------------------------------------------
 def run_recording(args):
     init_logging()
+    if args.streaming_encoding and args.fragmented_mp4:
+        # Must happen before any LeRobotDataset is created so every
+        # per-episode encoder goes through the proxy.
+        install_fragmented_mp4_shim()
     camera_keys = [
         key.strip() for key in args.cameras.split(",") if key.strip()
     ]
@@ -1070,43 +1529,7 @@ def run_recording(args):
         else None
     )
 
-    resuming = args.resume or args.resume_version is not None
-    if resuming:
-        dataset_path, versioned_repo_name = get_resume_dataset_version_path(
-            args.output_dir, args.repo_name, args.resume_version
-        )
-        validate_resume_dataset(
-            dataset_path, args.fps, camera_keys, args.robot_id
-        )
-    else:
-        dataset_path, versioned_repo_name = get_next_dataset_version_path(
-            args.output_dir, args.repo_name
-        )
-    dataset_repo_id = f"{args.hub_namespace}/{versioned_repo_name}"
-    if resuming:
-        dataset = LeRobotDataset.resume(
-            dataset_repo_id,
-            root=dataset_path,
-            image_writer_processes=args.image_writer_processes,
-            image_writer_threads=args.image_writer_threads,
-        )
-        logging.info(
-            "Resuming dataset at: %s (%d episode(s) already recorded)",
-            dataset_path,
-            dataset.num_episodes,
-        )
-    else:
-        logging.info("Recording dataset to: %s", dataset_path)
-        dataset = LeRobotDataset.create(
-            repo_id=dataset_repo_id,
-            fps=args.fps,
-            root=dataset_path,
-            robot_type=args.robot_id,
-            features=build_features(camera_keys),
-            use_videos=True,
-            image_writer_processes=args.image_writer_processes,
-            image_writer_threads=args.image_writer_threads,
-        )
+    dataset, dataset_path, dataset_repo_id = open_dataset(args, camera_keys)
     # After creation: LeRobotDataset.create requires a not-yet-existing
     # root, and no images are written before the first add_frame.
     tmp_dir = setup_recording_tmp(dataset_path)
@@ -1115,42 +1538,31 @@ def run_recording(args):
     meta_path = extras_dir / "episodes_task2.jsonl"
     extras = ExtrasBuffer()
 
-    print("\n" + "=" * 66)
-    print(" Task 2 LeRobot recorder (sim-time paced)")
-    print(
-        f"   action {ACTION_DIM}-dim / state {STATE_DIM}-dim, "
-        f"cameras: {', '.join(camera_keys)}, fps={args.fps} (sim time)"
-    )
-    print("   [1] clear episode buffer   [2] start episode")
-    print("   [3] stop + save episode    [0] stop + discard episode")
-    print("   [4] visualize dataset      [q] quit")
-    print("   [5] reset/randomize the scene, then start recording")
-    print("   ('5' in the Isaac Sim window also resets the scene —")
-    print("    reset between episodes, never while recording)")
-    print("=" * 66 + "\n")
+    print_controls_menu(camera_keys, args.fps)
 
     wait_for_streams(node, camera_keys, timeout_s=args.stream_timeout_s)
 
     sample_period = 1.0 / args.fps
     recorded_episodes = 0
     visualization_process = None
+    idle_prompt = ", ".join(
+        f"{key}={action}" for key, action in IDLE_KEYBINDS.items()
+    )
 
+    CONSOLE.activate()
     try:
         while recorded_episodes < args.max_episodes:
             print(
                 f"\n[{dataset.num_episodes} episode(s) in dataset, "
                 f"{recorded_episodes} this session] "
-                "command (1-clear, 2-record, 5-reset+record, "
-                "4-visualize, q-quit): ",
+                f"command ({idle_prompt}): ",
                 end="",
                 flush=True,
             )
-            user_cmd = sys.stdin.readline().strip().lower()
-            if user_cmd == "1":
-                clear_episode_buffer(dataset)
-                extras.reset()
+            action = IDLE_KEYBINDS.get(CONSOLE.read_key())
+            if action is None:
                 continue
-            if user_cmd == "4":
+            if action == "visualize":
                 dataset, visualization_process = handle_visualize_command(
                     dataset,
                     dataset_repo_id,
@@ -1159,16 +1571,16 @@ def run_recording(args):
                     args,
                 )
                 continue
-            if user_cmd == "q":
+            if action == "quit":
                 break
-            if user_cmd == "5":
+            if action in ("reset", "reset_record"):
                 if not request_scene_reset(
                     node, timeout_s=args.reset_timeout_s
                 ):
                     continue
-                user_cmd = "2"  # fall through into the episode start
-            if user_cmd != "2":
-                continue
+                if action == "reset":
+                    continue
+            # action is "record" or "reset_record": start an episode
 
             # -------------------------------------------------- episode ---
             if not wait_for_streams(
@@ -1182,6 +1594,10 @@ def run_recording(args):
                     "mid-reset?) — not starting the episode."
                 )
                 continue
+            # Defensive: every save/discard path already leaves the buffer
+            # empty, but stray frames from an abnormal abort would silently
+            # prepend to this episode.
+            clear_episode_buffer(dataset)
             extras.reset()
             pre_reset_events = node.drain_reset_events()
             snap = node.snapshot()
@@ -1203,7 +1619,9 @@ def run_recording(args):
             )
             print(
                 f"● Recording (sim t0={episode_start_sim:.2f}s). "
-                "Press 3 to save, 0 to discard.",
+                f"Press {key_for(RECORDING_KEYBINDS, 'save')} to save, "
+                f"{key_for(RECORDING_KEYBINDS, 'discard')} to discard, "
+                f"{key_for(RECORDING_KEYBINDS, 'quit')} to quit.",
                 flush=True,
             )
             stop_cmd = None
@@ -1223,7 +1641,7 @@ def run_recording(args):
                             "this episode.",
                             flush=True,
                         )
-                        stop_cmd = "0"
+                        stop_cmd = "discard"
                         break
                     if sim_time - next_sample > CLOCK_FORWARD_JUMP_TOLERANCE_S:
                         print(
@@ -1233,15 +1651,14 @@ def run_recording(args):
                             "discarding this episode.",
                             flush=True,
                         )
-                        stop_cmd = "0"
+                        stop_cmd = "discard"
                         break
                     if sim_time >= next_sample:
                         break
-                    if select.select([sys.stdin], [], [], 0.0)[0]:
-                        candidate = sys.stdin.readline().strip()
-                        if candidate in ("3", "0"):
-                            stop_cmd = candidate
-                            break
+                    pressed = CONSOLE.read_key(timeout=0.0)
+                    if pressed in RECORDING_KEYBINDS:
+                        stop_cmd = RECORDING_KEYBINDS[pressed]
+                        break
                     time.sleep(0.001)
                 if stop_cmd is not None:
                     break
@@ -1293,79 +1710,46 @@ def run_recording(args):
                     )
                 if frame_count >= int(args.fps * args.max_episode_time_s):
                     print("\n⏱  Max episode length reached.")
-                    stop_cmd = "3"
+                    stop_cmd = "save"
 
-            if stop_cmd == "3" and frame_count > 0:
-                suggestion = suggest_success(
-                    eval_modules,
-                    node,
-                    thermalpad_label=args.thermalpad_label,
-                    liner_label=args.liner_label,
-                    target_label=args.target_label,
-                )
-                success = (
-                    prompt_success(suggestion)
-                    if args.prompt_success
-                    else bool(
-                        suggestion
-                        and suggestion.get("is_orientation_correct")
-                        and suggestion.get(
-                            "iou_thermalpad_vs_target_current", 0.0
-                        )
-                        > 0.0
+            save_requested = stop_cmd == "save" and frame_count > 0
+            encoder_dropped = {}
+            if save_requested and args.streaming_encoding:
+                encoder_dropped = get_streaming_dropped_frames(dataset)
+                if encoder_dropped:
+                    save_requested = confirm_save_despite_drops(
+                        encoder_dropped, interactive=args.prompt_success
                     )
+            if save_requested:
+                save_episode_with_metadata(
+                    dataset,
+                    node,
+                    args,
+                    eval_modules,
+                    extras,
+                    extras_dir,
+                    meta_path,
+                    inflight,
+                    frame_count=frame_count,
+                    dropped_stale=dropped_stale,
+                    encoder_dropped=encoder_dropped,
+                    pre_reset_events=pre_reset_events,
+                    episode_start_sim=episode_start_sim,
+                    sim_time_end=snap["sim_time"],
                 )
-                episode_index = dataset.num_episodes
-                print(f"💾 Saving episode {episode_index} ...")
-                dataset.save_episode()
-                extras_info = extras.save(extras_dir, episode_index)
-                inflight.close(keep=False)
-                meta_line = {
-                    "episode_index": episode_index,
-                    "success": success,
-                    "frames": frame_count,
-                    "dropped_stale_frames": dropped_stale,
-                    "fps_sim": args.fps,
-                    "task": args.single_task,
-                    "sim_time_start": episode_start_sim,
-                    "sim_time_end": snap["sim_time"],
-                    "wall_time_saved": time.time(),
-                    "scene_reset_events": [
-                        json.loads(event)
-                        for event in (
-                            pre_reset_events + node.drain_reset_events()
-                        )
-                    ],
-                    "success_suggestion": {
-                        key: suggestion[key]
-                        for key in (
-                            "iou_thermalpad_vs_target_current",
-                            "is_orientation_correct",
-                            "orientation_case",
-                        )
-                    }
-                    if suggestion
-                    else None,
-                    **extras_info,
-                }
-                extras_dir.mkdir(parents=True, exist_ok=True)
-                with meta_path.open("a", encoding="utf-8") as f:
-                    f.write(json.dumps(meta_line) + "\n")
                 recorded_episodes += 1
-                print(
-                    f"✔ Saved episode {episode_index} "
-                    f"({frame_count} frames, success={success}, "
-                    f"{dropped_stale} stale frames dropped)"
-                )
             else:
                 clear_episode_buffer(dataset)
                 extras.reset()
                 node.drain_reset_events()
                 inflight.close(keep=False)
                 print("🗑  Episode discarded.")
+            if stop_cmd == "quit":
+                break
     except KeyboardInterrupt:
         logging.warning("Interrupted; shutting down.")
     finally:
+        CONSOLE.restore()
         # If a stream is still open, we were interrupted mid-episode: keep
         # the file for salvage. Saved/discarded episodes already closed it.
         inflight.close(keep=True)
@@ -1439,8 +1823,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--reset-timeout-s",
         type=float,
         default=30.0,
-        help="Seconds to wait for the sim's scene-reset event after menu "
-        "command 5 (deformable re-initialization takes a few seconds).",
+        help="Seconds to wait for the sim's scene-reset event after a "
+        "reset menu command (deformable re-initialization takes a few "
+        "seconds).",
     )
     parser.add_argument(
         "--qos-depth",
@@ -1461,6 +1846,48 @@ def build_arg_parser() -> argparse.ArgumentParser:
         type=int,
         default=4,
         help="LeRobot image-writer threads (per process if processes > 0).",
+    )
+    parser.add_argument(
+        "--streaming-encoding",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Encode camera frames into video on the fly (per-camera PyAV "
+        "encoder threads) instead of dumping PNGs and batch-encoding at "
+        "save; episode save becomes near-instant. The image-writer flags "
+        "are unused in this mode.",
+    )
+    parser.add_argument(
+        "--encoder-queue-maxsize",
+        type=int,
+        default=90,
+        help="Per-camera frame queue of the streaming encoder. A full "
+        "queue DROPS frames (desyncing video from action/state rows), so "
+        "this is deliberately 3x lerobot's default of 30; 90 frames is "
+        "~3 s at 30 fps and ~1 GB worst-case RAM across 4 720p cameras.",
+    )
+    parser.add_argument(
+        "--encoder-threads",
+        type=int,
+        default=None,
+        help="Encoder threads for the streaming encoder "
+        "(default: lerobot's internal default).",
+    )
+    parser.add_argument(
+        "--fragmented-mp4",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="With --streaming-encoding: write the in-progress temp MP4s "
+        "as fragmented MP4 (OBS-style) so a killed recorder leaves "
+        "playable video for salvage. No effect without streaming.",
+    )
+    parser.add_argument(
+        "--rgb-vcodec",
+        type=str,
+        default=None,
+        help="RGB video codec ('auto' picks a hardware encoder such as "
+        "h264_nvenc; requires GPU access in the recorder service). "
+        "Default: lerobot's libsvtav1. Must stay consistent for the "
+        "lifetime of a dataset.",
     )
     parser.add_argument(
         "--record-depth",

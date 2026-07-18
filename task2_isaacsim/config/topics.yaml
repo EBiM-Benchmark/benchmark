@@ -26,7 +26,15 @@ version: 1
 
 # Simulation time; published by the bridge node from world.current_time,
 # the recorder paces its frame sampling on it.
-clock: /clock
+# Deliberately NOT /clock: the robot USD's embedded ROS_JointStates
+# OmniGraph contains a ros2_publish_clock node that is instantiated during
+# stage build (before the bridge deactivates the graph prims) and leaks a
+# publisher that keeps emitting time=0.0 on /clock every tick. A recorder
+# listening on /clock sees the cache flip between 0.0 and the real sim
+# time, latches t0=0.0 at episode start, and discards the episode as a
+# clock jump. A bridge-owned name sidesteps any publisher embedded in
+# robot assets.
+clock: /isaac/clock
 
 teleop:
   pedal_state: /pedal/state

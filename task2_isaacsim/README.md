@@ -182,7 +182,7 @@ stream details are documented in the
 [Pipeline Reference](PIPELINE_REF.md#dataset-schema).
 
 1. **Simulator** (Isaac Sim container) — room scene with all recording
-   publishers (`--record` enables the robot cameras + `/clock`, the
+   publishers (`--record` enables the robot cameras + `/isaac/clock`, the
    recording streams, the ground-truth publishers, and the scene-reset
    hotkey):
 
@@ -203,11 +203,14 @@ stream details are documented in the
    task2_isaacsim/scripts/run_recorder.sh
    ```
 
-   Terminal controls: `2` start episode · `5` reset/randomize the scene,
-   then start recording · `3` stop + save (confirms the success label,
-   showing the IoU suggestion) · `0` stop + discard · `1` clear buffer ·
-   `4` visualize · `q` quit. Pressing `5` **in the Isaac Sim window**
-   also resets the scene — only reset between episodes, never while
+   Terminal controls (single keypress, no Enter needed) — idle: `1`
+   reset/randomize the scene, then start recording · `2` start recording
+   without reset (the episode starts at the current sim time; useful
+   after manually reposing the scene) · `5` reset/randomize only (same
+   key as the reset hotkey in the Isaac Sim window) · `4` visualize ·
+   `q` quit. While recording: `3` stop + save (confirms the success
+   label, showing the IoU suggestion) · `0` stop + discard · `q` quit
+   (discards the episode). Only reset between episodes, never while
    recording (the recorder detects the clock jump and discards).
 
    Default dataset save path is `task2_isaacsim/dataset/task2_thermalpad_vN/`;

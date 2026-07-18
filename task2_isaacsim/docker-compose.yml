@@ -110,13 +110,18 @@ services:
   # Interactive LeRobot demonstration recorder
   # (services/recording/record_task2.py). Preferred entry point:
   #   scripts/run_recorder.sh
-  # or start directly with an interactive terminal (stdin drives episode
-  # start/stop):
+  # or start directly with an interactive terminal (single keypresses
+  # drive episode start/stop):
   #   docker compose --profile record run --rm lerobot_recorder
   # Datasets land in <repo>/task2_isaacsim/dataset/ on the host. Defaults
   # come from services/recording/recording.yaml (override the file with
   # RECORDER_CONFIG); individual CLI flags go through RECORDER_ARGS and win
   # over the config file (e.g. RECORDER_ARGS="--fps 20 --record-depth").
+  # Hardware video encoding (--streaming-encoding --rgb-vcodec auto ->
+  # NVENC) needs GPU access, which lives in the optional override
+  # docker-compose.nvenc.yml so GPU-less hosts can still run the service;
+  # scripts/run_recorder.sh adds the override automatically when the host
+  # has an NVIDIA driver.
   lerobot_recorder:
     build:
       context: services/recording

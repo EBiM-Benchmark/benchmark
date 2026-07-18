@@ -5,7 +5,7 @@
 Builds one OmniGraph per robot camera (head ZED Mini + both D405 wrist
 cameras) following the same RenderProduct -> ROS2CameraHelper pattern as the
 Task 2 eval camera (scripts/scenes/scene_robot_room_keyboard.py,
-setup_deformable_camera). The /clock publisher lives on the bridge node
+setup_deformable_camera). The sim clock publisher lives on the bridge node
 (isaacsim_fr3duo_teleop_bridge_core.py, world.current_time) — an OmniGraph
 IsaacReadSimulationTime clock produces jumping values after a scene
 reset (world.stop clears its time samples), so it must not be used.
@@ -21,7 +21,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from pxr import Usd, UsdGeom  # noqa: E402
+from pxr import Usd, UsdGeom
 
 try:
     import yaml

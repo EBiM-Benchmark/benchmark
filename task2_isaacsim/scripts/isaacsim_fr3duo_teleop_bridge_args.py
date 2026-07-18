@@ -72,7 +72,7 @@ def add_common_bridge_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--spine-keyboard-max",
         type=float,
-        default=0.50,
+        default=0.85,
         help="Maximum franka_spine_vertical_joint target in meters for "
         "keyboard control.",
     )

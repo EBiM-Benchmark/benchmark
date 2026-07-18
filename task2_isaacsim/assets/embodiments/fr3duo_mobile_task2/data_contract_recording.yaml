@@ -19,7 +19,7 @@ description: >
 
 sampling:
   frequency_hz: 30
-  paced_on: simulation_time  # /clock; the deformable scene runs sub-realtime
+  paced_on: simulation_time  # /isaac/clock; the deformable scene runs sub-realtime
   deterministic: true
   jitter_tolerance_percent: 5
 

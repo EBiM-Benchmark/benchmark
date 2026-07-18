@@ -8,8 +8,9 @@ set -euo pipefail
 # (task2_isaacsim/docker-compose.yml: lerobot_recorder, profile "record";
 # code + config in task2_isaacsim/services/recording/).
 #
-# The recorder is interactive: stdin drives episode control (1 clear,
-# 2 start, 3 save, 0 discard, 4 visualize, q quit), so `record` runs in the
+# The recorder is interactive: single keypresses drive episode control
+# (idle: 1 reset+record, 2 record, 5 reset, 4 visualize, q quit;
+# recording: 3 save, 0 discard, q quit+discard), so `record` runs in the
 # foreground with a TTY. Defaults come from services/recording/recording.yaml;
 # flags after `--` are passed to record_task2.py and override the config.
 # --------------------------------------------------------------------------
@@ -52,12 +53,26 @@ EOF
 export HOST_UID="${HOST_UID:-$(id -u)}"
 export HOST_GID="${HOST_GID:-$(id -g)}"
 
+# The NVENC override gives the container GPU access for hardware video
+# encoding (--streaming-encoding --rgb-vcodec auto). Its nvidia device
+# reservation is a hard constraint that would keep the service from even
+# starting on GPU-less hosts, so it is only added when the host driver
+# actually works.
+COMPOSE_FILES=(-f docker-compose.yml)
+if command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi >/dev/null 2>&1; then
+  COMPOSE_FILES+=(-f docker-compose.nvenc.yml)
+fi
+
+compose() {
+  (cd "${TASK2_ROOT}" && docker compose "${COMPOSE_FILES[@]}" --profile record "$@")
+}
+
 cmd_build() {
-  (cd "${TASK2_ROOT}" && docker compose --profile record build lerobot_recorder)
+  compose build lerobot_recorder
 }
 
 cmd_shell() {
-  (cd "${TASK2_ROOT}" && docker compose --profile record run --rm --entrypoint bash lerobot_recorder)
+  compose run --rm --entrypoint bash lerobot_recorder
 }
 
 cmd_record() {
@@ -124,7 +139,7 @@ cmd_record() {
 
   echo "Recorder config: ${RECORDER_CONFIG:-services/recording/recording.yaml}"
   [[ -n "${RECORDER_ARGS// /}" ]] && echo "Recorder args:  ${RECORDER_ARGS}"
-  (cd "${TASK2_ROOT}" && docker compose --profile record run --rm lerobot_recorder)
+  compose run --rm lerobot_recorder
 }
 
 COMMAND="${1:-record}"

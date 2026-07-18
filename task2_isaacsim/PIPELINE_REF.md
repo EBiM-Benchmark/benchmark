@@ -8,7 +8,7 @@ see the [README](README.md).
 
 | Process | Where it runs | Repo mount | Role |
 |---|---|---|---|
-| Scene script + bridge (`scripts/scene_room.py` / `scene_barebone.py` + `isaacsim_fr3duo_teleop_bridge_core.py`) | `isaac-sim-5-1-0-workshop` container, via `/isaac-sim/python.sh` (launched by `scripts/run_isaacsim_teleop.sh`) | `/workspace/EBiM_Challenge` | Simulation, teleop runtime, joint state/command ROS node; with `--record` also `/clock` (bridge node), the camera OmniGraphs (`scripts/recording/camera_publishers.py`), and ground-truth publishers (`scripts/recording/scene_capture.py`) |
+| Scene script + bridge (`scripts/scene_room.py` / `scene_barebone.py` + `isaacsim_fr3duo_teleop_bridge_core.py`) | `isaac-sim-5-1-0-workshop` container, via `/isaac-sim/python.sh` (launched by `scripts/run_isaacsim_teleop.sh`) | `/workspace/EBiM_Challenge` | Simulation, teleop runtime, joint state/command ROS node; with `--record` also `/isaac/clock` (bridge node), the camera OmniGraphs (`scripts/recording/camera_publishers.py`), and ground-truth publishers (`scripts/recording/scene_capture.py`) |
 | Helper stack (`ros_republisher`, `position_controller`, `teleop_adapters`, `browser_controller`) | `task2_*` containers from [docker-compose.yml](docker-compose.yml), all `ros:jazzy-ros-base`-based | `../task1_isaacsim` at `/workspace` | Task 1 scripts reused verbatim: remap `/bridge/*` commands onto `/isaac/*`, adapt device topics, serve the browser UI (port 8090) |
 | Recorder (`services/recording/record_task2.py`) | `task2_lerobot_recorder` container (compose profile `record`), launched by `scripts/run_recorder.sh` | whole repo at `/repo`, working dir `/repo/task2_isaacsim` | Subscribes to the recording topics and writes the LeRobot dataset + `task2_extras/` sidecar |
 | Device publishers (keyboard / GELLO / pedal) | host, from the [`teleoperation`](https://github.com/EBiM-Benchmark/teleoperation) repo | — | Publish `/keyboard/state`, `/{left,right}/gello/joint_states`, pedal state |
@@ -63,13 +63,13 @@ Isaac Sim; the recorder imports it through
 | `/isaac/task2/object_poses` | `std_msgs/String` (JSON) | `{"sim_time", "objects": {name: [x,y,z,qw,qx,qy,qz]}}` |
 | `/isaac/task2/pad_points` | `std_msgs/Float32MultiArray` | `[sim_time, n_points, x0,y0,z0,...]` deformed pad vertices (~10 Hz) |
 | `/isaac/task2/scene_reset` | `std_msgs/String` (JSON) | reset/randomize event, published after the reset completes |
-| `/isaac/task2/scene_reset_request` | `std_msgs/String` | any message triggers a scene reset (recorder menu command `5`; same effect as the sim-window `5` hotkey) |
+| `/isaac/task2/scene_reset_request` | `std_msgs/String` | any message triggers a scene reset (recorder menu keys `1` reset+record and `5` reset; same effect as the sim-window `5` hotkey) |
 
 ### Clock and cameras
 
 | Topic | Type | Producer |
 |---|---|---|
-| `/clock` | `rosgraph_msgs/Clock` | bridge node, from `world.current_time` (recorder paces on sim time; rebases to 0 on scene reset) |
+| `/isaac/clock` | `rosgraph_msgs/Clock` | bridge node, from `world.current_time` (recorder paces on sim time; rebases to 0 on scene reset) |
 | `<namespace>/image_raw`, `<namespace>/camera_info`, `<namespace>/depth` | `sensor_msgs/Image`, `sensor_msgs/CameraInfo` | per-camera OmniGraph; namespaces `/isaac/head_camera` (1280×720), `/isaac/{left,right}_wrist_camera` (848×480); depth only with `--robot-camera-depth` |
 | `/isaac/eval_camera/{image_raw,depth,camera_info}` | `sensor_msgs/*` | room scene (1280×720 static room camera) |
 | `/isaac/eval_camera/{bbox_2d_tight,semantic_labels,semantic_segmentation}` | `vision_msgs/Detection2DArray`, `std_msgs/String`, `sensor_msgs/Image` | room scene; feeds the recorder's `--suggest-success` IoU suggestion |
@@ -153,7 +153,9 @@ Datasets follow
 target is appended at index 19). The recorder's schema constants
 (`ACTION_NAMES`/`STATE_NAMES`, joint names, `GRIPPER_CLOSED_RAD`) currently
 mirror that contract in code rather than loading it — keep them in sync when
-touching either.
+touching either. Full on-disk layout (LeRobot v3.0 directory structure, meta
+files, per-index feature tables, extras sidecar):
+[`services/recording/DATASET.md`](services/recording/DATASET.md).
 
 | Stream | Layout |
 |---|---|
@@ -170,7 +172,7 @@ Mechanics:
   `<output_dir>/<repo_name>_vN/`; every launch starts the next free version,
   `--resume` / `--resume_version N` append instead (refused when `fps` or
   `cameras` differ from the dataset's `meta/info.json`).
-- **Pacing** — frames are sampled on `/clock` simulation time; the deformable
+- **Pacing** — frames are sampled on `/isaac/clock` simulation time; the deformable
   scene runs below real time, so wall-clock pacing would sample
   non-uniformly.
 - **Scratch / crash recovery** — during recording a sibling

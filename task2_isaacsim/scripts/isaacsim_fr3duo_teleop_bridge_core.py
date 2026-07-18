@@ -1121,11 +1121,16 @@ class IsaacSimRosBridge(Node):
         self._recording_enabled = bool(publish_recording_topics)
         self._ee_prims = None  # lazily resolved link8 prims, {side: UsdPrim}
         if self._recording_enabled:
-            # /clock is published from the main loop's world.current_time
-            # (physics time, rebases to 0 on scene resets). The OmniGraph
-            # IsaacReadSimulationTime route was abandoned: its monotonic
-            # time-sample lookups produce jumping values after a
-            # world.stop()/reset() ("onStop: Cleared time samples").
+            # The clock topic is published from the main loop's
+            # world.current_time (physics time, rebases to 0 on scene
+            # resets). The OmniGraph IsaacReadSimulationTime route was
+            # abandoned: its monotonic time-sample lookups produce jumping
+            # values after a world.stop()/reset() ("onStop: Cleared time
+            # samples"). The topic is /isaac/clock rather than /clock
+            # because the robot USD's embedded ROS_JointStates graph leaks
+            # a ros2_publish_clock publisher (instantiated during stage
+            # build, before _deactivate_embedded_graphs runs) that keeps
+            # emitting 0.0 on /clock every tick.
             self._clock_pub = self.create_publisher(Clock, CLOCK_TOPIC, 10)
             self._applied_commands_pub = self.create_publisher(
                 JointState, APPLIED_COMMANDS_TOPIC, 10
@@ -1303,7 +1308,8 @@ class IsaacSimRosBridge(Node):
         return prims
 
     def publish_clock(self, sim_time: float) -> None:
-        """Publish simulation time on /clock (recorders pace on it)."""
+        """Publish simulation time on the clock topic (recorders pace on
+        it)."""
         if not self._recording_enabled:
             return
         msg = Clock()
