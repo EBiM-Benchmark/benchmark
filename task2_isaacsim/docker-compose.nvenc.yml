@@ -1,0 +1,26 @@
+# Copyright (c) 2026 The EBiM Benchmark Contributors
+# SPDX-License-Identifier: Apache-2.0
+#
+# Optional override: GPU access for the recorder so NVENC hardware video
+# encoding works (record_task2.py --streaming-encoding --rgb-vcodec auto).
+# Kept out of docker-compose.yml because the nvidia device reservation is a
+# hard constraint — with it baked in, the service cannot start at all on a
+# host without the NVIDIA container runtime, even for CPU encoding.
+#
+# scripts/run_recorder.sh appends this file automatically when the host has
+# a working NVIDIA driver; for direct docker compose use:
+#   docker compose -f docker-compose.yml -f docker-compose.nvenc.yml \
+#     --profile record run --rm lerobot_recorder
+
+services:
+  lerobot_recorder:
+    environment:
+      # 'video' exposes libnvidia-encode for NVENC hardware encoding.
+      - NVIDIA_DRIVER_CAPABILITIES=compute,video,utility
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

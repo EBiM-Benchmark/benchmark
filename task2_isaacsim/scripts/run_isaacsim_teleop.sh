@@ -28,10 +28,9 @@ CONTAINER_REPO="${CONTAINER_REPO:-/workspace/EBiM_Challenge}"
 CONTAINER_TASK2="${CONTAINER_REPO}/${TASK2_DIRNAME}"
 
 USD_PATH="${USD_PATH:-../task1_isaacsim/assets/Robotiq_2f_85_with_d405_mobile_fr3_duo_v0_2.usd}"
-OBJECTS_USD_PATH="${OBJECTS_USD_PATH:-../assets/task2_objects/task2_objects.usda}"
+OBJECTS_USD_PATH="${OBJECTS_USD_PATH:-../assets/task2_objects/task2_objects_base.usda}"
 ROOM_USD_PATH="${ROOM_USD_PATH:-../assets/robot_room.usd}"
 SCENE="${SCENE:-room}"
-EMBODIMENT="fr3duo_mobile"
 CONTROLLER_MODE="${CONTROLLER_MODE:-position}"
 WITH_KEYBOARD_TELEOP=false
 WITH_GELLO_TELEOP=false
@@ -51,10 +50,11 @@ Options:
                              barebone: robot + task2 objects on a ground plane
                              room:     full robot room scene + eval camera
                              (scene_room.py, --task task2)
+                             Both scenes publish /isaac/eval_camera/* when
+                             recording; see config/cameras_<scene>.yaml.
   --usd-path PATH            Robot USD path relative to task2_isaacsim/ or absolute
   --objects-usd-path PATH    Task 2 objects USD path (barebone scene only)
   --room-usd-path PATH       Room USD path (room scene only)
-  --embodiment NAME          Embodiment config key (default: fr3duo_mobile)
   --controller-mode MODE     none|position (default: position)
   --with-keyboard-teleop     Start the keyboard->base teleop adapter (default input)
   --with-gello-teleop        Start the GELLO->bridge teleop adapter
@@ -93,10 +93,6 @@ while [[ $# -gt 0 ]]; do
       ;;
     --scene)
       SCENE="$2"
-      shift 2
-      ;;
-    --embodiment)
-      EMBODIMENT="$2"
       shift 2
       ;;
     --controller-mode)
@@ -206,7 +202,6 @@ if [[ "${SCENE}" == "room" ]]; then
 else
   echo "Objects USD:         ${HOST_OBJECTS_USD}"
 fi
-echo "Embodiment:          ${EMBODIMENT}"
 echo "Controller mode:     ${CONTROLLER_MODE}"
 echo "Teleop adapters:     ${TELEOP_ADAPTERS:-<none>}"
 echo "Arm keyboard teleop: ${WITH_ARM_KEYBOARD_TELEOP}"
@@ -249,8 +244,6 @@ if [[ "${SCENE}" == "room" ]]; then
     "--robot-usd" "${CONTAINER_USD}"
     "--room-usd" "${CONTAINER_ROOM_USD}"
     "--task" "task2"
-    "--embodiment" "${EMBODIMENT}"
-    "--franka-root" "${CONTAINER_REPO}/task1_isaacsim"
   )
 else
   if [[ "${HOST_OBJECTS_USD}" != "${REPO_ROOT}/"* ]]; then
@@ -262,8 +255,6 @@ else
   BRIDGE_ARGS=(
     "--usd-path" "${CONTAINER_USD}"
     "--objects-usd-path" "${CONTAINER_OBJECTS_USD}"
-    "--embodiment" "${EMBODIMENT}"
-    "--franka-root" "${CONTAINER_REPO}/task1_isaacsim"
   )
 fi
 

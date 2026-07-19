@@ -27,8 +27,9 @@ if str(_SCENES_DIR) not in sys.path:
 
 # Import-safe before SimulationApp: pxr/omni imports live inside its functions.
 import scene_robot_room_keyboard as room_scene  # noqa: E402
-from isaacsim_fr3duo_teleop_bridge_args import (
-    add_common_bridge_args,  # noqa: E402
+from isaacsim_fr3duo_teleop_bridge_args import (  # noqa: E402
+    add_common_bridge_args,
+    resolve_recording_flags,
 )
 
 DEFAULT_ROBOT_USD = (
@@ -95,6 +96,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
 
 
 args_cli = _build_arg_parser().parse_args()
+resolve_recording_flags(args_cli)
 
 from isaacsim import SimulationApp  # noqa: E402
 
@@ -112,26 +114,25 @@ simulation_app.update()
 import isaacsim_fr3duo_teleop_bridge_core as core  # noqa: E402
 
 import omni.kit.app  # noqa: E402
+import omni.usd  # noqa: E402
 from isaacsim.core.api import World  # noqa: E402
 from isaacsim.core.prims import SingleArticulation  # noqa: E402
 from isaacsim.core.utils.viewports import set_camera_view  # noqa: E402
 
 ROBOT_PRIM_PATH = "/World/Robot"
+TASK_OBJECTS_ROOT = "/World/Scene/task_objects"
 TASK2_VIEW_EYE = (1.0, 2.5, 1.35)
 
 
 def main():
     room_path = Path(args_cli.room_usd).expanduser()
     robot_path = Path(args_cli.robot_usd).expanduser()
-    franka_root = Path(args_cli.franka_root).expanduser()
     if not room_path.is_file():
         raise FileNotFoundError(f"Room USD not found: {room_path}")
     if not robot_path.is_file():
         raise FileNotFoundError(f"Robot USD not found: {robot_path}")
 
     groups = core._load_joint_groups(
-        franka_root,
-        args_cli.embodiment,
         include_browser_commands=not args_cli.disable_browser_command_topics,
     )
 
@@ -156,6 +157,16 @@ def main():
             target=list(room_scene.TASK2_TABLE_POSITION),
             camera_prim_path="/OmniverseKit_Persp",
         )
+
+    stage = omni.usd.get_context().get_stage()
+    import recording  # noqa: PLC0415
+
+    # build_stage already created the eval camera prim + graph; the scene
+    # camera config pass adopts them (pose from yaml) and only builds
+    # graphs for cameras the scene did not author.
+    recording.setup_recording_cameras(
+        stage, args_cli, ROBOT_PRIM_PATH, "cameras_room.yaml"
+    )
 
     # Adopt the room's authored PhysicsScene rather than creating a second one.
     physics_scene_path = core._find_physics_scene_path() or "/physicsScene"
@@ -189,6 +200,16 @@ def main():
         arm_keyboard_teleop,
     ) = core.setup_robot_control(robot, groups, args_cli)
 
+    tick_callbacks = recording.build_recording_tick_callbacks(
+        world,
+        robot,
+        stage,
+        args_cli,
+        TASK_OBJECTS_ROOT,
+        spine_controller=spine_keyboard_controller,
+        arm_teleop=arm_keyboard_teleop,
+    )
+
     core.run_teleop_loop(
         simulation_app,
         world,
@@ -204,6 +225,7 @@ def main():
         # Keep rendering in headless sessions so the task2 eval camera
         # OmniGraph still publishes /isaac/eval_camera/*.
         force_render=True,
+        tick_callbacks=tick_callbacks,
     )
 
 

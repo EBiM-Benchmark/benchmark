@@ -1,0 +1,117 @@
+# Copyright (c) 2026 The EBiM Benchmark Contributors
+# SPDX-License-Identifier: Apache-2.0
+#
+# Single source of truth for the ROS 2 topic names shared by the Task 2
+# Isaac Sim bridge (scripts/), the sim-side recording publishers
+# (scripts/recording/), and the LeRobot recorder
+# (services/recording/record_task2.py).
+#
+# Loaded through scripts/topics.py, which FAILS HARD when this
+# file or any required key is missing — there is no fallback to baked-in
+# defaults, so a rename here is picked up (or loudly rejected) by every
+# Task 2 process at startup.
+#
+# COUPLED VALUES — editing them here is NOT enough:
+#  * bridge.joint_groups.*.command / browser_command and teleop.pedal_state
+#    must match the Task 1 services reused via mount:
+#    task1_isaacsim/scripts/controllers/ros_joint_republisher.py
+#    (--bridge-prefix/--isaac-prefix), the browser_controller service, and
+#    the teleop adapters.
+#  * cameras.robot.*.namespace and shape must match
+#    assets/embodiments/fr3duo_mobile_task2/camera_sensors.yaml (or the
+#    file passed via --camera-sensors-yaml; cross-checked at startup by
+#    scripts/recording/camera_publishers.py).
+#  * cameras.eval.* must match the scene camera configs
+#    (config/cameras_<scene>.yaml, cross-checked by
+#    scripts/recording/scene_cameras.py), the room scene's hardcoded
+#    eval-camera setup, and the Task 2 evaluation stack configuration.
+version: 1
+
+# Simulation time; published by the bridge node from world.current_time,
+# the recorder paces its frame sampling on it.
+# Deliberately NOT /clock: the robot USD's embedded ROS_JointStates
+# OmniGraph contains a ros2_publish_clock node that is instantiated during
+# stage build (before the bridge deactivates the graph prims) and leaks a
+# publisher that keeps emitting time=0.0 on /clock every tick. A recorder
+# listening on /clock sees the cache flip between 0.0 and the real sim
+# time, latches t0=0.0 at episode start, and discards the episode as a
+# clock jump. A bridge-owned name sidesteps any publisher embedded in
+# robot assets.
+clock: /isaac/clock
+
+teleop:
+  pedal_state: /pedal/state
+
+bridge:
+  # state: published by the bridge; command / browser_command: consumed by
+  # the bridge (browser variants only when browser command topics are on).
+  joint_groups:
+    left_arm:
+      state: /isaac/left_joint_states
+      command: /isaac/left_joint_commands
+      browser_command: /isaac/browser/left_joint_commands
+    right_arm:
+      state: /isaac/right_joint_states
+      command: /isaac/right_joint_commands
+      browser_command: /isaac/browser/right_joint_commands
+    left_gripper:
+      state: /isaac/left_robotiq_joint_states
+      command: /isaac/left_robotiq_joint_commands
+      browser_command: /isaac/browser/left_robotiq_joint_commands
+    right_gripper:
+      state: /isaac/right_robotiq_joint_states
+      command: /isaac/right_robotiq_joint_commands
+      browser_command: /isaac/browser/right_robotiq_joint_commands
+
+# Published by the bridge only with --publish-recording-topics (implied by
+# the scene scripts' --record flag).
+recording:
+  applied_joint_commands: /isaac/applied_joint_commands
+  joint_states_full: /isaac/joint_states_full
+  odom: /isaac/odom
+  cmd_vel_applied: /isaac/cmd_vel_applied
+  ee_pose:
+    left: /isaac/left_ee_pose
+    right: /isaac/right_ee_pose
+
+# Ground-truth streams from scripts/recording/scene_capture.py.
+ground_truth:
+  object_poses: /isaac/task2/object_poses
+  pad_points: /isaac/task2/pad_points
+  scene_reset: /isaac/task2/scene_reset
+  # Any message here triggers the same reset as the '5' hotkey (published
+  # by the recorder's menu command 5).
+  scene_reset_request: /isaac/task2/scene_reset_request
+
+cameras:
+  # Relative sub-topic names used by the OmniGraph camera helpers; a full
+  # topic is <namespace>/<subtopic>.
+  subtopics:
+    image: image_raw
+    camera_info: camera_info
+    depth: depth
+  # Keys are the recorder camera keys (record_task2.py --cameras and the
+  # dataset video feature names). shape is [H, W, C] of the RGB stream and
+  # must equal render_resolution in camera_sensors.yaml (sensors_key is the
+  # camera's key in that file).
+  robot:
+    head:
+      namespace: /isaac/head_camera
+      sensors_key: head_camera
+      shape: [720, 1280, 3]
+    wrist_left:
+      namespace: /isaac/left_wrist_camera
+      sensors_key: left_wrist_camera
+      shape: [480, 848, 3]
+    wrist_right:
+      namespace: /isaac/right_wrist_camera
+      sensors_key: right_wrist_camera
+      shape: [480, 848, 3]
+  # Static room camera published by the room scene (recorder key
+  # "eval_camera"); the extra streams feed --suggest-success.
+  eval:
+    namespace: /isaac/eval_camera
+    shape: [720, 1280, 3]
+    bbox_2d_tight: /isaac/eval_camera/bbox_2d_tight
+    semantic_labels: /isaac/eval_camera/semantic_labels
+    semantic_segmentation: /isaac/eval_camera/semantic_segmentation

@@ -27,7 +27,10 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from isaacsim_fr3duo_teleop_bridge_args import add_common_bridge_args
+from isaacsim_fr3duo_teleop_bridge_args import (
+    add_common_bridge_args,
+    resolve_recording_flags,
+)
 
 
 def _build_arg_parser() -> argparse.ArgumentParser:
@@ -40,9 +43,9 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--objects-usd-path",
         default="/workspace/EBiM_Challenge/assets/task2_objects/"
-        "task2_objects.usda",
+        "task2_objects_base.usda",
         help="Task 2 objects USD (RAM boards, target, deformable "
-        "thermal pad).",
+        "thermal pad, and thermal pad base).",
     )
     parser.add_argument(
         "--objects-position",
@@ -80,6 +83,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
 
 
 args_cli = _build_arg_parser().parse_args()
+resolve_recording_flags(args_cli)
 
 from isaacsim import SimulationApp  # noqa: E402
 
@@ -104,7 +108,6 @@ from isaacsim.core.utils.viewports import set_camera_view  # noqa: E402
 def main():
     usd_path = Path(args_cli.usd_path).expanduser()
     objects_usd_path = Path(args_cli.objects_usd_path).expanduser()
-    franka_root = Path(args_cli.franka_root).expanduser()
     if not usd_path.exists():
         raise FileNotFoundError(f"USD path does not exist: {usd_path}")
     if not objects_usd_path.exists():
@@ -113,8 +116,6 @@ def main():
         )
 
     groups = core._load_joint_groups(
-        franka_root,
-        args_cli.embodiment,
         include_browser_commands=not args_cli.disable_browser_command_topics,
     )
 
@@ -138,6 +139,12 @@ def main():
         args_cli.objects_prim_path,
         args_cli.objects_position,
         args_cli.objects_yaw_deg,
+    )
+
+    import recording  # noqa: PLC0415
+
+    recording.setup_recording_cameras(
+        stage, args_cli, args_cli.robot_prim_path, "cameras_barebone.yaml"
     )
 
     world.scene.add_default_ground_plane()
@@ -166,6 +173,16 @@ def main():
         arm_keyboard_teleop,
     ) = core.setup_robot_control(robot, groups, args_cli)
 
+    tick_callbacks = recording.build_recording_tick_callbacks(
+        world,
+        robot,
+        stage,
+        args_cli,
+        args_cli.objects_prim_path,
+        spine_controller=spine_keyboard_controller,
+        arm_teleop=arm_keyboard_teleop,
+    )
+
     core.run_teleop_loop(
         simulation_app,
         world,
@@ -178,6 +195,12 @@ def main():
         spine_keyboard_controller,
         arm_keyboard_teleop,
         args_cli,
+        # Camera OmniGraphs only publish on rendered frames; keep rendering
+        # in headless sessions when any cameras are enabled.
+        force_render=(
+            args_cli.enable_robot_cameras or args_cli.enable_scene_cameras
+        ),
+        tick_callbacks=tick_callbacks,
     )
 
 
