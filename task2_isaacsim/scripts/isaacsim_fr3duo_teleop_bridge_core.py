@@ -28,6 +28,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import numpy as np  # noqa: E402
 import rclpy  # noqa: E402
+import yaml  # noqa: E402
 from geometry_msgs.msg import PoseStamped, Twist  # noqa: E402
 from isaac_bridge_constants import (  # noqa: E402
     LEFT_GRIPPER_COUPLED_JOINT_MULTIPLIERS,
@@ -184,12 +185,42 @@ def _command_topics(
 
 
 def _load_joint_groups(
+    franka_root: Path,
+    embodiment: str,
     *,
     include_browser_commands: bool = True,
 ) -> list[JointGroup]:
+    contract_path = (
+        franka_root
+        / "assets"
+        / "embodiments"
+        / embodiment
+        / "data_contract.yaml"
+    )
+    left_names = list(LEFT_JOINTS)
+    right_names = list(RIGHT_JOINTS)
+
+    if contract_path.is_file():
+        contract = (
+            yaml.safe_load(contract_path.read_text(encoding="utf-8")) or {}
+        )
+        arms = contract.get("state_structure", {}).get("arms", {})
+        left_names = list(
+            arms.get("left", {}).get("joint_names") or left_names
+        )
+        right_names = list(
+            arms.get("right", {}).get("joint_names") or right_names
+        )
+    else:
+        print(
+            f"Warning: joint contract not found at {contract_path}; "
+            "using built-in joint names.",
+            file=sys.stderr,
+        )
+
     requested_names = {
-        "left_arm": list(LEFT_JOINTS),
-        "right_arm": list(RIGHT_JOINTS),
+        "left_arm": left_names,
+        "right_arm": right_names,
         "left_gripper": [LEFT_GRIPPER_DRIVER_JOINT],
         "right_gripper": [RIGHT_GRIPPER_DRIVER_JOINT],
     }

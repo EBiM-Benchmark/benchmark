@@ -13,6 +13,17 @@ from pathlib import Path
 
 def add_common_bridge_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
+        "--embodiment",
+        default="fr3duo_mobile",
+        help="Embodiment key under task1_isaacsim/assets/embodiments.",
+    )
+    parser.add_argument(
+        "--franka-root",
+        default="/workspace/EBiM_Challenge/task1_isaacsim",
+        help="Task 1 root (containing assets/embodiments) inside the "
+        "container.",
+    )
+    parser.add_argument(
         "--disable-browser-command-topics",
         action="store_true",
         help="Do not subscribe to /isaac/browser/* command topics.",
