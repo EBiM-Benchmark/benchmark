@@ -64,6 +64,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=True,
         help="Enable rigid-body physics for the Task 3 coffee beans.",
     )
+    parser.add_argument(
+        "--franka-root",
+        default="/workspace/EBiM_Challenge/task1_isaacsim",
+        help="Task 1 root (containing assets/embodiments) inside the "
+        "Isaac Lab container.",
+    )
     add_common_bridge_args(parser)
     parser.set_defaults(
         arm_teleop_gripper_open=None,
