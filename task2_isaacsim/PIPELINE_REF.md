@@ -39,6 +39,12 @@ Isaac Sim; the recorder imports it through
 | `/isaac/{left,right}_robotiq_joint_commands` | `sensor_msgs/JointState` | republisher (gripper calibration) → bridge |
 | `/isaac/browser/{left,right}_joint_commands`, `/isaac/browser/{left,right}_robotiq_joint_commands` | `sensor_msgs/JointState` | browser controller → bridge (disabled with `--disable-browser-command-topics`) |
 
+A per-group watchdog (`--command-timeout`, default 1 s, negative disables)
+stops re-applying a group's cached command once its topics go quiet — the
+drives hold the last applied target, so a dead publisher cannot stomp later
+state such as the post-reset ready pose. `/pedal/state` has its own
+`--pedal-timeout` (base twist forced to zero instead).
+
 ### Bridge state (60 Hz)
 
 | Topic | Type | Producer → Consumer |

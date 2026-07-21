@@ -50,6 +50,14 @@ def add_common_bridge_args(parser: argparse.ArgumentParser) -> None:
         "the base command to NONE.",
     )
     parser.add_argument(
+        "--command-timeout",
+        type=float,
+        default=1.0,
+        help="Seconds without a new message on a joint group's command "
+        "topics before its cached command stops being applied (the drives "
+        "hold the last applied target). Negative disables the watchdog.",
+    )
+    parser.add_argument(
         "--spine-keyboard-control",
         action=argparse.BooleanOptionalAction,
         default=True,
