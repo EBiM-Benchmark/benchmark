@@ -6,7 +6,9 @@
 # These run alongside (not inside) the Isaac Lab container. The simulator itself
 # is launched by scripts/run_isaaclab_newton_teleop.sh in the Isaac Lab
 # ros2_jazzy container. The teleop input *device* publishers (keyboard / GELLO /
-# pedal) come from the EBiM `teleoperation` repository on the host.
+# pedal) come from the EBiM `teleoperation` repository. The GELLO + pedal
+# service below mounts that checkout and runs the hardware publishers in a
+# dedicated container.
 #
 # `.` (the task1_isaacsim directory) is mounted at /workspace in every service.
 services:
@@ -69,7 +71,7 @@ services:
       - ROS_DISTRO=jazzy
       - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
       - FASTDDS_BUILTIN_TRANSPORTS=UDPv4
-      - TELEOP_ADAPTERS=${TELEOP_ADAPTERS:-keyboard gello}
+      - TELEOP_ADAPTERS=${TELEOP_ADAPTERS:-keyboard}
     volumes:
       - .:/workspace
     restart: unless-stopped
@@ -79,6 +81,35 @@ services:
       - teleop
 
   # Optional browser teleoperation UI (no hardware required) at http://localhost:8090.
+  # GELLO hardware publisher and GELLO->bridge adapter. The pedal publisher is
+  # installed in the same container and is started interactively because it
+  # reads directly from a terminal.
+  gello_pedal_teleop:
+    build:
+      context: .
+      dockerfile: services/gello_pedal_teleop/Dockerfile
+    container_name: task1_gello_pedal_teleop
+    network_mode: host
+    ipc: host
+    working_dir: /workspace/teleoperation
+    command: bash /workspace/task1_isaacsim/services/gello_pedal_teleop/start_gello_pedal_teleop.sh
+    environment:
+      - ROS_DISTRO=jazzy
+      - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+      - FASTDDS_BUILTIN_TRANSPORTS=UDPv4
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+      - GELLO_CONFIG_FILE=${GELLO_CONFIG_FILE:-franka_gello_duo.yaml}
+    volumes:
+      - .:/workspace/task1_isaacsim
+      - ${TELEOPERATION_ROOT:-../../teleoperation}:/workspace/teleoperation
+      - /dev:/dev
+    privileged: true
+    profiles:
+      - teleop
+    restart: unless-stopped
+    tty: true
+    stdin_open: true
+
   browser_controller:
     build:
       context: ./services/browser_controller

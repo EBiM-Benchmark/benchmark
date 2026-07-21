@@ -5,11 +5,12 @@ grippers + wrist D405 cameras on a steer-drive mobile base) in Isaac Lab, using
 the **Newton / MJWarp** physics backend, and includes an optional **deformable
 cable** (Vertex Block Descent) board-plugging world.
 
-The simulator runs **inside an Isaac Lab container**. The teleoperation input
-devices (keyboard / GELLO leader arms / USB foot pedal) come from the separate
+The simulator runs **inside an Isaac Lab container**. Device publishers come
+from the separate
 [`EBiM-Benchmark/teleoperation`](https://github.com/EBiM-Benchmark/teleoperation)
-repository running on the host. Small sim-side *adapter* nodes and ROS 2 helper
-services glue the two together.
+checkout. The `task1_gello_pedal_teleop` container mounts that checkout and
+runs the GELLO publisher and bridge; the pedal publisher is launched
+interactively in the same container.
 
 > **Teleop input:** keyboard is the recommended default for the mobile base.
 > The **tested** configuration is GELLO leader arms + USB foot pedal (see
@@ -44,28 +45,23 @@ compute contact with the cable, and the cable state is then updated by the VBDSo
 ## Architecture
 
 ```
- HOST (teleoperation repo, ROS 2)             THIS REPO (task1_isaacsim)
- ┌───────────────────────────┐
- │ keyboard_state_publisher   │──/keyboard/state─┐
- │ pedal_state_publisher      │──/pedal/state────┼───────────────┐
- │ gello_publisher (L/R)      │──/*/gello/*──┐   │               │
- └───────────────────────────┘              │   │               │
-                                            ▼   ▼               ▼
-                        ┌──────────────── teleop_adapters ──────────────┐
-                        │ gello_to_bridge.py : /*/gello/* → /bridge/*    │
-                        │ keyboard_to_base.py: /keyboard/state→/pedal/state
-                        └───────────────┬───────────────────────────────┘
-                                        │ /bridge/*
-                                  ros_republisher  ── /isaac/* ──►┐
-                                        │ (gripper calibration)   │
-        position_controller ───────────┘                         │
-        browser_controller (optional UI) ── /isaac/browser/* ─────┤
-                                                                  ▼
-   ISAAC LAB CONTAINER (ros2_jazzy)                     isaaclab_fr3duo_newton_bridge.py
-   ┌────────────────────────────────────┐  /isaac/*, /pedal/state   (Newton/MJWarp sim)
-   │ run_cable_vbd_ros_headless.py  ◄────┼── /cable/*, gripper pose ─┘
-   │  (cable_world VBD, optional)        │
-   └────────────────────────────────────┘
+ teleoperation checkout
+          │ mounted into container
+          ▼
+ task1_gello_pedal_teleop
+ ├── gello_publisher ── /*/gello/* ──► gello_to_bridge.py ── /bridge/*
+ └── pedal_state_publisher (interactive) ────────────────► /pedal/state
+                                                           │
+ task1_ros_republisher ◄────────────── /bridge/*            │
+          │ /isaac/*                                       │
+          ▼                                                ▼
+ isaaclab_fr3duo_newton_bridge.py ◄─────────────────────────┘
+          │
+          ├── Newton/MJWarp robot simulation
+          └── run_cable_vbd_ros_headless.py (optional cable VBD)
+
+ keyboard_state_publisher ── /keyboard/state ──► teleop_adapters
+                                                └── /pedal/state
 ```
 
 - `/isaac/*` — joint states and command topics the bridge publishes/subscribes.
@@ -99,6 +95,7 @@ task1_isaacsim/
 │   └── embodiments/fr3duo_mobile/*.yaml    # embodiment data contract / joint drives
 ├── services/
 │   ├── teleop_adapters/start_teleop_adapters.sh
+│   ├── gello_pedal_teleop/                # GELLO + pedal ROS 2 container
 │   └── browser_controller/                 # optional no-hardware web UI (port 8090)
 ├── isaaclab_overlay/                       # ros2_jazzy Isaac Lab overlay (see its README)
 ├── docker-compose.yml                      # ROS 2 helper services
@@ -175,12 +172,19 @@ cd ../IsaacLab && ./docker/container.py start ros2_jazzy && cd -
 After this, `docker ps` lists `isaac-lab-ros2_jazzy` with this repo mounted at
 `/workspace/EBiM_Challenge`. Override the checkout location with `ISAACLAB_ROOT`.
 
-### 4. Set up the teleoperation device layer (host)
+### 4. Set up the teleoperation device layer
 
-Clone and build the [`teleoperation`](https://github.com/EBiM-Benchmark/teleoperation)
-repository on the host per its README (pixi / ROS 2 + `colcon build`). It
-provides the keyboard / GELLO / pedal publishers. Use a ROS 2 middleware that
-matches the containers, e.g. `export RMW_IMPLEMENTATION=rmw_fastrtps_cpp`.
+Clone [`teleoperation`](https://github.com/EBiM-Benchmark/teleoperation) next
+to the benchmark repository. The GELLO + pedal container mounts this checkout
+and builds the two required ROS packages on startup:
+
+```bash
+cd ..
+git clone https://github.com/EBiM-Benchmark/teleoperation.git
+cd benchmark
+```
+
+Set `TELEOPERATION_ROOT` in `task1_isaacsim/.env` when the checkout is elsewhere.
 
 ---
 
@@ -214,7 +218,7 @@ This mirrors the command the pipeline was validated with:
 ```bash
 EMBODIMENT=fr3duo_mobile bash task1_isaacsim/scripts/run_isaaclab_newton_teleop.sh \
   --usd-path assets/Robotiq_2f_85_with_d405_mobile_fr3_duo_v0_2.usd \
-  --controller-mode position --with-gello-teleop --with-cable --no-browser \
+  --controller-mode position --with-gello-pedal-teleop --with-cable --no-browser \
   -- --cable-world-position-offset 1.8 0.0 0.73 \
      --cable-robotiq-contact-x-offset 0.01 \
      --cable-robotiq-contact-y-offset -0.045 \
@@ -223,40 +227,38 @@ EMBODIMENT=fr3duo_mobile bash task1_isaacsim/scripts/run_isaaclab_newton_teleop.
      --spine-keyboard-step 0.02 --spine-keyboard-min 0.0 --spine-keyboard-max 0.5
 ```
 
-On the host (teleoperation env): launch the GELLO publisher and the pedal
-publisher (see the teleoperation README):
+The launcher creates `task1_gello_pedal_teleop` and starts GELLO automatically.
+Start the pedal publisher interactively in the same container:
 
 ```bash
-ros2 launch franka_gello_state_publisher main.launch.py config_file:=franka_gello_duo.yaml
-ros2 run pedal_state_publisher pedal_state_publisher
+docker exec -it task1_gello_pedal_teleop bash -lc \
+  'source /opt/ros/jazzy/setup.bash && \
+   source /tmp/task1_teleop_install/setup.bash && \
+   ros2 run pedal_state_publisher pedal_state_publisher'
 ```
-
-`--with-gello-pedal-teleop` is accepted as an alias of `--with-gello-teleop`.
 
 ---
 
 ## Teleoperation options
 
-| Input | Host publisher (teleoperation repo) | Sim-side glue | Drives |
+| Input | Publisher location | Sim-side glue | Drives |
 | --- | --- | --- | --- |
 | **Keyboard** (default) | `keyboard_state_publisher` → `/keyboard/state` | `keyboard_to_base.py` | Mobile base (`w/s` fwd/back, `a/d` strafe, `q/e` yaw) |
-| **Foot pedal** (tested) | `pedal_state_publisher` → `/pedal/state` | none (direct) | Mobile base (strafe + yaw) |
-| **GELLO** (tested) | `gello_publisher` → `/*/gello/joint_states` | `gello_to_bridge.py` | Both arms + grippers |
+| **Foot pedal** (tested) | `task1_gello_pedal_teleop` → `/pedal/state` | none (direct) | Mobile base (strafe + yaw) |
+| **GELLO** (tested) | `task1_gello_pedal_teleop` → `/*/gello/joint_states` | `gello_to_bridge.py` | Both arms + grippers |
 | **Browser UI** | — | `browser_controller` (`/isaac/browser/*`) | Arms, grippers, base — no hardware |
 | **Spine (height)** | — | in bridge (`--spine-keyboard-control`) | Vertical spine joint (Up/Down arrows) |
 
-Select adapters started by the launcher with `--with-keyboard-teleop` and/or
-`--with-gello-teleop` (they map to the `teleop_adapters` service; `TELEOP_ADAPTERS`
-in `.env` chooses which adapters run when the service starts standalone).
+`--with-gello-pedal-teleop` starts the dedicated GELLO + pedal container.
+`teleop_adapters` remains available for keyboard-to-base conversion and
+defaults to the keyboard adapter only.
 
 The keyboard publisher only emits while a key is held; when you release, the
 bridge's `--pedal-timeout` stops the base automatically.
 
-> **Run device publishers as independent foreground processes.** The GELLO,
-> keyboard, and pedal publishers read hardware/keyboard input in a per-process
-> thread. Launch each in its **own foreground terminal** (e.g. `docker exec -it …`
-> or a plain shell). Running them **detached** (`docker exec -d … nohup … &`) can
-> freeze the device read thread so the published joint values never change.
+> **Run the pedal publisher in a foreground terminal.** It reads directly from
+> terminal input, so launching it detached can freeze its input loop. GELLO and
+> `gello_to_bridge.py` are managed by `task1_gello_pedal_teleop`.
 
 **Foot pedal note:** after starting `pedal_state_publisher`, click once inside its
 terminal window to give it keyboard focus, switch your keyboard input method to

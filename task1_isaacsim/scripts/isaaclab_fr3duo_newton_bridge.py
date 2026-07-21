@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """IsaacLab Newton/MJWarp ROS bridge for the fr3duo mobile USD.
 
-This script is meant to run inside the Isaac Lab ROS2 container, while the
-Task 1 ROS helper containers keep running on the host network.  It
-publishes/subscribes the `/isaac/*` topics so `ros_republisher`,
-`position_controller`, `browser_controller`, and the `teleop_adapters`
-(keyboard/GELLO) can be reused unchanged.
+This script is meant to run inside the IsaacLab ROS2 container, while the
+existing franka_isaacSim ROS helper containers keep running on the host
+network.  It intentionally publishes/subscribes the same `/isaac/*` topics as
+the older Isaac Sim bridge so `ros_republisher`, `position_controller`,
+`browser_controller`, and `gello_pedal_teleop` can be reused unchanged.
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ import math
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional
+from typing import Dict, List, Optional
 
 from isaaclab.app import AppLauncher
 import traceback
@@ -24,26 +24,45 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--usd-path",
-        default="/workspace/EBiM_Challenge/task1_isaacsim/assets/Robotiq_2f_85_with_d405_mobile_fr3_duo_v0_2.usd",
+        default="../assets/Robotiq_2f_85_with_d405_mobile_fr3_duo_v0_2.usd",
         help="USD file to load into the IsaacLab scene.",
     )
     parser.add_argument(
         "--embodiment",
         default="fr3duo_mobile",
-        help="Embodiment key under assets/embodiments.",
+        help="Embodiment name to load configuration from (default: fr3duo_mobile)",
     )
     parser.add_argument(
         "--franka-root",
-        default="/workspace/EBiM_Challenge/task1_isaacsim",
-        help="Task 1 root (containing assets/embodiments and cable_world) inside the Isaac Lab container.",
+        default="/workspace/franka_isaacSim",
+        help="franka_isaacSim repository mount inside the isaac-lab-ros2_jazzy container.",
     )
-    parser.add_argument("--robot-prim-path", default="{ENV_REGEX_NS}/Robot")
     parser.add_argument(
-        "--disable-browser-command-topics",
+        "--robot-prim-path",
+        default="{ENV_REGEX_NS}/Robot",
+        help="Stage prim path for the robot. /World/envs/env_0/Robot.",
+    )
+    parser.add_argument(
+        "--room-usd-path",
+        default="../assets/robot_room_v2/robot_room_v2.usdc",
+        help="Room USD/USDC path to load under {ENV_REGEX_NS}/Room, relative to --franka-root unless absolute.",
+    )
+    parser.add_argument(
+        "--no-room",
+        action="store_true",
+        help="Do not load the room USD.",
+    )
+    parser.add_argument(
+        "--no-browser",
         action="store_true",
         help="Do not subscribe to /isaac/browser/* command topics.",
     )
-    parser.add_argument("--ros-publish-rate", type=float, default=60.0)
+    parser.add_argument(
+        "--ros-publish-rate",
+        type=float,
+        default=60.0,
+        help="Joint-state publish rate in Hz for /isaac/*_joint_states",
+    )
     parser.add_argument(
         "--pedal-linear-speed",
         type=float,
@@ -63,12 +82,6 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         help="Seconds without a new /pedal/state message before forcing the base command to NONE.",
     )
     parser.add_argument(
-        "--spine-keyboard-control",
-        action=argparse.BooleanOptionalAction,
-        default=True,
-        help="Use keyboard Up/Down arrows to command franka_spine_vertical_joint height.",
-    )
-    parser.add_argument(
         "--spine-keyboard-step",
         type=float,
         default=0.01,
@@ -77,22 +90,33 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--spine-keyboard-min",
         type=float,
-        default=-0.05,
+        default=0.0,
         help="Minimum franka_spine_vertical_joint target in meters for keyboard control.",
     )
     parser.add_argument(
         "--spine-keyboard-max",
         type=float,
-        default=0.50,
+        default=0.850,
         help="Maximum franka_spine_vertical_joint target in meters for keyboard control.",
     )
-    parser.add_argument("--physics-hz", type=float, default=240.0)
-    parser.add_argument("--render-hz", type=float, default=60.0)
-    parser.add_argument("--physics-substeps", type=int, default=2)
-    parser.add_argument("--effort-limit", type=float, default=400.0)
-    parser.add_argument("--velocity-limit", type=float, default=8.0)
-    parser.add_argument("--stiffness", type=float, default=800.0)
-    parser.add_argument("--damping", type=float, default=80.0)
+    parser.add_argument(
+        "--physics-hz",
+        type=float,
+        default=240.0,
+        help="Isaac physics stepping frequency in Hz",
+    )
+    parser.add_argument(
+        "--render-hz",
+        type=float,
+        default=60.0,
+        help="Render frequency in Hz (physics steps are decimated to this rate)",
+    )
+    parser.add_argument(
+        "--physics-substeps",
+        type=int,
+        default=2,
+        help="Number of physics substeps requested from Isaac",
+    )
     parser.add_argument("--mj-njmax", type=int, default=2048)
     parser.add_argument("--mj-nconmax", type=int, default=512)
     parser.add_argument("--mj-cone", default="pyramidal")
@@ -133,23 +157,6 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         help="Device for the raw Newton cable world. Defaults to the IsaacLab --device value.",
     )
     parser.add_argument(
-        "--cable-gripper-body-name",
-        default="left_fr3v2_hand",
-        help="IsaacLab robot body whose world pose drives the VBD cable gripper.",
-    )
-    parser.add_argument(
-        "--cable-gripper-side",
-        choices=["left", "right"],
-        default="left",
-        help="Robot gripper command side used to derive cable gripper gap.",
-    )
-    parser.add_argument(
-        "--cable-gripper-gap-m",
-        type=float,
-        default=None,
-        help="Fixed cable gripper gap in meters. If omitted, maps robot gripper joint state to the cable gap.",
-    )
-    parser.add_argument(
         "--cable-robotiq-finger-targets",
         action=argparse.BooleanOptionalAction,
         default=True,
@@ -172,7 +179,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         "--cable-robotiq-contact-x-offset",
         type=float,
         default=0.0,
-        help="Additional local X offset in meters from each Robotiq inner_finger frame to the red contact box center.",
+        help="Additional local X offset in meters from the Robotiq visual bbox center to the red contact box center.",
     )
     parser.add_argument(
         "--cable-robotiq-contact-y-offset",
@@ -193,44 +200,6 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         help="Use the opposite local-Y contact side on each Robotiq inner finger when red boxes open opposite to the visual pads.",
     )
     parser.add_argument(
-        "--cable-robotiq-finger-prim",
-        action="append",
-        default=[],
-        help=(
-            "Robotiq finger prim selector. Repeat four times if overriding defaults. "
-            "A selector may be an absolute prim path or a path suffix such as "
-            "left_Robotiq_2F_85/left_inner_finger."
-        ),
-    )
-    parser.add_argument(
-        "--cable-gripper-position-offset",
-        type=float,
-        nargs=3,
-        default=(0.0, 0.0, 0.0),
-        metavar=("X", "Y", "Z"),
-        help="Cable-world offset added after mapping the robot body pose into the VBD gripper frame.",
-    )
-    parser.add_argument(
-        "--cable-proxy-finger-z-offset",
-        type=float,
-        default=0.0,
-        help="Visual-only offset in meters applied to proxy fingers along CableGripperProxyVisual local +Z.",
-    )
-    parser.add_argument(
-        "--cable-proxy-finger-cube-z-offset",
-        type=float,
-        default=0.0,
-        help="Visual-only offset in meters from each finger axes origin to the red cube center along local +Z.",
-    )
-    parser.add_argument(
-        "--cable-proxy-root-rpy-deg",
-        type=float,
-        nargs=3,
-        default=(0.0, 0.0, 0.0),
-        metavar=("ROLL", "PITCH", "YAW"),
-        help="Visual-only fixed local XYZ Euler offset in degrees applied to CableGripperProxyVisual root orientation.",
-    )
-    parser.add_argument(
         "--cable-world-position-offset",
         type=float,
         nargs=3,
@@ -245,22 +214,16 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         help="IsaacLab-world yaw rotation in degrees applied to the whole cable/table/board visual world.",
     )
     parser.add_argument(
-        "--cable-robot-quat-order",
-        choices=["wxyz", "xyzw"],
-        default="wxyz",
-        help="Quaternion order reported by the IsaacLab robot body pose.",
-    )
-    parser.add_argument(
-        "--cable-extra-arg",
-        action="append",
-        default=[],
-        help="Additional single argument forwarded to cable_world/run_board_cable.py. Repeat for multiple args.",
+        "--show-table-board-fixture-collisions",
+        action="store_true",
+        help="Show collision meshes under /World/TableBoardFixtureVisual for debugging.",
     )
     AppLauncher.add_app_launcher_args(parser)
     return parser
 
 
 args_cli = _build_arg_parser().parse_args()
+args_cli.enable_cameras = True
 app_launcher = AppLauncher(args_cli)
 simulation_app = app_launcher.app
 
@@ -272,6 +235,7 @@ import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg, AssetBaseCfg
 from isaaclab.actuators import ImplicitActuatorCfg
 from isaaclab.scene import InteractiveScene, InteractiveSceneCfg
+from isaaclab.sensors import CameraCfg
 from isaaclab_newton.physics import MJWarpSolverCfg, NewtonCfg
 
 try:
@@ -280,16 +244,39 @@ except Exception:  # pragma: no cover - optional extension/package
     KitVisualizerCfg = None
 
 import rclpy
-from geometry_msgs.msg import PoseStamped
 from rclpy.node import Node
 from sensor_msgs.msg import ChannelFloat32, JointState, PointCloud
 from geometry_msgs.msg import Point32
-from std_msgs.msg import Float32, String
+from std_msgs.msg import String
 
 try:
     import yaml
 except Exception:  # pragma: no cover - PyYAML should exist in the ROS image
     yaml = None
+
+
+def _path_relative_to_franka_root(path_value: str, franka_root: Path) -> Path:
+    path = Path(path_value).expanduser()
+    if path.is_absolute():
+        return path
+    return franka_root / path
+
+
+def _prepare_robot_room_texture_links(room_usd_path: Path) -> None:
+    room_dir = room_usd_path.parent
+    expected = room_dir / "textures" / "color_0C0C0C.exr"
+    source = room_dir / "whole_scene" / "color_0C0C0C.exr"
+    if expected.exists() or not source.exists():
+        return
+    try:
+        expected.parent.mkdir(parents=True, exist_ok=True)
+        expected.symlink_to(Path("..") / "whole_scene" / "color_0C0C0C.exr")
+    except OSError as exc:
+        print(
+            "Warning: failed to create robot room texture link "
+            f"{expected} -> {source}: {exc}",
+            file=sys.stderr,
+        )
 
 
 LEFT_FALLBACK_JOINTS = [
@@ -346,68 +333,66 @@ class JointGroup:
     requested_names: List[str]
 
 
-def _command_topics(primary_topic: str, browser_topic: str, include_browser: bool) -> List[str]:
-    topics = [primary_topic]
-    if include_browser:
-        topics.append(browser_topic)
-    return topics
-
-
-def _load_joint_groups(franka_root: Path, embodiment: str, *, include_browser_commands: bool = True) -> List[JointGroup]:
-    contract_path = franka_root / "assets" / "embodiments" / embodiment / "data_contract.yaml"
-    left_names = list(LEFT_FALLBACK_JOINTS)
-    right_names = list(RIGHT_FALLBACK_JOINTS)
+def _load_joint_groups(*, include_browser_commands: bool = True) -> List[JointGroup]:
+    left_arm = list(LEFT_FALLBACK_JOINTS)
+    right_arm = list(RIGHT_FALLBACK_JOINTS)
     left_gripper = LEFT_GRIPPER_DRIVER
     right_gripper = RIGHT_GRIPPER_DRIVER
-
-    if contract_path.exists() and yaml is not None:
-        with contract_path.open("r", encoding="utf-8") as f:
-            contract = yaml.safe_load(f) or {}
-        state = contract.get("state_structure", {})
-        arms = state.get("arms", {})
-        left_names = list(arms.get("left", {}).get("joint_names") or left_names)
-        right_names = list(arms.get("right", {}).get("joint_names") or right_names)
 
     return [
         JointGroup(
             label="left_arm",
             state_topic="/isaac/left_joint_states",
-            command_topics=_command_topics("/isaac/left_joint_commands", "/isaac/browser/left_joint_commands", include_browser_commands),
-            requested_names=left_names,
+            command_topics=[
+                "/isaac/left_joint_commands",
+                *(
+                    ["/isaac/browser/left_joint_commands"]
+                    if include_browser_commands
+                    else []
+                ),
+            ],
+            requested_names=left_arm,
         ),
         JointGroup(
             label="right_arm",
             state_topic="/isaac/right_joint_states",
-            command_topics=_command_topics("/isaac/right_joint_commands", "/isaac/browser/right_joint_commands", include_browser_commands),
-            requested_names=right_names,
+            command_topics=[
+                "/isaac/right_joint_commands",
+                *(
+                    ["/isaac/browser/right_joint_commands"]
+                    if include_browser_commands
+                    else []
+                ),
+            ],
+            requested_names=right_arm,
         ),
         JointGroup(
             label="left_gripper",
             state_topic="/isaac/left_robotiq_joint_states",
-            command_topics=_command_topics("/isaac/left_robotiq_joint_commands", "/isaac/browser/left_robotiq_joint_commands", include_browser_commands),
+            command_topics=[
+                "/isaac/left_robotiq_joint_commands",
+                *(
+                    ["/isaac/browser/left_robotiq_joint_commands"]
+                    if include_browser_commands
+                    else []
+                ),
+            ],
             requested_names=[left_gripper],
         ),
         JointGroup(
             label="right_gripper",
             state_topic="/isaac/right_robotiq_joint_states",
-            command_topics=_command_topics("/isaac/right_robotiq_joint_commands", "/isaac/browser/right_robotiq_joint_commands", include_browser_commands),
+            command_topics=[
+                "/isaac/right_robotiq_joint_commands",
+                *(
+                    ["/isaac/browser/right_robotiq_joint_commands"]
+                    if include_browser_commands
+                    else []
+                ),
+            ],
             requested_names=[right_gripper],
         ),
     ]
-
-
-def _candidate_joint_names(name: str) -> Iterable[str]:
-    yield name
-    if "fr3v2_joint" in name:
-        yield name.replace("fr3v2_joint", "fr3v2_1_joint")
-    if "fr3v2_1_joint" in name:
-        yield name.replace("fr3v2_1_joint", "fr3v2_joint")
-    if name == "left_robotiq_85_left_knuckle_joint":
-        yield "left_fr3v2_finger_joint1"
-    if name == "right_robotiq_85_left_knuckle_joint":
-        yield "right_fr3v2_finger_joint1"
-    if name.endswith("_joint"):
-        yield name[:-6]
 
 
 def _resolve_group_indices(groups: List[JointGroup], actual_names: List[str]) -> Dict[str, Dict[str, int]]:
@@ -416,18 +401,10 @@ def _resolve_group_indices(groups: List[JointGroup], actual_names: List[str]) ->
     for group in groups:
         group_map = {}
         for requested_name in group.requested_names:
-            for candidate in _candidate_joint_names(requested_name):
-                if candidate in actual_by_name:
-                    group_map[requested_name] = actual_by_name[candidate]
-                    break
+            if requested_name in actual_by_name:
+                group_map[requested_name] = actual_by_name[requested_name]
         resolved[group.label] = group_map
     return resolved
-
-
-def _as_tensor(value):
-    if hasattr(value, "torch"):
-        return value.torch
-    return value
 
 
 NEWTON_REVERSED_FIXED_JOINTS = (
@@ -436,11 +413,6 @@ NEWTON_REVERSED_FIXED_JOINTS = (
     "zed_mini_camera_joint",
 )
 
-
-def _iter_prims_under(root_prim):
-    yield root_prim
-    for child in root_prim.GetChildren():
-        yield from _iter_prims_under(child)
 
 
 def _swap_relationship_targets(prim, rel0_name: str, rel1_name: str) -> bool:
@@ -480,11 +452,13 @@ def _fix_single_articulation_root(robot_prim_path: str) -> None:
         print(f"Warning: cannot patch articulation roots: robot prim not found: {robot_prim_path}", file=sys.stderr)
         return
 
-    root_prims = [
-        prim
-        for prim in _iter_prims_under(robot_prim)
-        if prim.HasAPI(UsdPhysics.ArticulationRootAPI)
-    ]
+    root_prims = []
+    prim_stack = [robot_prim]
+    while prim_stack:
+        prim = prim_stack.pop()
+        if prim.HasAPI(UsdPhysics.ArticulationRootAPI):
+            root_prims.append(prim)
+        prim_stack.extend(reversed(prim.GetChildren()))
     if len(root_prims) <= 1:
         return
 
@@ -524,7 +498,10 @@ def _fix_newton_reversed_fixed_joints(robot_prim_path: str) -> None:
     wanted = set(NEWTON_REVERSED_FIXED_JOINTS)
     patched = []
     seen = set()
-    for prim in _iter_prims_under(robot_prim):
+    prim_stack = [robot_prim]
+    while prim_stack:
+        prim = prim_stack.pop()
+        prim_stack.extend(reversed(prim.GetChildren()))
         if prim.GetName() not in wanted:
             continue
         seen.add(prim.GetName())
@@ -552,73 +529,267 @@ def _fix_newton_reversed_fixed_joints(robot_prim_path: str) -> None:
             print(f"  {joint_path}")
 
 
-def _make_scene_cfg(usd_path: str, prim_path: str):
+def _load_home_joint_positions(franka_root: Path, embodiment: str) -> dict[str, float]:
+    if yaml is None:
+        raise RuntimeError("PyYAML is required to read joint_parametrization.yaml")
+
+    path = franka_root / "assets" / "embodiments" / embodiment / "joint_parametrization.yaml"
+    if not path.exists():
+        raise FileNotFoundError(f"Joint parametrization file not found: {path}")
+
+    with path.open("r", encoding="utf-8") as f:
+        cfg = yaml.safe_load(f) or {}
+
+    wanted = LEFT_FALLBACK_JOINTS + RIGHT_FALLBACK_JOINTS
+    wanted_set = set(wanted)
+    home_positions: dict[str, float] = {}
+    arm_groups = cfg.get("arm_groups", {}) or {}
+    for side in ("left", "right"):
+        for joint_cfg in (arm_groups.get(side, {}) or {}).get("controllable_joints", []) or []:
+            if not isinstance(joint_cfg, dict):
+                continue
+            name = joint_cfg.get("name")
+            if name not in wanted_set:
+                continue
+            if "home_position_rad" not in joint_cfg:
+                raise ValueError(f"Missing home_position_rad for joint {name} in {path}")
+            home_positions[str(name)] = float(joint_cfg["home_position_rad"])
+
+    missing = [name for name in wanted if name not in home_positions]
+    if missing:
+        raise ValueError(
+            "Missing home_position_rad entries in joint_parametrization.yaml for: " + ", ".join(missing)
+        )
+
+    return {name: home_positions[name] for name in wanted}
+
+
+def _load_arm_velocity_limits(franka_root: Path, embodiment: str) -> dict[str, float]:
+    if yaml is None:
+        raise RuntimeError("PyYAML is required to read joint_parametrization.yaml")
+
+    path = franka_root / "assets" / "embodiments" / embodiment / "joint_parametrization.yaml"
+    if not path.exists():
+        raise FileNotFoundError(f"Joint parametrization file not found: {path}")
+
+    with path.open("r", encoding="utf-8") as f:
+        cfg = yaml.safe_load(f) or {}
+
+    wanted = LEFT_FALLBACK_JOINTS + RIGHT_FALLBACK_JOINTS
+    wanted_set = set(wanted)
+    velocity_limits: dict[str, float] = {}
+    arm_groups = cfg.get("arm_groups", {}) or {}
+    for side in ("left", "right"):
+        for joint_cfg in (arm_groups.get(side, {}) or {}).get("controllable_joints", []) or []:
+            if not isinstance(joint_cfg, dict):
+                continue
+            name = joint_cfg.get("name")
+            if name not in wanted_set:
+                continue
+            if "velocity_limit_rad_s" not in joint_cfg:
+                raise ValueError(f"Missing velocity_limit_rad_s for joint {name} in {path}")
+            velocity_limits[str(name)] = float(joint_cfg["velocity_limit_rad_s"])
+
+    missing = [name for name in wanted if name not in velocity_limits]
+    if missing:
+        raise ValueError(
+            "Missing velocity_limit_rad_s entries in joint_parametrization.yaml for: " + ", ".join(missing)
+        )
+
+    return {name: velocity_limits[name] for name in wanted}
+
+
+def _load_scaled_joint_drive_configs(franka_root: Path, embodiment: str) -> dict[str, dict[str, float]]:
+    if yaml is None:
+        raise RuntimeError("PyYAML is required to read joint drive config files")
+
+    embodiment_dir = franka_root / "assets" / "embodiments" / embodiment
+    joint_drive_config_path = embodiment_dir / "joint_drive_config.yaml"
+    if not joint_drive_config_path.exists():
+        raise FileNotFoundError(f"Joint drive config file not found: {joint_drive_config_path}")
+
+    with joint_drive_config_path.open("r", encoding="utf-8") as f:
+        joint_drive_config = yaml.safe_load(f) or {}
+
+    joint_drives_meta = joint_drive_config.get("isaac_joint_drives", {}) or {}
+    raw_drive_path = joint_drives_meta.get("joint_drive_config", "isaac_joint_drives.yaml")
+    drive_path = Path(raw_drive_path)
+    if not drive_path.is_absolute():
+        drive_path = embodiment_dir / drive_path
+    if not drive_path.exists():
+        raise FileNotFoundError(f"Isaac joint drive config file not found: {drive_path}")
+
+    with drive_path.open("r", encoding="utf-8") as f:
+        drive_config = yaml.safe_load(f) or {}
+
+    scaling = joint_drive_config.get("scaling_parameters", {}) or {}
+    arm_scaling = scaling.get("arms", scaling) or {}
+    arm_stiffness_scale = float(arm_scaling.get("stiffness_scale", 1.0))
+    arm_damping_scale = float(arm_scaling.get("damping_scale", 1.0))
+    arm_max_force_scale = float(arm_scaling.get("max_force_scale", 1.0))
+
+    scaled: dict[str, dict[str, float]] = {}
+    wanted = set(LEFT_FALLBACK_JOINTS + RIGHT_FALLBACK_JOINTS)
+    for joint_name, cfg in (drive_config.get("joint_drives", {}) or {}).items():
+        if joint_name not in wanted or not isinstance(cfg, dict):
+            continue
+        scaled[str(joint_name)] = {
+            "effort_limit_sim": float(cfg.get("max_force", 0.0)) * arm_max_force_scale,
+            "stiffness": float(cfg.get("stiffness", 0.0)) * arm_stiffness_scale,
+            "damping": float(cfg.get("damping", 0.0)) * arm_damping_scale,
+        }
+
+    missing = [name for name in LEFT_FALLBACK_JOINTS + RIGHT_FALLBACK_JOINTS if name not in scaled]
+    if missing:
+        raise ValueError("Missing arm joint drive entries in isaac_joint_drives.yaml for: " + ", ".join(missing))
+
+    print(
+        "Loaded arm actuator drive config: "
+        f"{drive_path} (scales: k={arm_stiffness_scale:g}, d={arm_damping_scale:g}, "
+        f"force={arm_max_force_scale:g})"
+    )
+    return scaled
+
+
+def _make_arm_actuator_cfgs(franka_root: Path, embodiment: str) -> dict[str, ImplicitActuatorCfg]:
+    drive_cfgs = _load_scaled_joint_drive_configs(franka_root, embodiment)
+    velocity_limits = _load_arm_velocity_limits(franka_root, embodiment)
+
+    actuators: dict[str, ImplicitActuatorCfg] = {}
+    for joint_name in LEFT_FALLBACK_JOINTS + RIGHT_FALLBACK_JOINTS:
+        drive = drive_cfgs[joint_name]
+        actuators[f"arm_{joint_name}"] = ImplicitActuatorCfg(
+            joint_names_expr=[joint_name],
+            effort_limit_sim=drive["effort_limit_sim"],
+            velocity_limit_sim=velocity_limits[joint_name],
+            stiffness=drive["stiffness"],
+            damping=drive["damping"],
+        )
+    return actuators
+
+
+GRIPPER_ACTUATOR_JOINTS = [
+    "left_outer_knuckle_joint",
+    "left_right_inner_finger_joint",
+    "left_right_inner_finger_knuckle_joint",
+    "left_right_finger_joint",
+    "left_left_inner_finger_joint",
+    "left_left_inner_finger_knuckle_joint",
+    "right_outer_knuckle_joint",
+    "right_right_inner_finger_joint",
+    "right_right_inner_finger_knuckle_joint",
+    "right_right_finger_joint",
+    "right_left_inner_finger_joint",
+    "right_left_inner_finger_knuckle_joint",
+]
+
+GRIPPER_DRIVER_JOINTS = ["left_right_finger_joint", "right_right_finger_joint"]
+
+
+
+def _set_angular_drive_type_for_joints(robot_prim_path: str, joint_names: list[str], drive_type: str) -> None:
+    stage = omni.usd.get_context().get_stage()
+    if stage is None:
+        print("Warning: cannot patch joint drive types: no USD stage", file=sys.stderr)
+        return
+    robot_prim = stage.GetPrimAtPath(robot_prim_path)
+    if not robot_prim.IsValid():
+        print(f"Warning: cannot patch joint drive types: robot prim not found: {robot_prim_path}", file=sys.stderr)
+        return
+
+    wanted = set(joint_names)
+    patched = []
+    seen = set()
+    prim_stack = [robot_prim]
+    while prim_stack:
+        prim = prim_stack.pop()
+        prim_stack.extend(reversed(prim.GetChildren()))
+        if prim.GetName() not in wanted:
+            continue
+        seen.add(prim.GetName())
+        drive = UsdPhysics.DriveAPI.Get(prim, "angular")
+        if not drive:
+            drive = UsdPhysics.DriveAPI.Apply(prim, "angular")
+        drive.GetTypeAttr().Set(drive_type)
+        patched.append(str(prim.GetPath()))
+
+    missing = wanted - seen
+    if missing:
+        print("Warning: drive-type patch joint names not found: " + ", ".join(sorted(missing)), file=sys.stderr)
+    if patched:
+        print(f"Set angular drive type to {drive_type} for:")
+        for joint_path in patched:
+            print(f"  {joint_path}")
+
+
+def _make_scene_cfg(usd_path: str, prim_path: str, room_usd_path: str | None = None):
+    franka_root = Path(args_cli.franka_root).expanduser()
+    embodiment = args_cli.embodiment
+    actuators = {
+        "base_steering": ImplicitActuatorCfg(
+            joint_names_expr=["tmrv0_2_joint_0", "tmrv0_2_joint_2"],
+            effort_limit_sim=500.0,
+            velocity_limit_sim=20.0,
+            stiffness=500.0,
+            damping=50.0,
+        ),
+        "base_drive": ImplicitActuatorCfg(
+            joint_names_expr=["tmrv0_2_joint_1", "tmrv0_2_joint_3"],
+            effort_limit_sim=500.0,
+            velocity_limit_sim=20.0,
+            stiffness=0.0,
+            damping=5.0,
+        ),
+        "passive_base": ImplicitActuatorCfg(
+            joint_names_expr=[
+                "caster_front_left_steering_joint",
+                "caster_front_left_joint",
+                "caster_rear_right_steering_joint",
+                "caster_rear_right_joint",
+                "rocker_arm_joint",
+            ],
+            effort_limit_sim=500.0,
+            velocity_limit_sim=20.0,
+            stiffness=0.0,
+            damping=0.0,
+        ),
+        "spine": ImplicitActuatorCfg(
+            joint_names_expr=["franka_spine_vertical_joint"],
+            stiffness=2000,
+            damping=500,
+        ),
+        "grippers": ImplicitActuatorCfg(
+            joint_names_expr=GRIPPER_ACTUATOR_JOINTS,
+            effort_limit_sim=200,
+            velocity_limit_sim=None,
+            stiffness=5.0,
+            damping=0.5,
+        ),
+    }
+    actuators.update(_make_arm_actuator_cfgs(franka_root, embodiment))
+
     robot_cfg = ArticulationCfg(
         prim_path=prim_path,
         spawn=sim_utils.UsdFileCfg(usd_path=usd_path),
         init_state=ArticulationCfg.InitialStateCfg(
-            joint_pos={
-                "left_fr3v2_joint1": 0.0,
-                "left_fr3v2_joint2": -0.7854,
-                "left_fr3v2_joint3": 0.0,
-                "left_fr3v2_joint4": -2.3562,
-                "left_fr3v2_joint5": 0.0,
-                "left_fr3v2_joint6": 1.5708,
-                "left_fr3v2_joint7": 0.7854,
-                "right_fr3v2_joint1": 0.0,
-                "right_fr3v2_joint2": -0.7854,
-                "right_fr3v2_joint3": 0.0,
-                "right_fr3v2_joint4": -2.3562,
-                "right_fr3v2_joint5": 0.0,
-                "right_fr3v2_joint6": 1.5708,
-                "right_fr3v2_joint7": 0.7854,
-            }
+            joint_pos=_load_home_joint_positions(
+                franka_root,
+                embodiment,
+            )
         ),
-        actuators={
-            "base_steering": ImplicitActuatorCfg(
-                joint_names_expr=["tmrv0_2_joint_0", "tmrv0_2_joint_2"],
-                effort_limit_sim=200.0,
-                velocity_limit_sim=4.0,
-                stiffness=500.0,
-                damping=50.0,
-            ),
-            "base_drive": ImplicitActuatorCfg(
-                joint_names_expr=["tmrv0_2_joint_1", "tmrv0_2_joint_3"],
-                effort_limit_sim=500.0,
-                velocity_limit_sim=20.0,
-                stiffness=0.0,
-                damping=5.0,
-            ),
-            "passive_base": ImplicitActuatorCfg(
-                joint_names_expr=[".*caster.*", "rocker_arm_joint"],
-                effort_limit_sim=50.0,
-                velocity_limit_sim=args_cli.velocity_limit,
-                stiffness=0.0,
-                damping=0.0,
-            ),
-            "spine": ImplicitActuatorCfg(
-                joint_names_expr=["franka_spine_vertical_joint"],
-                effort_limit_sim=args_cli.effort_limit,
-                velocity_limit_sim=args_cli.velocity_limit,
-                stiffness=args_cli.stiffness,
-                damping=args_cli.damping,
-            ),
-            "arms": ImplicitActuatorCfg(
-                joint_names_expr=[".*fr3v2_joint[1-7]"],
-                effort_limit_sim=args_cli.effort_limit,
-                velocity_limit_sim=args_cli.velocity_limit,
-                stiffness=args_cli.stiffness,
-                damping=args_cli.damping,
-            ),
-            "grippers": ImplicitActuatorCfg(
-                joint_names_expr=[".*(finger|knuckle).*"],
-                effort_limit_sim=200.0,
-                velocity_limit_sim=1000000000 * args_cli.velocity_limit,
-                stiffness=5.0,
-                damping=0.5,
-            ),
-        },
+        actuators=actuators,
+        actuator_value_resolution_debug_print=True,
     )
+    room_cfg = None
+    if room_usd_path is not None:
+        room_cfg = AssetBaseCfg(
+            prim_path="{ENV_REGEX_NS}/Room",
+            spawn=sim_utils.UsdFileCfg(usd_path=room_usd_path),
+            init_state=AssetBaseCfg.InitialStateCfg(
+                pos=(1.385, -4.39, 0.0),
+                rot=(0.0, 0.0, 0.70710678, 0.70710678),
+            ),
+        )
 
     class TeleopSceneCfg(InteractiveSceneCfg):
         ground = AssetBaseCfg(prim_path="/World/defaultGroundPlane", spawn=sim_utils.GroundPlaneCfg())
@@ -626,7 +797,27 @@ def _make_scene_cfg(usd_path: str, prim_path: str):
             prim_path="/World/Light",
             spawn=sim_utils.DomeLightCfg(intensity=500.0, color=(0.85, 0.9, 1.0)),
         )
+        table_camera = CameraCfg(
+            prim_path="{ENV_REGEX_NS}/TableTopCamera",
+            update_period=0.05,
+            height=720,
+            width=1280,
+            data_types=["rgb"],
+            spawn=sim_utils.PinholeCameraCfg(
+                focal_length=24.0,
+                focus_distance=3.0,
+                horizontal_aperture=20.955,
+                clipping_range=(0.01, 100.0),
+            ),
+            offset=CameraCfg.OffsetCfg(
+                pos=(1.5, -0.1, 2.7),
+                rot=(0.0, 0.0, 0.0, 1.0),
+                convention="opengl",
+            ),
+        )
         robot = robot_cfg
+        if room_cfg is not None:
+            room = room_cfg
 
     return TeleopSceneCfg
 
@@ -667,17 +858,6 @@ def _find_drive_joint_ids(joint_names: List[str]) -> tuple[List[int], List[int]]
     return steering_ids, drive_ids
 
 
-def _wrap_to_pi(angle: torch.Tensor) -> torch.Tensor:
-    return torch.atan2(torch.sin(angle), torch.cos(angle))
-
-
-def _steering_alignment_scale(error: torch.Tensor) -> torch.Tensor:
-    scale = (STEERING_ZERO_SPEED_ERROR_RAD - error) / (
-        STEERING_ZERO_SPEED_ERROR_RAD - STEERING_FULL_SPEED_ERROR_RAD
-    )
-    return torch.clamp(scale, min=0.0, max=1.0)
-
-
 def _compute_drive_targets(
     robot,
     steering_ids: List[int],
@@ -705,7 +885,7 @@ def _compute_drive_targets(
     if max_speed_mps > max_speed_mps_allowed:
         speed_scale = max_speed_mps_allowed / max_speed_mps
 
-    joint_pos = _as_tensor(robot.data.joint_pos)
+    joint_pos = robot.data.joint_pos.torch if hasattr(robot.data.joint_pos, "torch") else robot.data.joint_pos
     if joint_pos.ndim == 1:
         joint_pos = joint_pos.unsqueeze(0)
 
@@ -720,14 +900,20 @@ def _compute_drive_targets(
             continue
 
         raw_target = torch.full_like(current_angle, math.atan2(wheel_vy, wheel_vx))
-        direct_delta = _wrap_to_pi(raw_target - current_angle)
-        flipped_delta = _wrap_to_pi(raw_target + math.pi - current_angle)
+        direct_delta = raw_target - current_angle
+        direct_delta = torch.atan2(torch.sin(direct_delta), torch.cos(direct_delta))
+        flipped_delta = raw_target + math.pi - current_angle
+        flipped_delta = torch.atan2(torch.sin(flipped_delta), torch.cos(flipped_delta))
         use_flipped = torch.abs(flipped_delta) < torch.abs(direct_delta)
         steering_delta = torch.where(use_flipped, flipped_delta, direct_delta)
 
         steering_targets[:, module_index] = current_angle + steering_delta
         wheel_speed = torch.full_like(current_angle, speed_mps / WHEEL_RADIUS_M)
-        wheel_speed *= _steering_alignment_scale(torch.abs(steering_delta))
+        steering_error = torch.abs(steering_delta)
+        alignment_scale = (STEERING_ZERO_SPEED_ERROR_RAD - steering_error) / (
+            STEERING_ZERO_SPEED_ERROR_RAD - STEERING_FULL_SPEED_ERROR_RAD
+        )
+        wheel_speed *= torch.clamp(alignment_scale, min=0.0, max=1.0)
         drive_targets[:, module_index] = torch.where(use_flipped, -wheel_speed, wheel_speed)
 
     return steering_targets, drive_targets
@@ -744,7 +930,7 @@ class SpineKeyboardController:
         if self.min_m > self.max_m:
             self.min_m, self.max_m = self.max_m, self.min_m
 
-        joint_pos = _as_tensor(robot.data.joint_pos)
+        joint_pos = robot.data.joint_pos.torch if hasattr(robot.data.joint_pos, "torch") else robot.data.joint_pos
         if joint_pos.ndim == 1:
             joint_pos = joint_pos.unsqueeze(0)
         self.target = joint_pos[:, self.joint_index : self.joint_index + 1].clone()
@@ -806,7 +992,11 @@ class SpineKeyboardController:
         if hasattr(self.robot, "set_joint_position_target_index"):
             self.robot.set_joint_position_target_index(target=self.target, joint_ids=[self.joint_index])
         else:
-            joint_pos = _as_tensor(self.robot.data.joint_pos)
+            joint_pos = (
+                self.robot.data.joint_pos.torch
+                if hasattr(self.robot.data.joint_pos, "torch")
+                else self.robot.data.joint_pos
+            )
             if joint_pos.ndim == 1:
                 joint_pos = joint_pos.unsqueeze(0)
             full_target = joint_pos.clone()
@@ -821,7 +1011,6 @@ class IsaacLabRosBridge(Node):
         self.latest_commands: Dict[str, Dict[str, float]] = {group.label: {} for group in groups}
         self._latest_cable_points: Optional[List[tuple[float, float, float]]] = None
         self._latest_cable_gripper_boxes: Optional[List[dict]] = None
-        self._latest_cable_gripper_root_pose: Optional[dict] = None
         self._latest_pedal_state = "NONE"
         self._latest_pedal_time_sec = None
         self._state_publishers = {
@@ -844,15 +1033,10 @@ class IsaacLabRosBridge(Node):
             self._on_pedal_state,
             10,
         )
-        self._cable_pose_pub = None
-        self._cable_gap_pub = None
         self._cable_robotiq_finger_pub = None
         self._cable_point_sub = None
         self._cable_gripper_box_sub = None
-        self._cable_gripper_root_sub = None
         if enable_cable:
-            self._cable_pose_pub = self.create_publisher(PoseStamped, "/isaac/left_gripper_pose", 10)
-            self._cable_gap_pub = self.create_publisher(Float32, "/isaac/left_gripper_gap", 10)
             self._cable_robotiq_finger_pub = self.create_publisher(PointCloud, args_cli.cable_robotiq_finger_target_topic, 10)
             self._cable_point_sub = self.create_subscription(
                 PointCloud,
@@ -866,12 +1050,6 @@ class IsaacLabRosBridge(Node):
                 self._on_cable_gripper_boxes,
                 10,
             )
-            self._cable_gripper_root_sub = self.create_subscription(
-                PoseStamped,
-                "/cable/gripper_root_pose",
-                self._on_cable_gripper_root_pose,
-                10,
-            )
         self.get_logger().info("IsaacLab ROS bridge listening on /isaac command topics")
 
     def _on_cable_points(self, msg: PointCloud):
@@ -879,21 +1057,6 @@ class IsaacLabRosBridge(Node):
             (float(point.x), float(point.y), float(point.z))
             for point in msg.points
         ]
-
-    def _on_cable_gripper_root_pose(self, msg: PoseStamped):
-        self._latest_cable_gripper_root_pose = {
-            "position_m": (
-                float(msg.pose.position.x),
-                float(msg.pose.position.y),
-                float(msg.pose.position.z),
-            ),
-            "quat_xyzw": (
-                float(msg.pose.orientation.x),
-                float(msg.pose.orientation.y),
-                float(msg.pose.orientation.z),
-                float(msg.pose.orientation.w),
-            ),
-        }
 
     def _on_cable_gripper_boxes(self, msg: PointCloud):
         channel_values = {channel.name: list(channel.values) for channel in msg.channels}
@@ -952,12 +1115,6 @@ class IsaacLabRosBridge(Node):
             self._latest_pedal_state = "NONE"
             return 0.0, 0.0, 0.0
         state = self._latest_pedal_state
-        # Forward/back tokens are emitted by keyboard_to_base.py (w/s keys); the
-        # foot pedal only produces the strafe/yaw tokens below.
-        if state == "FWD":
-            return linear_speed_mps, 0.0, 0.0
-        if state == "BACK":
-            return -linear_speed_mps, 0.0, 0.0
         if state == "A":
             return 0.0, linear_speed_mps, 0.0
         if state == "B":
@@ -969,7 +1126,7 @@ class IsaacLabRosBridge(Node):
         return 0.0, 0.0, 0.0
 
     def apply_commands(self, robot, group_indices: Dict[str, Dict[str, int]]):
-        joint_pos = _as_tensor(robot.data.joint_pos)
+        joint_pos = robot.data.joint_pos.torch if hasattr(robot.data.joint_pos, "torch") else robot.data.joint_pos
         if joint_pos.ndim == 1:
             joint_pos = joint_pos.unsqueeze(0)
         target = joint_pos.clone()
@@ -993,8 +1150,8 @@ class IsaacLabRosBridge(Node):
             robot.set_joint_position_target(target)
 
     def publish_states(self, robot, group_indices: Dict[str, Dict[str, int]]):
-        joint_pos = _as_tensor(robot.data.joint_pos)
-        joint_vel = _as_tensor(robot.data.joint_vel)
+        joint_pos = robot.data.joint_pos.torch if hasattr(robot.data.joint_pos, "torch") else robot.data.joint_pos
+        joint_vel = robot.data.joint_vel.torch if hasattr(robot.data.joint_vel, "torch") else robot.data.joint_vel
         if joint_pos.ndim == 2:
             joint_pos = joint_pos[0]
         if joint_vel.ndim == 2:
@@ -1020,33 +1177,6 @@ class IsaacLabRosBridge(Node):
             msg.effort = [0.0] * len(names)
             self._state_publishers[group.label].publish(msg)
 
-    def publish_cable_gripper(
-        self,
-        *,
-        position_m: tuple[float, float, float],
-        quat_xyzw: tuple[float, float, float, float],
-        gap_m: float,
-    ):
-        if self._cable_pose_pub is None or self._cable_gap_pub is None:
-            return
-
-        stamp = self.get_clock().now().to_msg()
-        pose_msg = PoseStamped()
-        pose_msg.header.stamp = stamp
-        pose_msg.header.frame_id = "world"
-        pose_msg.pose.position.x = float(position_m[0])
-        pose_msg.pose.position.y = float(position_m[1])
-        pose_msg.pose.position.z = float(position_m[2])
-        pose_msg.pose.orientation.x = float(quat_xyzw[0])
-        pose_msg.pose.orientation.y = float(quat_xyzw[1])
-        pose_msg.pose.orientation.z = float(quat_xyzw[2])
-        pose_msg.pose.orientation.w = float(quat_xyzw[3])
-        self._cable_pose_pub.publish(pose_msg)
-
-        gap_msg = Float32()
-        gap_msg.data = float(gap_m)
-        self._cable_gap_pub.publish(gap_msg)
-
     def publish_cable_robotiq_finger_targets(self, targets: List[dict]):
         if self._cable_robotiq_finger_pub is None or not targets:
             return
@@ -1061,7 +1191,13 @@ class IsaacLabRosBridge(Node):
         }
         for index, target in enumerate(targets):
             position_m = target["position_m"]
-            quat_xyzw = _quat_xyzw_normalize(target["quat_xyzw"])
+            qx, qy, qz, qw = (float(v) for v in target["quat_xyzw"])
+            q_norm = math.sqrt(qx * qx + qy * qy + qz * qz + qw * qw)
+            if q_norm <= 0.0:
+                quat_xyzw = (0.0, 0.0, 0.0, 1.0)
+            else:
+                inv_q_norm = 1.0 / q_norm
+                quat_xyzw = (qx * inv_q_norm, qy * inv_q_norm, qz * inv_q_norm, qw * inv_q_norm)
             size_m = target["size_m"]
             finger_id = int(target.get("finger_id", index))
             msg.points.append(Point32(x=float(position_m[0]), y=float(position_m[1]), z=float(position_m[2])))
@@ -1086,94 +1222,13 @@ class IsaacLabRosBridge(Node):
     def latest_cable_gripper_boxes(self) -> Optional[List[dict]]:
         return self._latest_cable_gripper_boxes
 
-    def latest_cable_gripper_root_pose(self) -> Optional[dict]:
-        return self._latest_cable_gripper_root_pose
-
-
-def _joint_names(robot) -> List[str]:
-    if hasattr(robot.data, "joint_names"):
-        return list(robot.data.joint_names)
-    if hasattr(robot, "joint_names"):
-        return list(robot.joint_names)
-    raise RuntimeError("Could not read joint names from IsaacLab articulation")
-
-
-def _resolve_path(root: Path, value: str) -> Path:
-    path = Path(value).expanduser()
-    if not path.is_absolute():
-        path = root / path
-    return path
-
-
-def _robot_body_pose(robot, body_name: str) -> tuple[tuple[float, float, float], tuple[float, float, float, float]]:
-    body_ids, body_names = robot.find_bodies(body_name, preserve_order=True)
-    if len(body_ids) != 1:
-        raise RuntimeError(f"Expected one body matching '{body_name}', found {len(body_ids)}: {body_names}")
-    body_idx = int(body_ids[0])
-    body_pos_w = _as_tensor(robot.data.body_pos_w)
-    body_quat_w = _as_tensor(robot.data.body_quat_w)
-    if body_pos_w.ndim == 3:
-        pos = body_pos_w[0, body_idx]
-        quat = body_quat_w[0, body_idx]
-    else:
-        pos = body_pos_w[body_idx]
-        quat = body_quat_w[body_idx]
-    return (
-        tuple(float(v) for v in pos.detach().cpu().tolist()),
-        tuple(float(v) for v in quat.detach().cpu().tolist()),
-    )
-
-
-def _to_xyzw(quat: tuple[float, float, float, float], order: str) -> tuple[float, float, float, float]:
-    if order == "xyzw":
-        return quat
-    w, x, y, z = quat
-    return x, y, z, w
-
-
-def _robot_gripper_gap_m(
-    robot,
-    *,
-    side: str,
-    actual_joint_names: List[str],
-    group_indices: Dict[str, Dict[str, int]],
-    cable_gap_range: tuple[float, float],
-    fixed_gap_m: Optional[float],
-) -> float:
-    if fixed_gap_m is not None:
-        return float(fixed_gap_m)
-
-    joint_pos = _as_tensor(robot.data.joint_pos)
-    if joint_pos.ndim == 2:
-        joint_pos = joint_pos[0]
-
-    min_gap, max_gap = cable_gap_range
-    actual_by_name = {name: idx for idx, name in enumerate(actual_joint_names)}
-    finger_joint_names = (
-        f"{side}_fr3v2_finger_joint1",
-        f"{side}_fr3v2_finger_joint2",
-    )
-    if all(name in actual_by_name for name in finger_joint_names):
-        gap = sum(float(joint_pos[actual_by_name[name]].item()) for name in finger_joint_names)
-        return min(max(gap, min_gap), max_gap)
-
-    label = f"{side}_gripper"
-    group_map = group_indices.get(label, {})
-    if not group_map:
-        return cable_gap_range[0]
-    joint_index = next(iter(group_map.values()))
-    joint_value = float(joint_pos[joint_index].item())
-
-    # Fallback for normalized gripper commands: data_contract says 1=open, 0=closed.
-    open_fraction = min(max(joint_value, 0.0), 1.0)
-    return min_gap + open_fraction * (max_gap - min_gap)
-
 
 def _create_cable_stage_visuals(
     franka_root: Path,
     cable_config_path: Path | None = None,
     visual_offset_m=(0.0, 0.0, 0.0),
     visual_yaw_deg: float = 0.0,
+    show_collision_visuals: bool = False,
 ):
     from pxr import Gf, Sdf, UsdGeom, UsdShade  # noqa: PLC0415
     import omni.usd  # noqa: PLC0415
@@ -1183,21 +1238,24 @@ def _create_cable_stage_visuals(
         return None
 
     visual_offset_m = tuple(float(v) for v in visual_offset_m)
-    visual_yaw_xyzw = _local_z_rotation_xyzw(math.radians(float(visual_yaw_deg)))
+    visual_yaw_rad = math.radians(float(visual_yaw_deg))
+    visual_yaw_half = 0.5 * visual_yaw_rad
+    visual_yaw_xyzw = (0.0, 0.0, math.sin(visual_yaw_half), math.cos(visual_yaw_half))
 
-    board_material = UsdShade.Material.Define(stage, Sdf.Path("/World/Looks/CableBoardBlue"))
-    board_shader = UsdShade.Shader.Define(stage, Sdf.Path("/World/Looks/CableBoardBlue/PreviewSurface"))
-    board_shader.CreateIdAttr("UsdPreviewSurface")
-    board_shader.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set((0.0, 0.18, 1.0))
-    board_shader.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(0.55)
-    board_material.CreateSurfaceOutput().ConnectToSource(board_shader.ConnectableAPI(), "surface")
+    def make_preview_material(name: str, color, roughness: float):
+        material = UsdShade.Material.Define(stage, Sdf.Path(f"/World/Looks/{name}"))
+        shader = UsdShade.Shader.Define(stage, Sdf.Path(f"/World/Looks/{name}/PreviewSurface"))
+        shader.CreateIdAttr("UsdPreviewSurface")
+        shader.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set(tuple(float(v) for v in color))
+        shader.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(float(roughness))
+        material.CreateSurfaceOutput().ConnectToSource(shader.ConnectableAPI(), "surface")
+        return material
 
-    gray_material = UsdShade.Material.Define(stage, Sdf.Path("/World/Looks/CableFixtureGray"))
-    gray_shader = UsdShade.Shader.Define(stage, Sdf.Path("/World/Looks/CableFixtureGray/PreviewSurface"))
-    gray_shader.CreateIdAttr("UsdPreviewSurface")
-    gray_shader.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set((0.45, 0.45, 0.45))
-    gray_shader.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(0.65)
-    gray_material.CreateSurfaceOutput().ConnectToSource(gray_shader.ConnectableAPI(), "surface")
+    board_material = make_preview_material("CableBoardDarkGray", (0.12, 0.12, 0.12), 0.60)
+    c_clip_material = make_preview_material("CableCClipYellow", (1.0, 0.82, 0.0), 0.45)
+    adapter_material = make_preview_material("CableWireAdapterDarkBlue", (0.0, 0.04, 0.20), 0.55)
+    gray_material = make_preview_material("CableFixtureGray", (0.45, 0.45, 0.45), 0.65)
+    collision_material = make_preview_material("CableFixtureCollisionOrange", (1.0, 0.18, 0.02), 0.35)
 
     board_usd = franka_root / "cable_world" / "assets" / "table_board_fixture" / "table_board_fixture.usd"
     if cable_config_path is not None and Path(cable_config_path).is_file():
@@ -1206,7 +1264,7 @@ def _create_cable_stage_visuals(
 
             with Path(cable_config_path).open("r", encoding="utf-8") as f:
                 cable_config = yaml.safe_load(f) or {}
-            raw_scene_usd = cable_config.get("scene_usd_path") or cable_config.get("board_usd_path")
+            raw_scene_usd = cable_config.get("scene_usd_path")
             if raw_scene_usd:
                 raw_scene_path = Path(raw_scene_usd).expanduser()
                 if raw_scene_path.is_absolute():
@@ -1220,18 +1278,50 @@ def _create_cable_stage_visuals(
         board_prim = stage.DefinePrim("/World/TableBoardFixtureVisual", "Xform")
         board_prim.GetReferences().AddReference(str(board_usd))
         board_xform = UsdGeom.Xformable(board_prim)
-        _set_existing_translate_rotate_zyx(board_xform, visual_offset_m, visual_yaw_deg)
+        translation_attr = board_xform.GetPrim().GetAttribute("xformOp:translate")
+        rotate_attr = board_xform.GetPrim().GetAttribute("xformOp:rotateZYX")
+        if translation_attr and translation_attr.IsValid():
+            translation_attr.Set(Gf.Vec3d(*visual_offset_m))
+        else:
+            board_xform.AddTranslateOp().Set(Gf.Vec3d(*visual_offset_m))
+        if rotate_attr and rotate_attr.IsValid():
+            rotate_attr.Set(Gf.Vec3f(0.0, 0.0, float(visual_yaw_deg)))
+        else:
+            board_xform.AddRotateZYXOp().Set(Gf.Vec3f(0.0, 0.0, float(visual_yaw_deg)))
         board_prefix = str(board_prim.GetPath())
         for prim in stage.Traverse():
             prim_path = str(prim.GetPath())
-            if not prim_path.startswith(board_prefix) or not prim.IsA(UsdGeom.Gprim):
+            if not prim_path.startswith(board_prefix):
                 continue
-            relative_path = prim_path[len(board_prefix):].lower()
-            # In board.usd, fixtures are named round_peg, wire_to_base_adapter,
-            # Plug, etc. The actual board surface is the board_segment prim.
-            is_board_part = "board_segment" in relative_path
-            material = board_material if is_board_part else gray_material
-            color = (0.0, 0.18, 1.0) if is_board_part else (0.45, 0.45, 0.45)
+            relative_path = prim_path[len(board_prefix):].lower().replace("-", "_")
+            is_collision_visual = "/collisions" in relative_path or "collider" in relative_path
+            if is_collision_visual and prim.IsA(UsdGeom.Imageable):
+                imageable = UsdGeom.Imageable(prim)
+                if show_collision_visuals:
+                    imageable.CreatePurposeAttr().Set(UsdGeom.Tokens.default_)
+                    imageable.CreateVisibilityAttr().Set(UsdGeom.Tokens.inherited)
+                else:
+                    imageable.CreatePurposeAttr().Set(UsdGeom.Tokens.guide)
+                    imageable.CreateVisibilityAttr().Set(UsdGeom.Tokens.invisible)
+            if not prim.IsA(UsdGeom.Gprim):
+                continue
+            if is_collision_visual:
+                if not show_collision_visuals:
+                    continue
+                material = collision_material
+                color = (1.0, 0.18, 0.02)
+            elif "c_clip" in relative_path:
+                material = c_clip_material
+                color = (1.0, 0.82, 0.0)
+            elif "wire_to_base_adapter" in relative_path:
+                material = adapter_material
+                color = (0.0, 0.04, 0.20)
+            elif "board_segment" in relative_path:
+                material = board_material
+                color = (0.12, 0.12, 0.12)
+            else:
+                material = gray_material
+                color = (0.45, 0.45, 0.45)
             UsdShade.MaterialBindingAPI(prim).Bind(material)
             gprim = UsdGeom.Gprim(prim)
             display_color = gprim.GetDisplayColorAttr()
@@ -1247,7 +1337,9 @@ def _create_cable_stage_visuals(
     curve = UsdGeom.BasisCurves.Define(stage, curve_path)
     curve_xform = UsdGeom.Xformable(curve.GetPrim())
     curve_xform.AddTranslateOp().Set(Gf.Vec3d(*visual_offset_m))
-    curve_xform.AddOrientOp().Set(_gf_quatf_from_xyzw(visual_yaw_xyzw))
+    curve_xform.AddOrientOp().Set(
+        Gf.Quatf(visual_yaw_xyzw[3], visual_yaw_xyzw[0], visual_yaw_xyzw[1], visual_yaw_xyzw[2])
+    )
     curve.CreateTypeAttr("linear")
     curve.CreateWrapAttr("nonperiodic")
     curve.CreateWidthsAttr([0.006, 0.006])
@@ -1255,166 +1347,6 @@ def _create_cable_stage_visuals(
     curve.CreatePointsAttr([(0.0, 0.0, 0.0), (0.0, 0.0, 0.0)])
     curve.CreateDisplayColorAttr([(1.0, 0.0, 0.0)])
     return curve
-
-
-def _create_axes_visual(stage, parent_path: str, axis_length_m: float = 0.08, width_m: float = 0.004):
-    from pxr import Sdf, UsdGeom  # noqa: PLC0415
-
-    axes_root = UsdGeom.Xform.Define(stage, Sdf.Path(parent_path))
-    axis_specs = (
-        ("x_axis", (axis_length_m, 0.0, 0.0), (1.0, 0.0, 0.0)),
-        ("y_axis", (0.0, axis_length_m, 0.0), (0.0, 1.0, 0.0)),
-        ("z_axis", (0.0, 0.0, axis_length_m), (0.0, 0.25, 1.0)),
-    )
-    for axis_name, end_point, color in axis_specs:
-        curve = UsdGeom.BasisCurves.Define(stage, Sdf.Path(f"{parent_path}/{axis_name}"))
-        curve.CreateTypeAttr("linear")
-        curve.CreateWrapAttr("nonperiodic")
-        curve.CreateCurveVertexCountsAttr([2])
-        curve.CreatePointsAttr([(0.0, 0.0, 0.0), end_point])
-        curve.CreateWidthsAttr([width_m, width_m])
-        curve.CreateDisplayColorAttr([color])
-    return UsdGeom.Xformable(axes_root.GetPrim())
-
-
-def _create_cable_gripper_proxy_visual(
-    body_name: str = "left_fr3v2_hand",
-    finger_z_offset_m: float = 0.0,
-    finger_cube_z_offset_m: float = 0.0,
-):
-    from pxr import Gf, Sdf, UsdGeom, UsdShade  # noqa: PLC0415
-    import omni.usd  # noqa: PLC0415
-
-    stage = omni.usd.get_context().get_stage()
-    if stage is None:
-        return None
-
-    material = UsdShade.Material.Define(stage, Sdf.Path("/World/Looks/CableProxyRed"))
-    shader = UsdShade.Shader.Define(stage, Sdf.Path("/World/Looks/CableProxyRed/PreviewSurface"))
-    shader.CreateIdAttr("UsdPreviewSurface")
-    shader.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set((1.0, 0.0, 0.0))
-    shader.CreateInput("opacity", Sdf.ValueTypeNames.Float).Set(0.45)
-    material.CreateSurfaceOutput().ConnectToSource(shader.ConnectableAPI(), "surface")
-
-    root_path = "/World/CableGripperProxyVisual"
-    body_prim = _find_stage_prim_by_name(stage, body_name)
-    if body_prim is not None:
-        print(f"CableGripperProxyVisual will track world transform of {body_prim.GetPath()}")
-    else:
-        print(
-            f"Warning: body prim {body_name} not found; driving world-space CableGripperProxyVisual from IsaacLab body pose",
-            file=sys.stderr,
-        )
-
-    # Keep the red gripper proxy out from under Fabric-driven robot prims.
-    # Updating it explicitly in world space avoids USD parent-inheritance lag
-    # and flicker when the robot mesh is driven by IsaacLab/Fabric.
-    stale_paths = []
-    for prim in stage.Traverse():
-        if "CableGripperProxyVisual" in prim.GetName():
-            stale_paths.append(str(prim.GetPath()))
-    for stale_path in sorted(stale_paths, key=len, reverse=True):
-        stale_prim = stage.GetPrimAtPath(stale_path)
-        if stale_prim.IsValid():
-            stage.RemovePrim(stale_path)
-            print(f"Removed stale CableGripperProxyVisual prim at {stale_path}")
-
-    root = UsdGeom.Xform.Define(stage, Sdf.Path(root_path))
-    root_xform = UsdGeom.Xformable(root.GetPrim())
-    root_translate_op = root_xform.AddTranslateOp()
-    root_orient_op = root_xform.AddOrientOp()
-    root_orient_op.Set(Gf.Quatf(1.0, 0.0, 0.0, 0.0))
-
-    if body_prim is not None and body_prim.IsValid():
-        root_axes_path = f"{body_prim.GetPath()}/CableGripperProxyVisual_root_axes"
-    else:
-        root_axes_path = f"{root_path}/root_axes"
-    _create_axes_visual(stage, root_axes_path, axis_length_m=0.10, width_m=0.005)
-
-    finger_visuals = []
-    finger_joint_z_m = 0.0584
-    franka_finger_collision_boxes = (
-        ((0.0, 18.5e-3, 11e-3), (0.0, 0.0, 0.0), (22e-3, 15e-3, 20e-3)),
-        ((0.0, 6.8e-3, 2.2e-3), (0.0, 0.0, 0.0), (22e-3, 8.8e-3, 3.8e-3)),
-        ((0.0, 15.9e-3, 28.35e-3), (0.5235987755982988, 0.0, 0.0), (17.5e-3, 7e-3, 23.5e-3)),
-        ((0.0, 7.58e-3, 45.25e-3), (0.0, 0.0, 0.0), (17.5e-3, 15.2e-3, 18.5e-3)),
-    )
-    franka_right_finger_collision_rpy = (
-        (0.0, 0.0, 0.0),
-        (0.0, 0.0, 0.0),
-        (-0.5235987755982988, 0.0, math.pi),
-        (0.0, 0.0, 0.0),
-    )
-    # Finger body origin in the hand frame. The red collision boxes reproduce
-    # cable/sra_gripper.py's local finger collision boxes relative to this origin.
-    finger_center_z_m = -(finger_joint_z_m + 0.032) + float(finger_z_offset_m)
-    for name, side, roll_rad in (("left_finger", 1.0, 0.0), ("right_finger", -1.0, math.pi)):
-        finger_path = f"{root_path}/{name}"
-        UsdGeom.Xform.Define(stage, Sdf.Path(finger_path))
-        finger_orient_xyzw = _local_z_rotation_xyzw(roll_rad)
-        finger_orient = _gf_quatf_from_xyzw(finger_orient_xyzw)
-
-        collision_boxes = []
-        for box_index, (box_position_m, left_box_rpy_rad, box_size_m) in enumerate(franka_finger_collision_boxes):
-            box_rpy_rad = franka_right_finger_collision_rpy[box_index] if name == "right_finger" else left_box_rpy_rad
-            box_orient_xyzw = _quat_xyzw_from_rpy_rad(box_rpy_rad)
-            box_path = f"{finger_path}/collision_box_{box_index}"
-            box_cube = UsdGeom.Cube.Define(stage, Sdf.Path(box_path))
-            box_cube.CreateSizeAttr(1.0)
-            UsdShade.MaterialBindingAPI(box_cube.GetPrim()).Bind(material)
-            box_xform = UsdGeom.Xformable(box_cube.GetPrim())
-            box_translate_op = box_xform.AddTranslateOp()
-            box_orient_op = box_xform.AddOrientOp()
-            box_scale_op = box_xform.AddScaleOp()
-            box_scale_op.Set(Gf.Vec3f(*box_size_m))
-            collision_boxes.append(
-                {
-                    "position_m": tuple(float(v) for v in box_position_m),
-                    "orient_xyzw": box_orient_xyzw,
-                    "translate_op": box_translate_op,
-                    "orient_op": box_orient_op,
-                }
-            )
-
-        axes_path = f"{root_path}/{name}_axes"
-        axes_xform = _create_axes_visual(
-            stage,
-            axes_path,
-            axis_length_m=0.06,
-            width_m=0.003,
-        )
-        axes_translate_op = axes_xform.AddTranslateOp()
-        axes_orient_op = axes_xform.AddOrientOp()
-        axes_orient_op.Set(finger_orient)
-
-        finger_visuals.append(
-            {
-                "side": side,
-                "collision_boxes": collision_boxes,
-                "axes_translate_op": axes_translate_op,
-                "axes_orient_op": axes_orient_op,
-                "finger_orient": finger_orient,
-                "finger_orient_xyzw": finger_orient_xyzw,
-                "half_width_m": 0.04,
-                "center_z_m": finger_center_z_m,
-                "cube_z_offset_m": float(finger_cube_z_offset_m),
-            }
-        )
-
-    return {
-        "root_path": root_path,
-        "body_prim": body_prim,
-        "root_orientation_offset_xyzw": None,
-        "root_translate_op": root_translate_op,
-        "root_orient_op": root_orient_op,
-        "fingers": finger_visuals,
-    }
-
-def _find_stage_prim_by_name(stage, prim_name: str):
-    for prim in stage.Traverse():
-        if prim.GetName() == prim_name:
-            return prim
-    return None
 
 
 def _find_stage_prim_by_path_suffix(stage, selector: str):
@@ -1473,9 +1405,10 @@ def _fabric_prim_world_pose_by_selector(selector: str):
             return None
         translation = world_matrix.ExtractTranslation()
         quat = world_matrix.ExtractRotationQuat()
+        quat_imag = quat.GetImaginary()
         return (
             (float(translation[0]), float(translation[1]), float(translation[2])),
-            _quat_xyzw_from_gf_quat(quat),
+            (float(quat_imag[0]), float(quat_imag[1]), float(quat_imag[2]), float(quat.GetReal())),
             str(usd_prim.GetPath()),
         )
     except Exception as exc:  # noqa: BLE001 - optional Fabric path
@@ -1485,186 +1418,49 @@ def _fabric_prim_world_pose_by_selector(selector: str):
         return None
 
 
-def _fabric_prim_world_pose_by_name(prim_name: str):
-    try:
-        import omni.usd  # noqa: PLC0415
-        import usdrt  # noqa: PLC0415
-        from pxr import UsdUtils  # noqa: PLC0415
-        from usdrt import Rt  # noqa: PLC0415
-
-        stage = omni.usd.get_context().get_stage()
-        if stage is None:
-            return None
-        usd_prim = _find_stage_prim_by_name(stage, prim_name)
-        if usd_prim is None or not usd_prim.IsValid():
-            return None
-
-        stage_cache = UsdUtils.StageCache.Get()
-        stage_id = stage_cache.GetId(stage).ToLongInt()
-        if stage_id < 0:
-            stage_id = stage_cache.Insert(stage).ToLongInt()
-        rt_stage = usdrt.Usd.Stage.Attach(stage_id)
-        if rt_stage is None:
-            return None
-
-        rt_prim = rt_stage.GetPrimAtPath(str(usd_prim.GetPath()))
-        if rt_prim is None or not rt_prim.IsValid():
-            return None
-
-        rt_xformable = Rt.Xformable(rt_prim)
-        if rt_xformable is None or not rt_xformable.GetPrim().IsValid():
-            return None
-
-        world_matrix_attr = rt_xformable.GetFabricHierarchyWorldMatrixAttr()
-        if world_matrix_attr is None:
-            return None
-        world_matrix = world_matrix_attr.Get()
-        if world_matrix is None:
-            return None
-
-        translation = world_matrix.ExtractTranslation()
-        quat = world_matrix.ExtractRotationQuat()
-        return (
-            (float(translation[0]), float(translation[1]), float(translation[2])),
-            _quat_xyzw_from_gf_quat(quat),
-        )
-    except Exception as exc:  # noqa: BLE001 - optional Fabric path
-        if not getattr(_fabric_prim_world_pose_by_name, "_warned", False):
-            print(f"Warning: failed to read Fabric live pose for {prim_name}: {exc}", file=sys.stderr)
-            _fabric_prim_world_pose_by_name._warned = True
-        return None
-
-
-def _quat_xyzw_multiply(a, b):
-    ax, ay, az, aw = (float(v) for v in a)
-    bx, by, bz, bw = (float(v) for v in b)
-    return (
-        aw * bx + ax * bw + ay * bz - az * by,
-        aw * by - ax * bz + ay * bw + az * bx,
-        aw * bz + ax * by - ay * bx + az * bw,
-        aw * bw - ax * bx - ay * by - az * bz,
-    )
-
-
-def _quat_xyzw_inverse(q):
-    x, y, z, w = (float(v) for v in q)
-    norm_sq = x * x + y * y + z * z + w * w
-    if norm_sq <= 0.0:
-        return (0.0, 0.0, 0.0, 1.0)
-    inv_norm = 1.0 / norm_sq
-    return (-x * inv_norm, -y * inv_norm, -z * inv_norm, w * inv_norm)
-
-
-def _quat_xyzw_normalize(q):
-    x, y, z, w = (float(v) for v in q)
-    norm = math.sqrt(x * x + y * y + z * z + w * w)
-    if norm <= 0.0:
-        return (0.0, 0.0, 0.0, 1.0)
-    inv_norm = 1.0 / norm
-    return (x * inv_norm, y * inv_norm, z * inv_norm, w * inv_norm)
-
-
-def _quat_xyzw_from_gf_quat(quat):
-    imag = quat.GetImaginary()
-    return (float(imag[0]), float(imag[1]), float(imag[2]), float(quat.GetReal()))
-
-
-def _local_x_rotation_xyzw(angle_rad: float):
-    half_angle = 0.5 * float(angle_rad)
-    return (math.sin(half_angle), 0.0, 0.0, math.cos(half_angle))
-
-
-def _local_y_rotation_xyzw(angle_rad: float):
-    half_angle = 0.5 * float(angle_rad)
-    return (0.0, math.sin(half_angle), 0.0, math.cos(half_angle))
-
-
-def _local_z_rotation_xyzw(angle_rad: float):
-    half_angle = 0.5 * float(angle_rad)
-    return (0.0, 0.0, math.sin(half_angle), math.cos(half_angle))
-
-
-def _quat_xyzw_from_rpy_rad(rpy_rad):
-    roll, pitch, yaw = (float(v) for v in rpy_rad)
-    q = _local_x_rotation_xyzw(roll)
-    q = _quat_xyzw_multiply(q, _local_y_rotation_xyzw(pitch))
-    q = _quat_xyzw_multiply(q, _local_z_rotation_xyzw(yaw))
-    return _quat_xyzw_normalize(q)
-
-
-def _quat_xyzw_from_rpy_deg(rpy_deg):
-    return _quat_xyzw_from_rpy_rad(tuple(math.radians(float(v)) for v in rpy_deg))
-
-
-def _gf_quatf_from_xyzw(q):
-    from pxr import Gf  # noqa: PLC0415
-
-    qx, qy, qz, qw = _quat_xyzw_normalize(q)
-    return Gf.Quatf(qw, qx, qy, qz)
-
-
-def _set_existing_translate_rotate_zyx(xformable, translation_m, yaw_deg: float):
-    from pxr import Gf  # noqa: PLC0415
-
-    prim = xformable.GetPrim()
-    translation_attr = prim.GetAttribute("xformOp:translate")
-    rotate_attr = prim.GetAttribute("xformOp:rotateZYX")
-    if not translation_attr or not translation_attr.IsValid():
-        raise RuntimeError(f"Expected existing xformOp:translate on {prim.GetPath()}")
-    if not rotate_attr or not rotate_attr.IsValid():
-        raise RuntimeError(f"Expected existing xformOp:rotateZYX on {prim.GetPath()}")
-
-    translation_attr.Set(Gf.Vec3d(*tuple(float(v) for v in translation_m)))
-    rotate_attr.Set(Gf.Vec3f(0.0, 0.0, float(yaw_deg)))
-
-
-def _quat_xyzw_rotate_vector(q, vector):
-    vx, vy, vz = (float(v) for v in vector)
-    rotated = _quat_xyzw_multiply(
-        _quat_xyzw_multiply(q, (vx, vy, vz, 0.0)),
-        _quat_xyzw_inverse(q),
-    )
-    return (rotated[0], rotated[1], rotated[2])
-
-
-def _vec3d_add(a, b):
-    from pxr import Gf  # noqa: PLC0415
-
-    return Gf.Vec3d(float(a[0]) + float(b[0]), float(a[1]) + float(b[1]), float(a[2]) + float(b[2]))
-
-
-def _vec3_sub(a, b):
-    return (float(a[0]) - float(b[0]), float(a[1]) - float(b[1]), float(a[2]) - float(b[2]))
-
-
-def _vec3_add_tuple(a, b):
-    return (float(a[0]) + float(b[0]), float(a[1]) + float(b[1]), float(a[2]) + float(b[2]))
-
-
-def _cable_world_yaw_xyzw(yaw_deg: float):
-    return _local_z_rotation_xyzw(math.radians(float(yaw_deg)))
-
-
 def _robot_world_pose_to_cable_world(position_m, quat_xyzw, world_offset_m, world_yaw_deg, gripper_offset_m):
-    cable_world_q = _cable_world_yaw_xyzw(world_yaw_deg)
-    inv_cable_world_q = _quat_xyzw_inverse(cable_world_q)
-    local_position = _quat_xyzw_rotate_vector(inv_cable_world_q, _vec3_sub(position_m, world_offset_m))
-    local_position = _vec3_add_tuple(local_position, gripper_offset_m)
-    local_quat = _quat_xyzw_multiply(inv_cable_world_q, _quat_xyzw_normalize(quat_xyzw))
-    return local_position, _quat_xyzw_normalize(local_quat)
+    px, py, pz = (float(v) for v in position_m)
+    ox, oy, oz = (float(v) for v in world_offset_m)
+    gx, gy, gz = (float(v) for v in gripper_offset_m)
+    yaw_half = 0.5 * math.radians(float(world_yaw_deg))
+    yaw_s = math.sin(yaw_half)
+    yaw_c = math.cos(yaw_half)
 
-
-def _default_robotiq_finger_selectors() -> tuple[str, str, str, str]:
-    # Cable-world finger ids are ordered opposite to the Robotiq inner_finger link
-    # names, so swap each gripper pair to make the red collision boxes open/close
-    # in the same visual direction as the gray Robotiq fingers.
-    return (
-        "left_Robotiq_2F_85/left__Robotiq_2F_85/right_inner_finger",
-        "left_Robotiq_2F_85/left__Robotiq_2F_85/left_inner_finger",
-        "right_Robotiq_2F_85/right_Robotiq_2F_85/right_inner_finger",
-        "right_Robotiq_2F_85/right_Robotiq_2F_85/left_inner_finger",
+    dx = px - ox
+    dy = py - oy
+    dz = pz - oz
+    local_position = (
+        (1.0 - 2.0 * yaw_s * yaw_s) * dx + (2.0 * yaw_s * yaw_c) * dy + gx,
+        -(2.0 * yaw_s * yaw_c) * dx + (1.0 - 2.0 * yaw_s * yaw_s) * dy + gy,
+        dz + gz,
     )
 
+    qx, qy, qz, qw = (float(v) for v in quat_xyzw)
+    q_norm = math.sqrt(qx * qx + qy * qy + qz * qz + qw * qw)
+    if q_norm <= 0.0:
+        qx, qy, qz, qw = 0.0, 0.0, 0.0, 1.0
+    else:
+        inv_q_norm = 1.0 / q_norm
+        qx, qy, qz, qw = qx * inv_q_norm, qy * inv_q_norm, qz * inv_q_norm, qw * inv_q_norm
+
+    # Equivalent to inverse(cable_world_yaw) * robot_quat, with quaternions in xyzw order.
+    local_quat = (
+        yaw_c * qx + yaw_s * qy,
+        yaw_c * qy - yaw_s * qx,
+        yaw_c * qz - yaw_s * qw,
+        yaw_c * qw + yaw_s * qz,
+    )
+    lqx, lqy, lqz, lqw = local_quat
+    local_norm = math.sqrt(lqx * lqx + lqy * lqy + lqz * lqz + lqw * lqw)
+    if local_norm <= 0.0:
+        return local_position, (0.0, 0.0, 0.0, 1.0)
+    inv_local_norm = 1.0 / local_norm
+    return local_position, (
+        lqx * inv_local_norm,
+        lqy * inv_local_norm,
+        lqz * inv_local_norm,
+        lqw * inv_local_norm,
+    )
 
 def _stage_visual_bbox_center_world_by_selector(selector: str):
     try:
@@ -1700,9 +1496,24 @@ def _stage_visual_bbox_center_world_by_selector(selector: str):
 
 
 def _fabric_pose_local_offset_to_world_center(position_m, quat_xyzw, world_center_m):
-    return _quat_xyzw_rotate_vector(
-        _quat_xyzw_inverse(_quat_xyzw_normalize(quat_xyzw)),
-        _vec3_sub(world_center_m, position_m),
+    qx, qy, qz, qw = (float(v) for v in quat_xyzw)
+    q_norm = math.sqrt(qx * qx + qy * qy + qz * qz + qw * qw)
+    if q_norm <= 0.0:
+        qx, qy, qz, qw = 0.0, 0.0, 0.0, 1.0
+    else:
+        inv_q_norm = 1.0 / q_norm
+        qx, qy, qz, qw = -qx * inv_q_norm, -qy * inv_q_norm, -qz * inv_q_norm, qw * inv_q_norm
+
+    vx = float(world_center_m[0]) - float(position_m[0])
+    vy = float(world_center_m[1]) - float(position_m[1])
+    vz = float(world_center_m[2]) - float(position_m[2])
+    tx = 2.0 * (qy * vz - qz * vy)
+    ty = 2.0 * (qz * vx - qx * vz)
+    tz = 2.0 * (qx * vy - qy * vx)
+    return (
+        vx + qw * tx + qy * tz - qz * ty,
+        vy + qw * ty + qz * tx - qx * tz,
+        vz + qw * tz + qx * ty - qy * tx,
     )
 
 
@@ -1718,12 +1529,14 @@ def _robotiq_inner_finger_contact_offset(
     # If the red boxes open opposite to the gray pads, use the opposite local-Y
     # side of the same moving finger instead of mirroring the world position.
     del selector
-    x, y, z = (float(v) for v in visual_center_offset_m)
-    x += float(contact_x_offset_m)
+    visual_x, visual_y, visual_z = (float(v) for v in visual_center_offset_m)
+    x = visual_x + float(contact_x_offset_m)
+    z = visual_z + float(contact_z_offset_m)
+    y = visual_y
     if abs(y) > 1e-6:
         side = -1.0 if bool(invert_opening) else 1.0
         y = side * math.copysign(abs(float(contact_y_offset_m)), y)
-    return (x, y, z + float(contact_z_offset_m))
+    return (x, y, z)
 
 
 def _collect_robotiq_finger_targets(
@@ -1764,7 +1577,27 @@ def _collect_robotiq_finger_targets(
                 _collect_robotiq_finger_targets._offset_cache = offset_cache
         if cached is not None:
             local_center_m, visual_path = cached
-            centered_position_m = _vec3_add_tuple(position_m, _quat_xyzw_rotate_vector(quat_xyzw, local_center_m))
+            qx, qy, qz, qw = (float(v) for v in quat_xyzw)
+            q_norm = math.sqrt(qx * qx + qy * qy + qz * qz + qw * qw)
+            if q_norm <= 0.0:
+                qx, qy, qz, qw = 0.0, 0.0, 0.0, 1.0
+            else:
+                inv_q_norm = 1.0 / q_norm
+                qx, qy, qz, qw = qx * inv_q_norm, qy * inv_q_norm, qz * inv_q_norm, qw * inv_q_norm
+            vx, vy, vz = (float(v) for v in local_center_m)
+            tx = 2.0 * (qy * vz - qz * vy)
+            ty = 2.0 * (qz * vx - qx * vz)
+            tz = 2.0 * (qx * vy - qy * vx)
+            rotated_center = (
+                vx + qw * tx + qy * tz - qz * ty,
+                vy + qw * ty + qz * tx - qx * tz,
+                vz + qw * tz + qx * ty - qy * tx,
+            )
+            centered_position_m = (
+                float(position_m[0]) + rotated_center[0],
+                float(position_m[1]) + rotated_center[1],
+                float(position_m[2]) + rotated_center[2],
+            )
             resolved_paths.append(f"{prim_path} visual={visual_path}")
         else:
             centered_position_m = position_m
@@ -1789,75 +1622,6 @@ def _collect_robotiq_finger_targets(
     return targets, resolved_paths
 
 
-def _update_cable_gripper_proxy_visual(
-    visual,
-    position_m,
-    quat_xyzw,
-    gap_m,
-    visual_offset_m,
-    root_local_offset_m=(0.0, 0.0, 0.0),
-    root_rpy_offset_deg=(0.0, 0.0, 0.0),
-):
-    if visual is None:
-        return
-    from pxr import Gf, UsdGeom  # noqa: PLC0415
-
-    if visual.get("root_translate_op") is not None and visual.get("root_orient_op") is not None:
-        live_quat_xyzw = _quat_xyzw_normalize(quat_xyzw)
-
-        # The IsaacLab body tensor is the only source that moves every frame.
-        # Calibrate its orientation once against the USD hand prim so the
-        if visual.get("root_orientation_offset_xyzw") is None:
-            body_prim = visual.get("body_prim")
-            if body_prim is not None and body_prim.IsValid():
-                world_xform = UsdGeom.XformCache().GetLocalToWorldTransform(body_prim)
-                hand_quat = world_xform.ExtractRotationQuat()
-                hand_imag = hand_quat.GetImaginary()
-                usd_quat_xyzw = _quat_xyzw_normalize(
-                    (float(hand_imag[0]), float(hand_imag[1]), float(hand_imag[2]), float(hand_quat.GetReal()))
-                )
-                visual["root_orientation_offset_xyzw"] = _quat_xyzw_normalize(
-                    _quat_xyzw_multiply(_quat_xyzw_inverse(live_quat_xyzw), usd_quat_xyzw)
-                )
-            else:
-                visual["root_orientation_offset_xyzw"] = (0.0, 0.0, 0.0, 1.0)
-
-        root_quat_xyzw = _quat_xyzw_normalize(
-            _quat_xyzw_multiply(live_quat_xyzw, visual["root_orientation_offset_xyzw"])
-        )
-        manual_offset = _quat_xyzw_from_rpy_deg(root_rpy_offset_deg)
-        root_quat_xyzw = _quat_xyzw_normalize(_quat_xyzw_multiply(root_quat_xyzw, manual_offset))
-
-        local_offset = tuple(float(v) for v in root_local_offset_m)
-        rotated_local_offset = _quat_xyzw_rotate_vector(root_quat_xyzw, local_offset)
-        visual_position = tuple(
-            float(position_m[i]) + float(visual_offset_m[i]) + rotated_local_offset[i]
-            for i in range(3)
-        )
-
-        visual["root_translate_op"].Set(Gf.Vec3d(*visual_position))
-        qx, qy, qz, qw = root_quat_xyzw
-        visual["root_orient_op"].Set(Gf.Quatf(qw, qx, qy, qz))
-
-    gap_m = max(0.0, float(gap_m))
-    for finger in visual["fingers"]:
-        y = finger["side"] * (0.5 * gap_m)
-        axes_position = Gf.Vec3d(0.0, y, finger["center_z_m"])
-        finger["axes_translate_op"].Set(axes_position)
-        finger["axes_orient_op"].Set(finger["finger_orient"])
-
-        finger_q = finger["finger_orient_xyzw"]
-        for box in finger["collision_boxes"]:
-            box_local = box["position_m"]
-            if finger["cube_z_offset_m"] != 0.0:
-                box_local = (box_local[0], box_local[1], box_local[2] + finger["cube_z_offset_m"])
-            box_offset = _quat_xyzw_rotate_vector(finger_q, box_local)
-            box_position = _vec3d_add(axes_position, box_offset)
-            box_orient_xyzw = _quat_xyzw_multiply(finger_q, box["orient_xyzw"])
-            box["translate_op"].Set(box_position)
-            box["orient_op"].Set(_gf_quatf_from_xyzw(box_orient_xyzw))
-
-
 def _update_cable_stage_visual(curve, points):
     if curve is None or points is None:
         return
@@ -1872,18 +1636,6 @@ def _update_cable_stage_visual(curve, points):
     curve.GetDisplayColorAttr().Set([(1.0, 0.0, 0.0)])
 
 
-def _remove_cable_gripper_proxy_visuals(stage) -> None:
-    stale_paths = []
-    for prim in stage.Traverse():
-        if "CableGripperProxyVisual" in prim.GetName():
-            stale_paths.append(str(prim.GetPath()))
-    for stale_path in sorted(stale_paths, key=len, reverse=True):
-        stale_prim = stage.GetPrimAtPath(stale_path)
-        if stale_prim.IsValid():
-            stage.RemovePrim(stale_path)
-            print(f"Removed stale CableGripperProxyVisual prim at {stale_path}")
-
-
 def _create_cable_gripper_collision_box_visual(visual_offset_m, visual_yaw_deg: float = 0.0):
     from pxr import Gf, Sdf, UsdGeom, UsdShade  # noqa: PLC0415
     import omni.usd  # noqa: PLC0415
@@ -1891,8 +1643,6 @@ def _create_cable_gripper_collision_box_visual(visual_offset_m, visual_yaw_deg: 
     stage = omni.usd.get_context().get_stage()
     if stage is None:
         return None
-
-    _remove_cable_gripper_proxy_visuals(stage)
 
     root_path = "/World/CableGripperCollisionVisual"
     root_prim = stage.GetPrimAtPath(root_path)
@@ -1909,53 +1659,14 @@ def _create_cable_gripper_collision_box_visual(visual_offset_m, visual_yaw_deg: 
     root = UsdGeom.Xform.Define(stage, Sdf.Path(root_path))
     root_xform = UsdGeom.Xformable(root.GetPrim())
     root_xform.AddTranslateOp().Set(Gf.Vec3d(*tuple(float(v) for v in visual_offset_m)))
-    root_xform.AddOrientOp().Set(_gf_quatf_from_xyzw(_local_z_rotation_xyzw(math.radians(float(visual_yaw_deg)))))
+    visual_yaw_half = 0.5 * math.radians(float(visual_yaw_deg))
+    root_xform.AddOrientOp().Set(Gf.Quatf(math.cos(visual_yaw_half), 0.0, 0.0, math.sin(visual_yaw_half)))
 
     return {
         "root_path": root_path,
         "material": material,
         "boxes": {},
     }
-
-
-def _create_cable_gripper_root_pose_visual(visual_offset_m, visual_yaw_deg: float = 0.0):
-    from pxr import Gf, Sdf, UsdGeom  # noqa: PLC0415
-    import omni.usd  # noqa: PLC0415
-
-    stage = omni.usd.get_context().get_stage()
-    if stage is None:
-        return None
-
-    root_path = "/World/CableGripperRootVisual"
-    root_prim = stage.GetPrimAtPath(root_path)
-    if root_prim.IsValid():
-        stage.RemovePrim(root_path)
-
-    root = UsdGeom.Xform.Define(stage, Sdf.Path(root_path))
-    root_xform = UsdGeom.Xformable(root.GetPrim())
-    root_xform.AddTranslateOp().Set(Gf.Vec3d(*tuple(float(v) for v in visual_offset_m)))
-    root_xform.AddOrientOp().Set(_gf_quatf_from_xyzw(_local_z_rotation_xyzw(math.radians(float(visual_yaw_deg)))))
-
-    axes = _create_axes_visual(stage, f"{root_path}/root_axes", axis_length_m=0.12, width_m=0.006)
-    axes_translate_op = axes.AddTranslateOp()
-    axes_orient_op = axes.AddOrientOp()
-    axes_orient_op.Set(Gf.Quatf(1.0, 0.0, 0.0, 0.0))
-    return {
-        "translate_op": axes_translate_op,
-        "orient_op": axes_orient_op,
-    }
-
-
-def _update_cable_gripper_root_pose_visual(visual, root_pose):
-    if visual is None or root_pose is None:
-        return
-    from pxr import Gf  # noqa: PLC0415
-
-    position_m = tuple(float(v) for v in root_pose.get("position_m", (0.0, 0.0, 0.0)))
-    quat_xyzw = _quat_xyzw_normalize(root_pose.get("quat_xyzw", (0.0, 0.0, 0.0, 1.0)))
-    qx, qy, qz, qw = quat_xyzw
-    visual["translate_op"].Set(Gf.Vec3d(*position_m))
-    visual["orient_op"].Set(Gf.Quatf(qw, qx, qy, qz))
 
 
 def _update_cable_gripper_collision_box_visual(visual, boxes):
@@ -1991,9 +1702,14 @@ def _update_cable_gripper_collision_box_visual(visual, boxes):
             visual["boxes"][key] = box_visual
 
         position_m = tuple(float(v) for v in box.get("position_m", (0.0, 0.0, 0.0)))
-        quat_xyzw = _quat_xyzw_normalize(box.get("quat_xyzw", (0.0, 0.0, 0.0, 1.0)))
+        qx, qy, qz, qw = (float(v) for v in box.get("quat_xyzw", (0.0, 0.0, 0.0, 1.0)))
+        q_norm = math.sqrt(qx * qx + qy * qy + qz * qz + qw * qw)
+        if q_norm <= 0.0:
+            qx, qy, qz, qw = 0.0, 0.0, 0.0, 1.0
+        else:
+            inv_q_norm = 1.0 / q_norm
+            qx, qy, qz, qw = qx * inv_q_norm, qy * inv_q_norm, qz * inv_q_norm, qw * inv_q_norm
         size_m = tuple(float(v) for v in box.get("size_m", (0.01, 0.01, 0.01)))
-        qx, qy, qz, qw = quat_xyzw
         box_visual["translate_op"].Set(Gf.Vec3d(*position_m))
         box_visual["orient_op"].Set(Gf.Quatf(qw, qx, qy, qz))
         box_visual["scale_op"].Set(Gf.Vec3f(*size_m))
@@ -2012,12 +1728,15 @@ def main():
     franka_root = Path(args_cli.franka_root).expanduser()
     if not usd_path.exists():
         raise FileNotFoundError(f"USD path does not exist: {usd_path}")
+    room_usd_path = None
+    if not args_cli.no_room:
+        room_path = _path_relative_to_franka_root(args_cli.room_usd_path, franka_root)
+        if not room_path.exists():
+            raise FileNotFoundError(f"Room USD path does not exist: {room_path}")
+        _prepare_robot_room_texture_links(room_path)
+        room_usd_path = str(room_path)
 
-    groups = _load_joint_groups(
-        franka_root,
-        args_cli.embodiment,
-        include_browser_commands=not args_cli.disable_browser_command_topics,
-    )
+    groups = _load_joint_groups(include_browser_commands=not args_cli.no_browser)
     visualizer_cfgs = _make_visualizer_cfgs()
     solver_cfg = MJWarpSolverCfg(
         njmax=args_cli.mj_njmax,
@@ -2042,16 +1761,22 @@ def main():
 
     sim = sim_utils.SimulationContext(sim_cfg)
 
-    SceneCfg = _make_scene_cfg(str(usd_path), args_cli.robot_prim_path)
+    SceneCfg = _make_scene_cfg(str(usd_path), args_cli.robot_prim_path, room_usd_path)
     scene = InteractiveScene(SceneCfg(num_envs=1, env_spacing=0.0, replicate_physics=False))
     robot_prim_path = _env_robot_prim_path(args_cli.robot_prim_path)
     _fix_single_articulation_root(robot_prim_path)
     _fix_newton_reversed_fixed_joints(robot_prim_path)
+    _set_angular_drive_type_for_joints(robot_prim_path, GRIPPER_DRIVER_JOINTS, "acceleration")
     sim.reset()
     scene.reset()
 
     robot = scene["robot"]
-    actual_joint_names = _joint_names(robot)
+    if hasattr(robot.data, "joint_names"):
+        actual_joint_names = list(robot.data.joint_names)
+    elif hasattr(robot, "joint_names"):
+        actual_joint_names = list(robot.joint_names)
+    else:
+        raise RuntimeError("Could not read joint names from IsaacLab articulation")
     group_indices = _resolve_group_indices(groups, actual_joint_names)
     missing = [
         f"{group.label}:{name}"
@@ -2077,35 +1802,38 @@ def main():
         print(f"Warning: pedal base control disabled: {exc}", file=sys.stderr)
 
     spine_keyboard_controller = None
-    if args_cli.spine_keyboard_control:
-        if "franka_spine_vertical_joint" in actual_joint_names:
-            spine_keyboard_controller = SpineKeyboardController(
-                robot,
-                actual_joint_names,
-                step_m=args_cli.spine_keyboard_step,
-                min_m=args_cli.spine_keyboard_min,
-                max_m=args_cli.spine_keyboard_max,
-            )
-        else:
-            print("Warning: spine keyboard control disabled: franka_spine_vertical_joint not found", file=sys.stderr)
+    if "franka_spine_vertical_joint" in actual_joint_names:
+        spine_keyboard_controller = SpineKeyboardController(
+            robot,
+            actual_joint_names,
+            step_m=args_cli.spine_keyboard_step,
+            min_m=args_cli.spine_keyboard_min,
+            max_m=args_cli.spine_keyboard_max,
+        )
+    else:
+        print("Warning: spine keyboard control disabled: franka_spine_vertical_joint not found", file=sys.stderr)
 
     cable_curve_visual = None
     cable_gripper_collision_visual = None
-    cable_gripper_root_visual = None
     if args_cli.with_cable:
-        cable_config_path = _resolve_path(franka_root, args_cli.cable_config_path)
+        cable_config_path = Path(args_cli.cable_config_path).expanduser()
+        if not cable_config_path.is_absolute():
+            cable_config_path = franka_root / cable_config_path
         cable_world_offset = tuple(float(v) for v in args_cli.cable_world_position_offset)
         cable_world_yaw_deg = float(args_cli.cable_world_yaw_deg)
         cable_curve_visual = _create_cable_stage_visuals(
-            franka_root, cable_config_path, cable_world_offset, cable_world_yaw_deg
+            franka_root,
+            cable_config_path,
+            cable_world_offset,
+            cable_world_yaw_deg,
+            args_cli.show_table_board_fixture_collisions,
         )
         cable_gripper_collision_visual = _create_cable_gripper_collision_box_visual(
             cable_world_offset, cable_world_yaw_deg
         )
-        cable_gripper_root_visual = _create_cable_gripper_root_pose_visual(cable_world_offset, cable_world_yaw_deg)
         print(
             "Cable VBD ROS coupling enabled: "
-            f"config={cable_config_path} gripper_body={args_cli.cable_gripper_body_name} "
+            f"config={cable_config_path} "
             f"visual_offset={cable_world_offset} visual_yaw_deg={cable_world_yaw_deg:.3f}"
         )
 
@@ -2113,11 +1841,17 @@ def main():
     node = IsaacLabRosBridge(groups, enable_cable=args_cli.with_cable)
     publish_period = 1.0 / max(args_cli.ros_publish_rate, 1.0)
     next_publish_time = 0.0
-    logged_fabric_gripper_pose = False
-    logged_missing_fabric_gripper_pose = False
     logged_robotiq_finger_targets = False
     logged_missing_robotiq_finger_targets = False
-    robotiq_finger_selectors = tuple(args_cli.cable_robotiq_finger_prim) or _default_robotiq_finger_selectors()
+    # Cable-world finger ids are ordered opposite to the Robotiq inner_finger link
+    # names, so swap each gripper pair to make the red collision boxes open/close
+    # in the same visual direction as the gray Robotiq fingers.
+    robotiq_finger_selectors = (
+        "left_Robotiq_2F_85/left__Robotiq_2F_85/right_inner_finger",
+        "left_Robotiq_2F_85/left__Robotiq_2F_85/left_inner_finger",
+        "right_Robotiq_2F_85/right_Robotiq_2F_85/right_inner_finger",
+        "right_Robotiq_2F_85/right_Robotiq_2F_85/left_inner_finger",
+    )
 
     try:
         while simulation_app.is_running() and rclpy.ok():
@@ -2147,45 +1881,7 @@ def main():
             sim.step()
             scene.update(sim.get_physics_dt())
             if args_cli.with_cable:
-                fabric_pose = _fabric_prim_world_pose_by_name(args_cli.cable_gripper_body_name)
-                if fabric_pose is None:
-                    if not logged_missing_fabric_gripper_pose:
-                        logged_missing_fabric_gripper_pose = True
-                        print(
-                            f"Warning: Fabric live USD prim pose unavailable for {args_cli.cable_gripper_body_name}; skipping cable gripper publish",
-                            file=sys.stderr,
-                        )
-                else:
-                    position_m, quat_xyzw = fabric_pose
-                    if not logged_fabric_gripper_pose:
-                        logged_fabric_gripper_pose = True
-                        print(
-                            f"Cable gripper pose uses Fabric live USD prim pose for {args_cli.cable_gripper_body_name}",
-                            flush=True,
-                        )
-
-                    gripper_offset = tuple(float(v) for v in args_cli.cable_gripper_position_offset)
-                    world_offset = tuple(float(v) for v in args_cli.cable_world_position_offset)
-                    position_m, quat_xyzw = _robot_world_pose_to_cable_world(
-                        position_m,
-                        quat_xyzw,
-                        world_offset,
-                        args_cli.cable_world_yaw_deg,
-                        gripper_offset,
-                    )
-                    gap_m = _robot_gripper_gap_m(
-                        robot,
-                        side=args_cli.cable_gripper_side,
-                        actual_joint_names=actual_joint_names,
-                        group_indices=group_indices,
-                        cable_gap_range=(0.0, 0.08),
-                        fixed_gap_m=args_cli.cable_gripper_gap_m,
-                    )
-                    node.publish_cable_gripper(
-                        position_m=position_m,
-                        quat_xyzw=quat_xyzw,
-                        gap_m=gap_m,
-                    )
+                live_gripper_boxes = None
                 if args_cli.cable_robotiq_finger_targets:
                     world_offset = tuple(float(v) for v in args_cli.cable_world_position_offset)
                     finger_targets, resolved_paths = _collect_robotiq_finger_targets(
@@ -2215,14 +1911,11 @@ def main():
                                 flush=True,
                             )
                         node.publish_cable_robotiq_finger_targets(finger_targets)
+                        live_gripper_boxes = finger_targets
                 _update_cable_stage_visual(cable_curve_visual, node.latest_cable_points())
                 _update_cable_gripper_collision_box_visual(
                     cable_gripper_collision_visual,
-                    node.latest_cable_gripper_boxes(),
-                )
-                _update_cable_gripper_root_pose_visual(
-                    cable_gripper_root_visual,
-                    node.latest_cable_gripper_root_pose(),
+                    live_gripper_boxes if live_gripper_boxes is not None else node.latest_cable_gripper_boxes(),
                 )
             now = node.get_clock().now().nanoseconds * 1e-9
             if now >= next_publish_time:

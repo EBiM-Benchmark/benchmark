@@ -16,6 +16,7 @@
 # *.pt filter=lfs diff=lfs merge=lfs -text
 # *.jit filter=lfs diff=lfs merge=lfs -text
 assets/robot_room.usd filter=lfs diff=lfs merge=lfs -text
+task1_isaacsim/**/*.usd filter=lfs diff=lfs merge=lfs -text
 
 # task1_mujoco: extensionless in-image launcher script (CRLF breaks its shebang)
 task1_mujoco/robotiq_duo_full_scene_minimal_core/release/ebim text eol=lf

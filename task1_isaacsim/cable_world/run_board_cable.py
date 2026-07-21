@@ -43,6 +43,7 @@ from sra_gripper import (  # noqa: E402
     GripperControlConfig,
     GripperTeleopConfig,
     PoseConfig,
+    RobotiqFingerPoseBindController,
     SraGripperConfig,
     SraGripperController,
     _euler_xyz_deg_to_quat,
@@ -1298,6 +1299,8 @@ class Example:
         self.gripper_grasp_bind_controller: GraspPoseBindController | None = None
         gripper_build_result = None
         self.robotiq_finger_body_ids: tuple[int, ...] = ()
+        self.robotiq_finger_shape_ids: tuple[int, ...] = ()
+        self.robotiq_grasp_bind_controller: RobotiqFingerPoseBindController | None = None
         self.robotiq_finger_size_m: tuple[float, float, float] = tuple(
             float(v) for v in getattr(args, "robotiq_finger_size", (0.007, 0.010, 0.028))
         )
@@ -1346,6 +1349,7 @@ class Example:
             robotiq_shape_cfg.has_shape_collision = True
             robotiq_shape_cfg.has_particle_collision = False
             robotiq_body_ids: list[int] = []
+            robotiq_shape_ids: list[int] = []
             sx, sy, sz = self.robotiq_finger_size_m
             for finger_id in range(4):
                 body_id = builder.add_link(
@@ -1354,7 +1358,7 @@ class Example:
                     is_kinematic=True,
                     label=f"{args.label}:robotiq_finger_target_{finger_id}",
                 )
-                builder.add_shape_box(
+                shape_id = builder.add_shape_box(
                     body=body_id,
                     xform=wp.transform(wp.vec3(0.0, 0.0, 0.0), wp.quat_identity()),
                     hx=0.5 * sx,
@@ -1365,7 +1369,9 @@ class Example:
                     color=(0.9, 0.05, 0.02),
                 )
                 robotiq_body_ids.append(body_id)
+                robotiq_shape_ids.append(shape_id)
             self.robotiq_finger_body_ids = tuple(robotiq_body_ids)
+            self.robotiq_finger_shape_ids = tuple(robotiq_shape_ids)
         if args.gripper and not bool(getattr(args, "robotiq_finger_targets", False)):
             self.gripper_config = _make_gripper_config(args, result.source_points_m)
             gripper_build_result = add_gripper_from_config(builder, self.gripper_config)
@@ -1377,13 +1383,13 @@ class Example:
         if cable_dahl_friction and hasattr(self.model, "vbd"):
             self.model.vbd.dahl_eps_max.fill_(float(cable_dahl_eps_max))
             self.model.vbd.dahl_tau.fill_(float(cable_dahl_tau))
+        fixed_body_ids = {int(body_id) for body_id in result.fixed_body_ids}
+        candidate_body_ids = tuple(
+            int(body_id) for body_id in result.cable_body_ids if int(body_id) not in fixed_body_ids
+        )
+        if len(candidate_body_ids) == 0:
+            candidate_body_ids = tuple(int(body_id) for body_id in result.cable_body_ids)
         if self.gripper_controller is not None and gripper_build_result is not None and bool(args.gripper_grasp_bind):
-            fixed_body_ids = {int(body_id) for body_id in result.fixed_body_ids}
-            candidate_body_ids = tuple(
-                int(body_id) for body_id in result.cable_body_ids if int(body_id) not in fixed_body_ids
-            )
-            if len(candidate_body_ids) == 0:
-                candidate_body_ids = tuple(int(body_id) for body_id in result.cable_body_ids)
             if len(candidate_body_ids) > 0:
                 grasp_bind_config = GraspPoseBindConfig(
                     enabled=True,
@@ -1402,6 +1408,32 @@ class Example:
                     gripper_build_result,
                     self.model,
                     candidate_body_ids,
+                )
+        if self.robotiq_finger_body_ids and self.robotiq_finger_shape_ids and bool(args.gripper_grasp_bind):
+            if len(candidate_body_ids) > 0:
+                robotiq_grasp_bind_config = GraspPoseBindConfig(
+                    enabled=True,
+                    candidate_body_labels=(),
+                    confirm_steps=int(args.gripper_grasp_bind_confirm_steps),
+                    release_gap_m=float(args.gripper_grasp_bind_release_gap),
+                    normal_alignment_min_cos=float(args.gripper_grasp_bind_normal_alignment),
+                    opposing_normal_min_cos=float(args.gripper_grasp_bind_opposing_normal),
+                    max_position_error_m=float(args.gripper_grasp_bind_max_position_error),
+                    max_rotation_error_rad=float(args.gripper_grasp_bind_max_rotation_error),
+                    candidate_body_label_prefixes=(),
+                    activation_radius_m=float(args.gripper_grasp_bind_activation_radius),
+                )
+                self.robotiq_grasp_bind_controller = RobotiqFingerPoseBindController(
+                    robotiq_grasp_bind_config,
+                    self.model,
+                    candidate_body_ids,
+                    self.robotiq_finger_body_ids,
+                    self.robotiq_finger_shape_ids,
+                )
+                print(
+                    "[board_cable] Robotiq grasp bind enabled: "
+                    f"pairs=((0, 1), (2, 3)) candidates={len(candidate_body_ids)} "
+                    f"release_gap={float(args.gripper_grasp_bind_release_gap):.6g}"
                 )
         self.model.rigid_contact_max = int(args.rigid_contact_max)
         self.gravity = tuple(float(v) for v in args.gravity)
@@ -1626,10 +1658,14 @@ class Example:
                     self.contacts,
                     self.gripper_controller.command_gap_m(),
                 )
+            if self.robotiq_grasp_bind_controller is not None:
+                self.robotiq_grasp_bind_controller.update_from_contacts(self.state_0, self.contacts)
             self.solver.step(self.state_0, self.state_1, self.control, self.contacts, self.sim_dt)
             self.state_0, self.state_1 = self.state_1, self.state_0
             if self.gripper_grasp_bind_controller is not None:
                 self.gripper_grasp_bind_controller.apply_pose_binding(self.state_0)
+            if self.robotiq_grasp_bind_controller is not None:
+                self.robotiq_grasp_bind_controller.apply_pose_binding(self.state_0)
             self._apply_board_floor_constraint()
 
     def step(self) -> None:

@@ -13,7 +13,7 @@ scene:
 board:
   load: true
   load_visual_shapes: true
-  hide_collision_shapes: true
+  hide_collision_shapes: false
   visual_shapes_as_colliders: false
   friction: 3.0
   require_collision: false
@@ -29,7 +29,7 @@ board:
     clearance: 0.0002
     expand: 0.005
   top_support:
-    enabled: false
+    enabled: true
     visible: false
     prim_path: /World/board_segment/board_segment_bottom_left/Collisions/Collisions
     thickness: 0.004
@@ -62,8 +62,8 @@ solver:
   rigid_joint_linear_kd: 0.01
   rigid_joint_angular_kd: 0.0
 contact:
-  rigid_contact_margin: 0.0005
-  rigid_gap: 0.0003
+  rigid_contact_margin: 0.005
+  rigid_gap: 0.003
 shape:
   density: 1000.0
   ke: 12000.0
@@ -71,17 +71,17 @@ shape:
   mu: 3.0
 cable:
   friction: 3.0
-  stretch_stiffness: 800000.0
-  stretch_damping: 0.005
+  stretch_stiffness: 80000.0
+  stretch_damping: 5
   bend_stiffness: 0.02
-  bend_damping: 0.05
+  bend_damping: 50
   dahl_friction:
-    enabled: true
+    enabled: false
     eps_max: 0.5
     tau: 0.1
   self_collision_filter_neighbor_hops: 2
   fixed_points_as_static: true
   add_articulation: true
 ground:
-  enabled: false
+  enabled: true
   height: 0.0
