@@ -42,16 +42,13 @@ EMBODIMENT=fr3duo_mobile bash task1_isaacsim/scripts/run_isaaclab_newton_teleop.
 Task 1 for the ManipulationNet **cable_management** benchmark: a mobile
 dual-arm FR3 platform with Robotiq 2F-85 grippers routing a deformable cable
 across a fixture board. Five input modes (keyboard / gamepad / VR / GELLO /
-unified ROS 2 teleop), a single in-sim IK shared by all of them, and the
-official ManipulationNet client vendored for end-to-end scored evaluation.
-The directory is self-contained — native one-click launchers plus a Docker
-evaluation stack:
+unified ROS 2 teleop), a single in-sim IK shared by all of them. The
+directory is self-contained — a native one-click launcher, or via Docker:
 
 ```bash
 cd task1_mujoco
-./start.sh                    # native teleoperation (Windows: double-click start.bat)
-./docker-run.sh --mnet        # scored ManipulationNet evaluation (Docker), terminal 1
-./docker-run.sh client        # terminal 2: official mnet client
+./start.sh              # native teleoperation (Windows: double-click start.bat)
+./docker-run.sh         # or via Docker (no ROS 2 / conda install needed)
 ```
 
 See [`task1_mujoco/README.md`](task1_mujoco/README.md) for the full participant

@@ -51,9 +51,8 @@ task-specific setup. In general:
   NVIDIA GPU; Docker Engine + Docker Compose v2; NVIDIA Container Toolkit; X11 for GUI; NVIDIA NGC
   access for `nvcr.io/nvidia/isaac-sim` / `isaac-lab` images.
   <!-- (extracted from docs/developer_setup.md:9-14 — verify) -->
-- **Task 1 MuJoCo** — Miniconda for native practice (the launcher bootstraps its own env); Docker
-  Engine + Compose v2 for the scored evaluation. Scored runs need native Linux (WSL2 cannot reach the
-  evidence camera's 25 fps). <!-- (extracted from task1_mujoco/README.md:97-113 — verify) -->
+- **Task 1 MuJoCo** — Miniconda for native practice (the launcher bootstraps its own env), or Docker
+  Engine + Compose v2 to run without a local install.
 
 Note: Task 1 (Isaac Sim) uses a **Newton-enabled Isaac Lab overlay**, not the repo's
 `docker/isaac-lab-2.3.2` profile — see its README for the container it needs.
@@ -86,18 +85,14 @@ EMBODIMENT=fr3duo_mobile bash task1_isaacsim/scripts/run_isaaclab_newton_teleop.
 
 ### Task 1 — Cable Routing & Plugging (MuJoCo)
 
-Full setup + run: **[`task1_mujoco/README.md`](../task1_mujoco/README.md)** (native practice vs. Docker
-scored eval; input modes; controls; troubleshooting).
+Full setup + run: **[`task1_mujoco/README.md`](../task1_mujoco/README.md)** (native practice, input
+modes, controls, troubleshooting).
 
 ```bash
 cd task1_mujoco
-./start.sh                    # native teleoperation practice (Windows: double-click start.bat)
-./docker-run.sh --mnet        # scored ManipulationNet evaluation (Docker), terminal 1
-./docker-run.sh client        # terminal 2: official mnet client
+./start.sh              # native teleoperation practice (Windows: double-click start.bat)
+./docker-run.sh         # or via Docker (no ROS 2 / conda install needed)
 ```
-<!-- (extracted from README.md:50-55; step-by-step scored walkthrough at task1_mujoco/README.md:126-209 — verify) -->
-<!-- @2houyuhang: confirm the two-terminal scored-eval sequence is the participant path, and whether the
-     native `./start.sh` practice step should come first in this guide. -->
 
 ### Task 2 — Deformable Material Handling / Thermal Pad Placement (Isaac Sim)
 
@@ -160,11 +155,6 @@ repository — open a **New Issue** with the *Repository Submission* form:
 
 Your submission is a link to a **public GitHub repo** containing a **Dockerfile** and a **README**
 explaining how to run it (source code is not required). Submissions are **open now**; the submission deadline will be extended and is announced on the [competition page](https://ebim-benchmark.github.io/competition.html) and in [Discord](https://discord.gg/pGwRbMRjuH).
-
-> **One clarification for Task 1 developers:** the ManipulationNet performance-submission client used in
-> the Task 1 development loop (`docker-run.sh client`) is **not** the official competition submission — official
-> entries go through the EBiM-Benchmark/submissions form above.
-<!-- Distinction requested by @Ju6276 on issue #8; framing per EBiM-Benchmark/submissions#1. -->
 
 ## Reporting issues & getting help
 
