@@ -338,6 +338,7 @@ def _run_openxr(args, session: TeleopSession, control_tick, hand_arm_pairs, mnet
     scene_opt.geomgroup[:] = 0
     for g in (0, 1, 2, 5):
         scene_opt.geomgroup[g] = 1
+    scene_opt.sitegroup[5] = 1  # routing-direction hint (operator-only)
     hmd_cam = mujoco.MjvCamera()
     stereo_baseline = 0.06  # camera separation for the stereo screen (m)
 

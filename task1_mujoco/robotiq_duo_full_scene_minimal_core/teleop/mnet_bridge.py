@@ -180,6 +180,8 @@ class MnetBridge:
             5,
         ):  # visual groups incl. the board, no collision geoms
             self._scene_opt.geomgroup[g] = 1
+        # never show the operator-only routing hint in the evidence video
+        self._scene_opt.sitegroup[5] = 0
         self._next_pub = 0.0
         self._rate_t0: float | None = None
         self._rate_n = 0

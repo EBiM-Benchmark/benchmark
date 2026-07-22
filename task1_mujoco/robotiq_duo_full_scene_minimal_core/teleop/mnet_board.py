@@ -110,35 +110,36 @@ def apply_local_random_config(session, seed: int | None = None) -> bool:
     return apply_board_config(session, make_random_tier2_config(seed))
 
 
-def apply_board_config(session, cfg: dict) -> bool:
-    """Move the board fixtures per the client's test_coordinates and re-lay
-    the cable. Returns True when fixtures were moved."""
-    base = cfg.get("base_coordinates")
-    test = cfg.get("test_coordinates")
-    types = cfg.get("fixture_types")
-    if not base or not test or not types or len(base) != len(types) or len(test) != len(types):
-        log("[mnet] board config incomplete (no test_coordinates?) — nothing applied")
-        return False
+def _fit_assignment(model, cfg: dict):
+    """Match config indices to our fixture bodies and fit the grid->board
+    similarity map. Returns (assign, linear, body_ids) or None.
 
-    # +/- prefixes encode the routing side, not the fixture type
+    assign: body name -> index into the config's coordinate/type lists.
+    linear: 2x2 map, local_delta = linear @ grid_delta.
+    """
+    base = cfg.get("base_coordinates")
+    types = cfg.get("fixture_types")
+    if not base or not types or len(base) != len(types):
+        return None
+
+    # +/- prefixes encode the routing direction, not the fixture type
     clean_types = [t.lstrip("+-") for t in types]
     ours = Counter(t for ts in FIXTURE_BODIES_BY_TYPE for t in [ts] * len(FIXTURE_BODIES_BY_TYPE[ts]))
     if Counter(clean_types) != ours:
         log(
             f"[mnet] board config is for a different layout ({Counter(clean_types)}) — "
-            f"this scene implements Tier2 ({dict(ours)}); nothing applied"
+            f"this scene implements Tier2 ({dict(ours)})"
         )
-        return False
+        return None
 
-    model, data = session.model, session.data
     body_ids = {
         name: mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, name)
         for names in FIXTURE_BODIES_BY_TYPE.values()
         for name in names
     }
     if any(bid < 0 for bid in body_ids.values()):
-        log("[mnet] fixture bodies missing from the model — nothing applied")
-        return False
+        log("[mnet] fixture bodies missing from the model")
+        return None
     local_pos = {name: model.body_pos[bid][:2].copy() for name, bid in body_ids.items()}
 
     # indices in the config per type, in published order
@@ -147,7 +148,6 @@ def apply_board_config(session, cfg: dict) -> bool:
         idx_by_type.setdefault(t, []).append(i)
 
     base_arr = np.asarray(base, dtype=np.float64)
-    test_arr = np.asarray(test, dtype=np.float64)
 
     # stage 1: fit the grid->board map on the uniquely-typed ANCHOR fixtures
     # (the two cable-end adapters spanning the board diagonal + the C-clip);
@@ -182,6 +182,81 @@ def apply_board_config(session, cfg: dict) -> bool:
         key=lambda perm: sum(float(np.linalg.norm(predicted[i] - local_pos[n])) for n, i in zip(peg_names, perm)),
     )
     assign.update(zip(peg_names, best_perm))
+    return assign, linear, body_ids
+
+
+# ---------------------------------------------------------------- overlay
+# Routing labels: one textured plate per fixture showing the visit order
+# and wrap sign of the routing (official notation, manipulation-net.org:
+# + = clockwise, - = counterclockwise; S/E = cable start/end adapters).
+# The plates are SITE group 5: shown in the operator viewer and the VR
+# render, but the evidence-camera renderers never enable that site group,
+# so the benchmark video never shows them; sites have no collision, so
+# they can never disturb the cable or the robot. Tier 2 only — the
+# official randomization changes positions, never the routing itself, so
+# the label textures are static and only their positions follow the
+# assigned fixtures.
+ROUTE_LABEL_SITES = ("route_label_s", "route_label_1", "route_label_2",
+                     "route_label_3", "route_label_4", "route_label_5",
+                     "route_label_e")  # in VISIT order of TIER_2_BASE
+ROUTE_LABEL_OFFSET = (-0.045, 0.0)  # plate sits left of its fixture (board x)
+ROUTE_LABEL_Z = -0.0094  # ~4.5 mm above the board top, fixture_group frame
+
+
+def _update_routing_overlay(model, cfg: dict, assign: dict, body_ids: dict, linear=None) -> None:
+    site_ids = [
+        mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, name)
+        for name in ROUTE_LABEL_SITES
+    ]
+    if any(sid < 0 for sid in site_ids):
+        return  # scene without label sites
+    routing = cfg.get("routing_configuration")
+    if not routing or len(routing) != len(ROUTE_LABEL_SITES):
+        for sid in site_ids:
+            model.site_pos[sid][:] = (0.0, 0.0, -0.6)  # park
+        return
+    body_by_idx = {idx: body_ids[name] for name, idx in assign.items()}
+    if any(abs(int(e)) not in body_by_idx for e in routing):
+        return
+    for sid, entry in zip(site_ids, routing):
+        fx, fy = model.body_pos[body_by_idx[abs(int(entry))]][:2]
+        model.site_pos[sid][:] = (
+            float(fx) + ROUTE_LABEL_OFFSET[0],
+            float(fy) + ROUTE_LABEL_OFFSET[1],
+            ROUTE_LABEL_Z,
+        )
+    log(f"[board] routing labels placed next to {len(routing)} fixtures")
+
+
+def apply_routing_overlay(session, cfg: dict | None = None) -> None:
+    """Lay the routing hint for cfg (default: the built-in Tier-2 layout).
+    Used at startup, before any client/randomized config arrives."""
+    cfg = cfg or TIER_2_BASE
+    fitted = _fit_assignment(session.model, cfg)
+    if fitted is None:
+        return
+    assign, linear, body_ids = fitted
+    _update_routing_overlay(session.model, cfg, assign, body_ids, linear)
+
+
+def apply_board_config(session, cfg: dict) -> bool:
+    """Move the board fixtures per the client's test_coordinates, re-lay
+    the cable, and refresh the routing hint. Returns True when fixtures
+    were moved."""
+    base = cfg.get("base_coordinates")
+    test = cfg.get("test_coordinates")
+    types = cfg.get("fixture_types")
+    if not base or not test or not types or len(base) != len(types) or len(test) != len(types):
+        log("[mnet] board config incomplete (no test_coordinates?) — nothing applied")
+        return False
+
+    fitted = _fit_assignment(session.model, cfg)
+    if fitted is None:
+        return False
+    assign, linear, body_ids = fitted
+    model, data = session.model, session.data
+    base_arr = np.asarray(base, dtype=np.float64)
+    test_arr = np.asarray(test, dtype=np.float64)
 
     # per-fixture shift = linear map of the grid offset
     moved = []
@@ -199,6 +274,7 @@ def apply_board_config(session, cfg: dict) -> bool:
 
     if not moved:
         log("[mnet] board config matched but no fixture needed to move")
+        _update_routing_overlay(model, cfg, assign, body_ids, linear)
         return False
 
     # the cable start is welded next to adapter_0 — keep them together
@@ -219,6 +295,7 @@ def apply_board_config(session, cfg: dict) -> bool:
     for arm in session.arms.values():
         release_grasp(data, arm)
     mujoco.mj_forward(model, data)
+    _update_routing_overlay(model, cfg, assign, body_ids, linear)
 
     log("[mnet] fixtures moved per client randomization:")
     for line in moved:

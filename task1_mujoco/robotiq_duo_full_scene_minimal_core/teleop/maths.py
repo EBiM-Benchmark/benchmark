@@ -97,6 +97,36 @@ def sample_polyline(points: np.ndarray, count: int) -> np.ndarray:
     return np.asarray(out, dtype=np.float64)
 
 
+def round_polyline_corners(
+    points: np.ndarray, radius_frac: float = 0.3, samples_per_corner: int = 8
+) -> np.ndarray:
+    """Soften each interior vertex of a polyline into a quadratic-Bezier
+    arc (endpoints kept exact), turning sharp zigzag corners into gentle
+    bends. ``radius_frac`` is how far back along each adjacent edge the
+    rounding starts, as a fraction of the shorter of the two edges - the
+    arc stays within the (prev, corner, next) triangle, so it never swings
+    closer to whatever the corner was placed to clear than the sharp
+    corner itself did."""
+    points = np.asarray(points, dtype=np.float64)
+    if len(points) < 3:
+        return points
+    out = [points[0]]
+    for i in range(1, len(points) - 1):
+        prev, cur, nxt = points[i - 1], points[i], points[i + 1]
+        len_in = float(np.linalg.norm(cur - prev))
+        len_out = float(np.linalg.norm(nxt - cur))
+        radius = radius_frac * min(len_in, len_out)
+        if radius < 1e-9:
+            out.append(cur)
+            continue
+        a = cur - (cur - prev) / len_in * radius
+        b = cur + (nxt - cur) / len_out * radius
+        for t in np.linspace(0.0, 1.0, samples_per_corner):
+            out.append((1 - t) ** 2 * a + 2 * (1 - t) * t * cur + t**2 * b)
+    out.append(points[-1])
+    return np.asarray(out, dtype=np.float64)
+
+
 def smooth_twist(prev: np.ndarray, target: np.ndarray, dt: float, tau: float) -> np.ndarray:
     """First-order low-pass toward ``target`` with time constant ``tau``."""
     alpha = 1.0 - math.exp(-dt / max(tau, 1e-6))

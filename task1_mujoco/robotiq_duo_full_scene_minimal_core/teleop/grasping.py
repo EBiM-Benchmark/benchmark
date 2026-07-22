@@ -175,7 +175,17 @@ def update_grasp(
             arm.grasp_nocontact_time += dt
         else:
             arm.grasp_nocontact_time = 0.0
-        escaped = arm.grasp_nocontact_time > config.GRASP_NOCONTACT_RELEASE_TIME
+        # a cable that ESCAPED at speed must be dropped immediately: keeping
+        # the capped assist spring attached to a free-flying 0.7 g segment
+        # for the usual grace period whips it violently (measured 19 m/s
+        # spikes vs ~6 m/s for the escape itself)
+        body_speed = float(np.linalg.norm(data.cvel[arm.grasped_body, 3:6]))
+        fast_escape = (
+            pad_count == 0
+            and body_speed > config.GRASP_ESCAPE_SPEED
+            and dist > config.GRASP_ESCAPE_DIST
+        )
+        escaped = fast_escape or arm.grasp_nocontact_time > config.GRASP_NOCONTACT_RELEASE_TIME
         if (
             escaped
             or dist > config.GRASP_ASSIST_RELEASE_DIST

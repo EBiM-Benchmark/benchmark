@@ -77,6 +77,16 @@ LOOP_HZ = 500.0
 RENDER_HZ = 60.0
 MOVE_SPEED = 4.0  # mutable: --move-speed
 ROT_SPEED = math.radians(540.0)  # mutable: --rot-speed-deg
+# while an arm holds the cable its commanded translation runs at this
+# fraction of normal speed (release restores 1x automatically).
+# 0.25 was tried on operator request 2026-07-14 and rolled back the same
+# day (handling felt off); back at the long-tested 0.45.
+# NOTE: in VR this multiplies a position-servo twist, so it acts as a gain
+# cut (more tracking lag), not a clean speed scale. A "full gain + 0.30 m/s
+# speed cap" replacement was tried 2026-07-14 and REJECTED by measurement:
+# the stiff servo tore the cable off the pads in 4/4 grasped-drag trials
+# (0.15-0.30 m/s hand speed, all grasp depths) while the gain cut held 4/4 -
+# the gain cut IS the retention mechanism. Do not retry without new data.
 GRASPED_SPEED_SCALE = 0.45
 GRASPED_TWIST_FILTER_TAU = 0.055
 GRASPED_BASE_SPEED_SCALE = 0.18
@@ -139,6 +149,26 @@ GRASP_ASSIST_RELEASE_DIST = 0.08
 # grip boost were both tried and user-rejected — combined feel was WORSE
 # than this baseline; do not retry without measurements first)
 GRASP_NOCONTACT_RELEASE_TIME = 0.3
+# ...but drop instantly when the cable has ESCAPED at speed: an attached
+# assist spring whipping a free segment through the grace period is where
+# most of the catapult violence comes from (median 25.8 -> 9.2 m/s across
+# wedge depths with this alone). Threshold sits well above the measured
+# ~1.2 m/s standing oscillation of a held cable (so transport flicker
+# cannot mis-trigger) and well below ejection speeds (3.6+ m/s)
+GRASP_ESCAPE_SPEED = 2.5
+# ...AND only once the segment is genuinely outside the gripper: seating a
+# fresh grasp and dragging over pegs produce brief contact-flicker + speed
+# transients right AT the slot, and releasing on those made grasping feel
+# unreliable (user-reported). A real ejection blows past this radius within
+# ~10 ms, so the whip is still cut ~30x sooner than the 0.3 s grace period.
+GRASP_ESCAPE_DIST = 0.04
+
+# NOTE a "post-grasp secure lift" (auto-raising the gripper a few mm after
+# the squeeze) was implemented three ways and REMOVED after 20-trial
+# statistics: it sometimes helped deep board-pinches but made shallow ones
+# WORSE (its own motion injects energy) - net effect indistinguishable from
+# noise. The instant escape release above is the change that actually
+# collapsed the catapult median (25.8 -> 9.2 m/s across wedge depths).
 GRASP_ASSIST_START_DELAY = 0.30
 GRASP_ASSIST_RAMP_TIME = 0.55
 GRASP_ASSIST_SLOT_VEL_LIMIT = 0.65

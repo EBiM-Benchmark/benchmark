@@ -73,6 +73,8 @@ def main() -> None:
     scene_opt.geomgroup[:] = 0
     for g in (0, 1, 2, 5):
         scene_opt.geomgroup[g] = 1
+    # never show the operator-only routing hint in the evidence video
+    scene_opt.sitegroup[5] = 0
     camid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_CAMERA, cam_name)
     fovy = math.radians(float(model.cam_fovy[camid]) if camid >= 0 else float(model.vis.global_.fovy))
 

@@ -1,4 +1,4 @@
-<?xml version='1.0' encoding='utf-8'?>
+﻿<?xml version='1.0' encoding='utf-8'?>
 <mujoco model="full_robot_board_cable_routing">
   <extension>
     <plugin plugin="mujoco.elasticity.cable" />
@@ -78,6 +78,20 @@
     <mesh name="table_mesh" file="table.obj" />
     <texture name="board_top_tex" type="2d" file="assets/board_top_texture.png" />
     <texture name="board_front_logo_tex" type="2d" file="assets/board_front_logo_texture.png" />
+    <texture name="route_label_s_tex" type="2d" file="assets/route_label_s.png" />
+    <material name="route_label_s_mat" texture="route_label_s_tex" emission="0.6" />
+    <texture name="route_label_1_tex" type="2d" file="assets/route_label_1.png" />
+    <material name="route_label_1_mat" texture="route_label_1_tex" emission="0.6" />
+    <texture name="route_label_2_tex" type="2d" file="assets/route_label_2.png" />
+    <material name="route_label_2_mat" texture="route_label_2_tex" emission="0.6" />
+    <texture name="route_label_3_tex" type="2d" file="assets/route_label_3.png" />
+    <material name="route_label_3_mat" texture="route_label_3_tex" emission="0.6" />
+    <texture name="route_label_4_tex" type="2d" file="assets/route_label_4.png" />
+    <material name="route_label_4_mat" texture="route_label_4_tex" emission="0.6" />
+    <texture name="route_label_5_tex" type="2d" file="assets/route_label_5.png" />
+    <material name="route_label_5_mat" texture="route_label_5_tex" emission="0.6" />
+    <texture name="route_label_e_tex" type="2d" file="assets/route_label_e.png" />
+    <material name="route_label_e_mat" texture="route_label_e_tex" emission="0.6" />
     <material name="board_fast_mat" texture="board_top_tex" texuniform="false" texrepeat="1 1" rgba="1 1 1 1" />
     <material name="board_front_logo_mat" texture="board_front_logo_tex" texuniform="false" texrepeat="1 1" rgba="1 1 1 1" />
     <material name="routing_pad_mat" rgba="0.1 0.35 1.0 0" />
@@ -561,7 +575,12 @@
               <geom type="mesh" mesh="accessories_franka_head_v0_2_collision_franka_head" contype="2" conaffinity="0" />
               <body name="head_camera_mounting_point" pos="0.0498 -0.02 0.2345" quat="0.93667 0 0.350214 0">
                 <inertial pos="0 0 0" mass="0.001" diaginertia="1e-07 1e-07 1e-07" />
+                <!-- ZED Mini stereo pair: 63mm baseline (stereolabs.com/store/products/zed-mini),
+                     head_cam = left eye at the original mounting point, head_cam_right offset
+                     along the shared optical frame's local +X ("right") by the full baseline -
+                     both share the same quat (parallel optical axes). -->
                 <camera name="head_cam" pos="0 0 0" quat="0.274 0.635 -0.652 -0.312" fovy="58" />
+                <camera name="head_cam_right" pos="-0.00278 -0.06289 -0.00245" quat="0.274 0.635 -0.652 -0.312" fovy="58" />
               </body>
             </body>
           </body>
@@ -892,52 +911,101 @@
     <geom name="table_cable_support_back" type="box" pos="0 0.5375 -0.0639" size="0.75 0.1375 0.05" rgba="0 0 0 0" friction="1.0 0.02 0.002" condim="3" contype="1" conaffinity="3" margin="0.00005" solref="0.004 1" solimp="0.95 0.99 0.001" />
     <geom name="table_cable_support_left" type="box" pos="-0.65 0 -0.0639" size="0.10 0.465 0.05" rgba="0 0 0 0" friction="1.0 0.02 0.002" condim="3" contype="1" conaffinity="3" margin="0.00005" solref="0.004 1" solimp="0.95 0.99 0.001" />
     <geom name="table_cable_support_right" type="box" pos="0.65 0 -0.0639" size="0.10 0.465 0.05" rgba="0 0 0 0" friction="1.0 0.02 0.002" condim="3" contype="1" conaffinity="3" margin="0.00005" solref="0.004 1" solimp="0.95 0.99 0.001" />
-    <body name="round_peg_0" pos="-0.34 -0.20 -0.00914995">
+    <body name="round_peg_0" pos="0.3294 0.3122 -0.00914995">
       <geom name="round_peg_0_mesh_visual" type="mesh" mesh="round_peg" rgba="1 1 1 1" group="1" friction="4.0 0.02 0.002" condim="4" contype="0" conaffinity="0" margin="0.00005" solref="0.003 1" solimp="0.97 0.995 0.0005" />
       <geom name="round_peg_0_shaft_collision" type="cylinder" pos="0 0 0.01" size="0.0052 0.01175" rgba="1 1 1 0.18" group="3" friction="0.04 0.001 0.0001" condim="3" contype="1" conaffinity="3" margin="0.00005" solref="0.006 1" solimp="0.97 0.995 0.0005" />
       <geom name="round_peg_0_bottom_cap_collision" type="cylinder" pos="0 0 0.00" size="0.0125 0.0008" rgba="1 1 1 0.12" group="3" friction="0.05 0.001 0.0001" condim="3" contype="1" conaffinity="3" margin="0.00005" solref="0.006 1" solimp="0.97 0.995 0.0005" />
       <geom name="round_peg_0_top_cap_collision" type="cylinder" pos="0 0 0.023" size="0.0125 0.0008" rgba="1 1 1 0.12" group="3" friction="0.05 0.001 0.0001" condim="3" contype="1" conaffinity="3" margin="0.00005" solref="0.006 1" solimp="0.97 0.995 0.0005" />
     </body>
-    <body name="round_peg_1" pos="-0.16 -0.02 -0.00914995">
+    <body name="round_peg_1" pos="-0.0678 0.0658 -0.00914995">
       <geom name="round_peg_1_mesh_visual" type="mesh" mesh="round_peg" rgba="1 1 1 1" group="1" friction="4.0 0.02 0.002" condim="4" contype="0" conaffinity="0" margin="0.00005" solref="0.003 1" solimp="0.97 0.995 0.0005" />
       <geom name="round_peg_1_shaft_collision" type="cylinder" pos="0 0 0.01" size="0.0052 0.01175" rgba="1 1 1 0.18" group="3" friction="0.04 0.001 0.0001" condim="3" contype="1" conaffinity="3" margin="0.00005" solref="0.006 1" solimp="0.97 0.995 0.0005" />
       <geom name="round_peg_1_bottom_cap_collision" type="cylinder" pos="0 0 0.0" size="0.0125 0.0008" rgba="1 1 1 0.12" group="3" friction="0.05 0.001 0.0001" condim="3" contype="1" conaffinity="3" margin="0.00005" solref="0.006 1" solimp="0.97 0.995 0.0005" />
       <geom name="round_peg_1_top_cap_collision" type="cylinder" pos="0 0 0.023" size="0.0125 0.0008" rgba="1 1 1 0.12" group="3" friction="0.05 0.001 0.0001" condim="3" contype="1" conaffinity="3" margin="0.00005" solref="0.006 1" solimp="0.97 0.995 0.0005" />
     </body>
-    <body name="round_peg_2" pos="0.10 0.02 -0.00914995">
+    <body name="round_peg_2" pos="0.2257 0.0969 -0.00914995">
       <geom name="round_peg_2_mesh_visual" type="mesh" mesh="round_peg" rgba="1 1 1 1" group="1" friction="4.0 0.02 0.002" condim="4" contype="0" conaffinity="0" margin="0.00005" solref="0.003 1" solimp="0.97 0.995 0.0005" />
       <geom name="round_peg_2_shaft_collision" type="cylinder" pos="0 0 0.01" size="0.0052 0.01175" rgba="1 1 1 0.18" group="3" friction="0.04 0.001 0.0001" condim="3" contype="1" conaffinity="3" margin="0.00005" solref="0.006 1" solimp="0.97 0.995 0.0005" />
       <geom name="round_peg_2_bottom_cap_collision" type="cylinder" pos="0 0 0.0" size="0.0125 0.0008" rgba="1 1 1 0.12" group="3" friction="0.05 0.001 0.0001" condim="3" contype="1" conaffinity="3" margin="0.00005" solref="0.006 1" solimp="0.97 0.995 0.0005" />
       <geom name="round_peg_2_top_cap_collision" type="cylinder" pos="0 0 0.023" size="0.0125 0.0008" rgba="1 1 1 0.12" group="3" friction="0.05 0.001 0.0001" condim="3" contype="1" conaffinity="3" margin="0.00005" solref="0.006 1" solimp="0.97 0.995 0.0005" />
     </body>
-    <body name="round_peg_3" pos="0.34 0.22 -0.00914995">
+    <body name="round_peg_3" pos="-0.1451 -0.1224 -0.00914995">
       <geom name="round_peg_3_mesh_visual" type="mesh" mesh="round_peg" rgba="1 1 1 1" group="1" friction="4.0 0.02 0.002" condim="4" contype="0" conaffinity="0" margin="0.00005" solref="0.003 1" solimp="0.97 0.995 0.0005" />
       <geom name="round_peg_3_shaft_collision" type="cylinder" pos="0 0 0.01" size="0.0052 0.01175" rgba="1 1 1 0.18" group="3" friction="0.04 0.001 0.0001" condim="3" contype="1" conaffinity="3" margin="0.00005" solref="0.006 1" solimp="0.97 0.995 0.0005" />
       <geom name="round_peg_3_bottom_cap_collision" type="cylinder" pos="0 0 0.0" size="0.0125 0.0008" rgba="1 1 1 0.12" group="3" friction="0.05 0.001 0.0001" condim="3" contype="1" conaffinity="3" margin="0.00005" solref="0.006 1" solimp="0.97 0.995 0.0005" />
       <geom name="round_peg_3_top_cap_collision" type="cylinder" pos="0 0 0.023" size="0.0125 0.0008" rgba="1 1 1 0.12" group="3" friction="0.05 0.001 0.0001" condim="3" contype="1" conaffinity="3" margin="0.00005" solref="0.006 1" solimp="0.97 0.995 0.0005" />
     </body>
-    <body name="cclip_0" pos="0.0 0.30 -0.013">
+    <body name="cclip_0" pos="-0.0447 0.3066 -0.01">
       <geom name="cclip_0_visual" type="mesh" mesh="cclip" rgba="1 0.85 0.05 1" group="1" contype="0" conaffinity="0" />
       <!-- C-hook collision: open mouth (-y side) the cable slides into freely;
            retention is a weld equality the demo activates when a segment
            enters the capture zone and releases above a pull threshold.
-           contype 3 / conaffinity 0: touches cable and pads, never itself. -->
-      <geom name="cclip_0_base" type="box" pos="0.0065 0.010 -0.0004" size="0.013 0.0114 0.0005" rgba="1 0.85 0.05 0.15" group="3" friction="0.25 0.002 0.0002" condim="3" contype="3" conaffinity="0" margin="0.0001" solref="0.004 1" solimp="0.95 0.99 0.001" />
-      <geom name="cclip_0_backwall" type="box" pos="0.0065 0.0205 0.0056" size="0.005 0.0012 0.006" rgba="1 0.85 0.05 0.15" group="3" friction="0.25 0.002 0.0002" condim="3" contype="3" conaffinity="0" margin="0.0001" solref="0.004 1" solimp="0.95 0.99 0.001" />
-      <geom name="cclip_0_hook_top" type="box" pos="0.0065 0.0149 0.0106" size="0.005 0.0051 0.0015" rgba="1 0.85 0.05 0.15" group="3" friction="0.15 0.002 0.0002" condim="3" contype="3" conaffinity="0" margin="0.0001" solref="0.006 1" solimp="0.95 0.99 0.001" />
+           Two layers with identical pocket-interior faces (base top z=0.0001,
+           backwall front y=0.0193, hook bottom z=0.0091 / front y=0.0098 -
+           CLIP_ZONE_* / CLIP_SEAT_LOCAL still match):
+           * CORE boxes, contype 2 -> CABLE ONLY. 2026-07-15 v4: sized to the
+             ACTUAL cclip.stl mesh envelope (checked against mesh vertices,
+             not guessed) instead of a blanket 12-14mm overbuild - operator
+             feedback (comparing the group-3 collision overlay to the visual
+             mesh) was that the v3 walls stuck out well past the visible
+             clip: backwall 21mm beyond the mesh's own back face, hook top
+             6mm above the mesh's own top. Backwall is now 6.6mm thick
+             (outer face 25.9mm, mesh back face is 12.3mm - still a few mm
+             past it, only as far as the pocket seat + cable radius require,
+             not further), hook is 7.3mm thick (outer 16.4mm vs mesh top
+             15.4mm - flush). Base unchanged (12mm, was already inside the
+             mesh's own footprint, never the oversized part).
+             Headless re-verified: still holds presses up to 50N (backwall)
+             / 60N (hook) and impacts up to 5-7 m/s, matching or beating v3
+             on every metric except backwall SIDE IMPACT, which now fails at
+             7 m/s instead of 10 (still far above normal handling speed).
+             Base clearance from the board top re-confirmed by production
+             smoke test: 0 stray contacts over 2s.
+           * SHELL boxes, conaffinity 4 -> GRIPPER FINGERS ONLY (their
+             collision meshes are contype 4): the visual-true thin walls, so
+             hands stop at the visible clip surface instead of stalling on
+             the invisible core early. Pads (contype 2 conaffinity 0) never
+             collided with the clip at all. -->
+      <geom name="cclip_0_base" type="box" pos="0.0065 0.010 -0.005" size="0.013 0.0114 0.003" rgba="1 0.85 0.05 0.15" group="3" friction="0.25 0.002 0.0002" condim="3" contype="2" conaffinity="4" margin="0.0001" solref="0.004 1" solimp="0.97 0.995 0.0005" />
+      <geom name="cclip_0_backwall" type="box" pos="0.0065 0.004 0.013" size="0.005 0.0033 0.0115" rgba="1 0.85 0.05 0.15" group="3" friction="0.25 0.002 0.0002" condim="3" contype="2" conaffinity="4" margin="0.0001" solref="0.004 1" solimp="0.97 0.995 0.0005" />
+      <geom name="cclip_0_hook_top" type="box" pos="0.0065 0.012 0.023" size="0.005 0.01 0.002" rgba="1 0.85 0.05 0.15" group="3" friction="0.15 0.002 0.0002" condim="3" contype="2" conaffinity="4" margin="0.0001" solref="0.004 1" solimp="0.97 0.995 0.0005" />
+      <!-- shells removed 2026-07-16: operator hand-tuned these 3 core boxes
+           directly against the visible mesh, so the two-layer split (thick
+           core for the cable, thin shell for fingers) is no longer needed -
+           conaffinity 4 added above so these same boxes now also stop
+           gripper fingers (contype 4), not just the cable. -->
+      <!-- <geom name="cclip_0_base_shell" type="box" pos="0.0065 0.010 -0.0004" size="0.013 0.0114 0.0005" rgba="1 0.85 0.05 0.10" group="3" friction="0.25 0.002 0.0002" condim="3" contype="0" conaffinity="4" margin="0.0001" solref="0.004 1" solimp="0.95 0.99 0.001" /> -->
+      <!-- <geom name="cclip_0_backwall_shell" type="box" pos="0.0065 0.021 0.019" size="0.005 0.0009 0.004" rgba="1 0.85 0.05 0.10" group="3" friction="0.25 0.002 0.0002" condim="3" contype="0" conaffinity="4" margin="0.0001" solref="0.004 1" solimp="0.95 0.99 0.001" /> -->
+      <!-- <geom name="cclip_0_hook_top_shell" type="box" pos="0.0065 0.0149 0.0106" size="0.005 0.0051 0.0015" rgba="1 0.85 0.05 0.10" group="3" friction="0.15 0.002 0.0002" condim="3" contype="0" conaffinity="4" margin="0.0001" solref="0.006 1" solimp="0.95 0.99 0.001" /> -->
     </body>
-    <body name="adapter_0" pos="-0.50 -0.38 -0.0205">
+    <body name="adapter_0" pos="-0.50 0.38 -0.0205">
       <geom name="adapter_0_connector_visual" type="mesh" mesh="base_connector" rgba="0.0 0.18 1.0 1" friction="3.0 0.01 0.001" condim="3" contype="0" conaffinity="0" margin="0.0008" solref="0.006 1" solimp="0.90 0.95 0.001" />
       <geom name="adapter_0_harness_visual" type="mesh" mesh="wire_harness" pos="0 0 0.02110" rgba="1 1 1 1" contype="0" conaffinity="0" />
       <geom name="adapter_0_collision" type="box" pos="0.0057 -0.0021 0.018" size="0.0084 0.0092 0.005" rgba="0 0.18 1 0.10" friction="4.0 0.02 0.002" condim="4" contype="1" conaffinity="3" margin="0.00015" solref="0.003 1" solimp="0.97 0.995 0.0005" />
     </body>
-    <body name="adapter_1" pos="0.50 0.38 -0.0205">
+    <body name="adapter_1" pos="0.50 -0.38 -0.0205">
       <geom name="adapter_1_connector_visual" type="mesh" mesh="base_connector" rgba="0.0 0.18 1.0 1" friction="3.0 0.01 0.001" condim="3" contype="0" conaffinity="0" margin="0.0008" solref="0.006 1" solimp="0.90 0.95 0.001" />
       <geom name="adapter_1_harness_visual" type="mesh" mesh="wire_harness" pos="0 0 0.02110" rgba="1 1 1 1" contype="0" conaffinity="0" />
       <geom name="adapter_1_collision" type="box" pos="0.0057 -0.0021 0.018" size="0.0084 0.0092 0.005" rgba="0 0.18 1 0.10" friction="4.0 0.02 0.002" condim="4" contype="1" conaffinity="3" margin="0.00015" solref="0.003 1" solimp="0.97 0.995 0.0005" />
     </body>
-    <site name="cable_fixed_adapter_site" pos="-0.4943 -0.3821 0.01340" size="0.0025" rgba="0 1 0 1" />
-    <geom name="cable_fixed_adapter_marker" type="cylinder" pos="-0.4943 -0.3821 0.01340" size="0.0022 0.0012" rgba="0 1 0 1" contype="0" conaffinity="0" />
+    <!-- routing-direction labels: one plate per fixture showing the
+         visit order and wrap sign of the Tier-2 routing (official
+         notation: + = clockwise, - = counterclockwise; S/E = cable
+         start/end adapters). Repositioned next to the ASSIGNED
+         fixture at runtime (mnet_board._update_routing_overlay).
+         SITE group 5: shown in the operator viewer and the VR
+         render; the evidence-camera renderers keep site group 5
+         off, so the benchmark video never shows the labels. No
+         collision - can never disturb the cable or the robot. -->
+    <site name="route_label_s" type="box" size="0.014 0.010 0.0005" pos="0 0 -0.6" material="route_label_s_mat" group="5" />
+    <site name="route_label_1" type="box" size="0.014 0.010 0.0005" pos="0 0 -0.6" material="route_label_1_mat" group="5" />
+    <site name="route_label_2" type="box" size="0.014 0.010 0.0005" pos="0 0 -0.6" material="route_label_2_mat" group="5" />
+    <site name="route_label_3" type="box" size="0.014 0.010 0.0005" pos="0 0 -0.6" material="route_label_3_mat" group="5" />
+    <site name="route_label_4" type="box" size="0.014 0.010 0.0005" pos="0 0 -0.6" material="route_label_4_mat" group="5" />
+    <site name="route_label_5" type="box" size="0.014 0.010 0.0005" pos="0 0 -0.6" material="route_label_5_mat" group="5" />
+    <site name="route_label_e" type="box" size="0.014 0.010 0.0005" pos="0 0 -0.6" material="route_label_e_mat" group="5" />
+    <site name="cable_fixed_adapter_site" pos="-0.4943 0.3779 0.01340" size="0.0025" rgba="0 1 0 1" />
+    <geom name="cable_fixed_adapter_marker" type="cylinder" pos="-0.4943 0.3779 0.01340" size="0.0022 0.0012" rgba="0 1 0 1" contype="0" conaffinity="0" />
     <!-- routing-cable spec (measured): r=3.5mm bends 4x easier (EI ~ r^4) and
          wedges less under peg caps; density 800 gives realistic harness mass;
          bend 1e6 + damping 0.08 kill the springy fling AND make the solver
@@ -946,7 +1014,7 @@
          (4/6) keep friction. -->
     <!-- 71 segments: measured 12.9 ms/step vs 45.6 at 100 segments with the
          same soft cable; segment count dominates solver cost superlinearly -->
-    <composite type="cable" curve="0 s 0" count="71 1 1" size="3" offset="-0.4943 -0.3821 0.0134" initial="none">
+    <composite type="cable" curve="0 s 0" count="71 1 1" size="3" offset="-0.4943 0.3779 0.0134" initial="none">
       <plugin plugin="mujoco.elasticity.cable">
         <config key="twist" value="1e7" />
         <config key="bend" value="2e6" />

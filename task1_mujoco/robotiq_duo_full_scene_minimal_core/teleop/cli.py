@@ -43,9 +43,18 @@ def add_physics_args(parser: argparse.ArgumentParser, *, timestep_default: float
     g.add_argument(
         "--start-at-board",
         action=argparse.BooleanOptionalAction,
+        default=False,
+        help="spawn with the right gripper hovering over the cable (descend and close to grasp) "
+        "instead of the default data-collection spawn; takes priority over --data-collection-spawn",
+    )
+    g.add_argument(
+        "--data-collection-spawn",
+        action=argparse.BooleanOptionalAction,
         default=True,
-        help="spawn with the right gripper hovering over the cable (descend and close to grasp); "
-        "--no-start-at-board keeps the original far-away spawn",
+        help="DEFAULT spawn: fixed pose for recording setups (base parked past the board's far "
+        "edge, ZED Mini stereo head_cam aimed at fixture 0). --no-data-collection-spawn plus "
+        "--no-start-at-board keeps the original far-away spawn; --start-at-board overrides to "
+        "the cable-relative grasp spawn",
     )
 
 

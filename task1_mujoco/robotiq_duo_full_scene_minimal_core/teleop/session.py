@@ -36,6 +36,7 @@ from .scene import (
     cable_geom_ids,
     initialize_cable_on_board,
     load_model,
+    spawn_for_data_collection,
     teleport_base_near_cable,
 )
 
@@ -96,7 +97,8 @@ class TeleopSession:
 
             apply_local_random_config(self, getattr(args, "randomize_seed", None))
 
-        # spawn with the right gripper hovering over the cable's free end
+        # spawn: --start-at-board (explicit) takes priority over the default
+        # data-collection spawn, which takes priority over the bare XML pose
         self.start_lookat: np.ndarray | None = None
         if args.start_at_board:
             if teleport_base_near_cable(self.model, self.data, self.arms["right"]):
@@ -109,6 +111,11 @@ class TeleopSession:
                 self.start_lookat = np.array([slot[0], slot[1], 0.12], dtype=np.float64)
             else:
                 log("[start] start-at-board placement failed; keeping spawn pose")
+        elif getattr(args, "data_collection_spawn", True):
+            if spawn_for_data_collection(self.model, self.data, args.robot_forward_axis):
+                log("[start] data-collection spawn: base parked past the board, head_cam aimed at fixture 0")
+            else:
+                log("[start] data-collection spawn failed; keeping default pose")
 
         for arm in self.arms.values():
             seed_arm(self.model, self.data, arm)
@@ -128,6 +135,12 @@ class TeleopSession:
             speed_scale=self.speed_scale,
         )
         self.base_body = self.base_driver.base_body
+
+        # routing-direction hint for the default (unrandomized) board; the
+        # client / --randomize-board refresh it via apply_board_config
+        from .mnet_board import apply_routing_overlay
+
+        apply_routing_overlay(self)
 
     # ------------------------------------------------------------------ step
     def step_once(self, dt: float, *, follow_tcp_quat: bool = False) -> None:
@@ -194,6 +207,9 @@ class TeleopSession:
         viewer.opt.geomgroup[3] = 0
         viewer.opt.geomgroup[4] = 0
         viewer.opt.geomgroup[5] = 1
+        # routing-direction hint sites; the evidence-camera renderers never
+        # enable site group 5, so the hint stays out of the benchmark video
+        viewer.opt.sitegroup[5] = 1
         if self.start_lookat is not None:
             viewer.cam.lookat[:] = self.start_lookat
             viewer.cam.distance = 1.8
