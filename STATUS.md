@@ -33,9 +33,9 @@ Note: evaluation code in this repository (including the Task 2 scorer, Task 3 gr
 | 3.1 Teleop — keyboard: gripper | — | ✅ | ✅ | ✅ | — |
 | 3.2 Teleop — keyboard: base | — | ✅ | ✅ | ✅ | — |
 | 3.3 Teleop — GELLO: gripper | ✅ | — | ✅ | — | — |
-| 3.4 Teleop — VR: gripper | — | — | — | — | — |
+| 3.4 Teleop — VR: gripper | — | ✅ | — | — | — |
 | 3.5 Teleop — foot pedal: base | ✅ | — | ✅ | — | — |
-| 3.6 Teleop — keyboard: arm lift | — | — | ✅ | — | — |
+| 3.6 Teleop — keyboard: arm lift | — | ✅ | ✅ | — | — |
 | 4. Grasping within contact-force limits | ✅ | ✅ | ✅ | tracked in [#13](https://github.com/EBiM-Benchmark/benchmark/issues/13) | — |
 | 5. Full run completable via teleop | tracked in [#15](https://github.com/EBiM-Benchmark/benchmark/issues/15) | ✅ | ✅ | tracked in [#13](https://github.com/EBiM-Benchmark/benchmark/issues/13) | — |
 | 6. Baseline model — tracked in [#16](https://github.com/EBiM-Benchmark/benchmark/issues/16) | — | — | — | — | — |
