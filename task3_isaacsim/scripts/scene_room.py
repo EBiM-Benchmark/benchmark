@@ -48,6 +48,16 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=None,
         help="Override the robot USD selected by --gripper.",
     )
+    parser.add_argument(
+        "--franka-root",
+        default="/workspace/EBiM_Challenge/task1_isaacsim",
+        help="Task 1 root (containing assets/embodiments) inside the Isaac Lab container.",
+    )
+    parser.add_argument(
+        "--embodiment",
+        default="fr3duo_mobile",
+        help="Embodiment key under assets/embodiments.",
+    )
     parser.add_argument("--robot-x", type=float, default=None)
     parser.add_argument("--robot-y", type=float, default=None)
     parser.add_argument("--robot-z", type=float, default=None)
@@ -120,9 +130,12 @@ def main() -> None:
             )
         raise FileNotFoundError(f"Robot USD not found: {robot_path}.{hint}")
 
+    # groups = core._load_joint_groups(
+    #     franka_root,
+    #     args_cli.embodiment,
+    #     include_browser_commands=not args_cli.disable_browser_command_topics,
+    # )
     groups = core._load_joint_groups(
-        franka_root,
-        args_cli.embodiment,
         include_browser_commands=not args_cli.disable_browser_command_topics,
     )
     args_cli.task = "task3"
