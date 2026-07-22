@@ -91,9 +91,9 @@ scored eval; input modes; controls; troubleshooting).
 
 ```bash
 cd task1_mujoco
-./start.sh              # native teleoperation practice (Windows: double-click start.bat)
-./eval.sh sim           # scored ManipulationNet evaluation (Docker), terminal 1
-./eval.sh client        # terminal 2: official mnet client
+./start.sh                    # native teleoperation practice (Windows: double-click start.bat)
+./docker-run.sh --mnet        # scored ManipulationNet evaluation (Docker), terminal 1
+./docker-run.sh client        # terminal 2: official mnet client
 ```
 <!-- (extracted from README.md:50-55; step-by-step scored walkthrough at task1_mujoco/README.md:126-209 — verify) -->
 <!-- @2houyuhang: confirm the two-terminal scored-eval sequence is the participant path, and whether the
@@ -162,7 +162,7 @@ Your submission is a link to a **public GitHub repo** containing a **Dockerfile*
 explaining how to run it (source code is not required). Submissions are **open now**; the submission deadline will be extended and is announced on the [competition page](https://ebim-benchmark.github.io/competition.html) and in [Discord](https://discord.gg/pGwRbMRjuH).
 
 > **One clarification for Task 1 developers:** the ManipulationNet performance-submission client used in
-> the Task 1 development loop (`eval.sh client`) is **not** the official competition submission — official
+> the Task 1 development loop (`docker-run.sh client`) is **not** the official competition submission — official
 > entries go through the EBiM-Benchmark/submissions form above.
 <!-- Distinction requested by @Ju6276 on issue #8; framing per EBiM-Benchmark/submissions#1. -->
 

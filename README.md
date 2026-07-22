@@ -49,9 +49,9 @@ evaluation stack:
 
 ```bash
 cd task1_mujoco
-./start.sh              # native teleoperation (Windows: double-click start.bat)
-./eval.sh sim           # scored ManipulationNet evaluation (Docker), terminal 1
-./eval.sh client        # terminal 2: official mnet client
+./start.sh                    # native teleoperation (Windows: double-click start.bat)
+./docker-run.sh --mnet        # scored ManipulationNet evaluation (Docker), terminal 1
+./docker-run.sh client        # terminal 2: official mnet client
 ```
 
 See [`task1_mujoco/README.md`](task1_mujoco/README.md) for the full participant
