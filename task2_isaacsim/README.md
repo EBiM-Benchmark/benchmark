@@ -268,3 +268,7 @@ reused Task 1 scripts — lives in the
 - The bridge defaults match Task 1: physics 240 Hz / render 60 Hz, joint
   states on `/isaac/*` at 60 Hz, pedal base driving at 0.5 m/s / 1.2 rad/s
   with a 1 s timeout, spine height on keyboard Up/Down.
+- Arm/gripper command topics have a 1 s staleness watchdog
+  (`--command-timeout`, negative disables): when a publisher goes quiet the
+  bridge stops re-applying its cached command and the drives hold the last
+  applied target.

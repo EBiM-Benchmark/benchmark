@@ -14,6 +14,12 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TASK2_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+if [[ -f "${TASK2_ROOT}/.env" ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  source "${TASK2_ROOT}/.env"
+  set +a
+fi
 
 usage() {
   cat <<'EOF'
@@ -93,6 +99,18 @@ cmd_up() {
   ${with_keyboard} && teleop_adapters="${teleop_adapters} keyboard"
   ${with_gello} && teleop_adapters="${teleop_adapters} gello"
   teleop_adapters="$(echo "${teleop_adapters}" | xargs || true)"
+
+  # Remove helpers disabled by the current options so containers from a
+  # previous mode do not linger. lerobot_recorder is deliberately left out:
+  # it is managed by run_recorder.sh and may hold an in-flight recording.
+  local disabled_services=()
+  ${with_republisher} || disabled_services+=(ros_republisher)
+  [[ "${controller_mode}" == "position" ]] || disabled_services+=(position_controller)
+  [[ -n "${teleop_adapters}" ]] || disabled_services+=(teleop_adapters)
+  ${with_browser} || disabled_services+=(browser_controller)
+  if [[ ${#disabled_services[@]} -gt 0 ]]; then
+    (cd "${TASK2_ROOT}" && docker compose --profile "*" rm -sf "${disabled_services[@]}")
+  fi
 
   if ${with_republisher}; then
     echo "Starting ros_republisher..."

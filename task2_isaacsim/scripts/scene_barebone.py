@@ -108,6 +108,7 @@ from isaacsim.core.utils.viewports import set_camera_view  # noqa: E402
 def main():
     usd_path = Path(args_cli.usd_path).expanduser()
     objects_usd_path = Path(args_cli.objects_usd_path).expanduser()
+    franka_root = Path(args_cli.franka_root).expanduser()
     if not usd_path.exists():
         raise FileNotFoundError(f"USD path does not exist: {usd_path}")
     if not objects_usd_path.exists():
@@ -116,6 +117,8 @@ def main():
         )
 
     groups = core._load_joint_groups(
+        franka_root,
+        args_cli.embodiment,
         include_browser_commands=not args_cli.disable_browser_command_topics,
     )
 

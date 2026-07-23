@@ -39,6 +39,12 @@ Isaac Sim; the recorder imports it through
 | `/isaac/{left,right}_robotiq_joint_commands` | `sensor_msgs/JointState` | republisher (gripper calibration) → bridge |
 | `/isaac/browser/{left,right}_joint_commands`, `/isaac/browser/{left,right}_robotiq_joint_commands` | `sensor_msgs/JointState` | browser controller → bridge (disabled with `--disable-browser-command-topics`) |
 
+A per-group watchdog (`--command-timeout`, default 1 s, negative disables)
+stops re-applying a group's cached command once its topics go quiet — the
+drives hold the last applied target, so a dead publisher cannot stomp later
+state such as the post-reset ready pose. `/pedal/state` has its own
+`--pedal-timeout` (base twist forced to zero instead).
+
 ### Bridge state (60 Hz)
 
 | Topic | Type | Producer → Consumer |
@@ -179,7 +185,7 @@ files, per-index feature tables, extras sidecar):
 |---|---|
 | `action` (20, float32) | base twist vx,vy,wz (0–2) · absolute arm joint targets left+right (3–16) · gripper open-fraction targets (17–18) · spine height target (19). Post-arbitration applied targets from PhysX, so keyboard-RMPflow, GELLO/ROS, and spine-key commands are captured uniformly. |
 | `observation.state` (37, float32) | link8 EE poses left+right, xyz+quat (0–13) · arm joints (14–27) · spine height (28) · gripper open-fractions (29–30) · base odom x,y,yaw (31–33) · base velocity vx,vy,wz (34–36) |
-| `observation.images.{head,wrist_left,wrist_right,eval_camera}` | RGB video at the shapes in `config/topics.yaml` |
+| `observation.images.{head,wrist_left,wrist_right,eval_camera}` | RGB video at the shapes in `config/topics.yaml`; extra contracted cameras selected via `--cameras` appear the same way as `observation.images.<key>` |
 | `task2_extras/episode_*.npz` | per-frame object world poses, deformed pad vertices (~10 Hz), optional float16 depth, sim/wall timestamps |
 | `task2_extras/episodes_task2.jsonl` | per-episode success label (operator-confirmed, IoU auto-suggestion), scene-randomization offsets, frame counts |
 
@@ -262,8 +268,25 @@ render_resolution; optional optics and `publish_depth`/`publish_semantic`/
 `publish_bbox` flags). The prim is created if the scene did not author it,
 the pose always comes from the yaml, and an existing
 `/ROS2_CameraGraphs/<name>` graph (e.g. the room's eval camera) is left
-untouched. Add a `cameras.*` entry in `config/topics.yaml` plus a
-`contract:` key only if the recorder should record it.
+untouched. Scene cameras only build with `--enable-scene-cameras` (implied
+by `--record`).
+
+To make a scene camera recordable, you must edit these files:
+
+1. `config/topics.yaml`: Add a top-level `cameras.<key>` entry with
+   `namespace` and `shape` (`[H, W, C]`, must equal the yaml's
+   `render_resolution` — the startup cross-check enforces it). `<key>`
+   becomes the recorder camera key and the dataset feature name
+   `observation.images.<key>`; it must not collide with `subtopics`,
+   `robot`, `eval`, a robot camera key, or `eval_camera`.
+2. `cameras_<scene>.yaml`: Set `contract: <key>` on the entry. Entries with
+   `contract: null` publish with a warning but are never recordable.
+3. `services/recording/recording.yaml`: Add `<key>` to the `cameras:` list
+   (or add `<key>` to the recorder's `--cameras` on runtime). New cameras
+   are not recorded unless listed.
+
+Caveats: a changed camera set refuses `--resume` of existing datasets, and
+`record_depth` needs the camera's `publish_depth: true`.
 
 **Change recording defaults** — edit `services/recording/recording.yaml`
 (one-off runs: pass flags after `--` instead). For a personal variant, copy
