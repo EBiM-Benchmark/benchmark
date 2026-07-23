@@ -335,6 +335,36 @@ body.external-control #runOnlineEvalBtn {
 input[type=range] { width: 100%; }
 .hint { color: var(--warn); font-size: 0.9rem; }
 
+/* ── Mobile base D-pad ──────────────────────────────────── */
+.base-panel { margin: 0 0 14px; }
+.base-panel-body { padding: 12px; }
+.base-dpad {
+  display: grid;
+  grid-template-columns: repeat(3, 64px);
+  grid-template-rows: repeat(2, 64px);
+  gap: 8px;
+  justify-content: center;
+}
+.base-btn {
+  border: 1px solid var(--line);
+  background: linear-gradient(180deg, #1f2937, #111827);
+  color: var(--text);
+  border-radius: 10px;
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
+  touch-action: none;
+  user-select: none;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+.base-btn:hover { border-color: #64748b; }
+.base-btn.active {
+  background: rgba(34, 197, 94, 0.18);
+  border-color: var(--ok);
+  color: var(--ok);
+}
+.base-caption { margin-top: 10px; text-align: center; }
+
 /* ── Topic overview ─────────────────────────────────────── */
 .topic-overview {
   display: grid;

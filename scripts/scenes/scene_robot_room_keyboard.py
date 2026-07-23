@@ -21,7 +21,7 @@ COMMON_DIR = Path(__file__).resolve().parents[1] / "common"
 TASK3_COMMON_DIR = (
     Path(__file__).resolve().parents[2]
     / "task3_isaacsim"
-    / "scripts"
+    / "deprecated"
     / "common"
 )
 for module_dir in (COMMON_DIR, TASK3_COMMON_DIR):
