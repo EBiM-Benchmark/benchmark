@@ -1,127 +1,126 @@
-# Task 1 — Mobile FR3 Duo Teleoperation (Isaac Lab + Newton)
+# Task 1 - Mobile FR3 Duo Teleoperation (Isaac Lab + Newton)
 
-Task 1 teleoperates the **mobile Franka FR3 Duo** (dual arm + Robotiq 2F-85
-grippers + wrist D405 cameras on a steer-drive mobile base) in Isaac Lab, using
-the **Newton / MJWarp** physics backend, and includes an optional **deformable
-cable** (Vertex Block Descent) board-plugging world.
+Task 1 simulates a mobile Franka FR3 Duo equipped with two Robotiq 2F-85
+grippers and wrist D405 cameras. The robot runs in Isaac Lab with the Newton
+MJWarp backend. A second Newton process runs the VBD cable, board, and fixture
+world, while Isaac Sim provides the interactive viewport and visual debugging.
 
-The simulator runs **inside an Isaac Lab container**. Device publishers come
-from the separate
-[`EBiM-Benchmark/teleoperation`](https://github.com/EBiM-Benchmark/teleoperation)
-checkout. The `task1_gello_pedal_teleop` container mounts that checkout and
-runs the GELLO publisher and bridge; the pedal publisher is launched
-interactively in the same container.
+The standard launcher is:
 
-> **Teleop input:** keyboard is the recommended default for the mobile base.
-> The **tested** configuration is GELLO leader arms + USB foot pedal (see
-> [Teleoperation options](#teleoperation-options)).
+```bash
+task1_isaacsim/scripts/run_isaaclab_newton_teleop.sh
+```
 
----
+Current launcher behavior:
 
-## How it works
-
-[Newton](https://github.com/newton-physics/newton) has already been integrated into
-Isaac Lab as the physics engine backend. We use it to simulate the Franka FR3 Duo
-Mobile robot, the cable, and the objects in the environment. Isaac Sim is mainly used
-for visualization.
-
-For robot control, we currently use the open-source
-[Franka GELLO Duo](https://franka.de/gello) system to teleoperate the robot arms, while
-the robot's mobile base is controlled using a foot pedal ([e.g. this 3-pedal USB foot
-switch](https://www.amazon.de/Caswynlife-8A8V43M93ON473C79CT8/dp/B0H4GHBLTK/ref=sr_1_22_sspa?crid=37X5IAY4L6BCM&dib=eyJ2IjoiMSJ9.ZT9jubVbVBH0AQnZdPXibDmdQAr84dAIkFcrqwo3qD61otSj1mte7H9LfuoAEnjtbEWxZ10hY7kxSIBsMXwBpn4FPKufnAXJ8ZhQ_05VFpMtUCY7ojAB_C3babFMpFlcwHlBkKaOHCyfIwnQSxhnEkABOwbZtXvX3PjDfO3A7GyhgzopVuo0L2AJO4zMJyRs6QG3-hqbbHaG85_tDKg8qIn-ZbrdP5xdJrfh90p4XZaTR7fqzfQo9APuOhooyjY0hW1Y7dgR8NwNmdRpdPDZQpzA2d5ZL5FhSsx20QU_a6k.PqEqHKd38_ctTM289kJUqfsaeQvSznYQ8J_UrEiVGJg&dib_tag=se&keywords=electronic+3+pedals&qid=1783196050&sr=8-22-spons&psc=1)).
-
-The scene is split into **two separate worlds**: one containing the robot, and another
-containing the table, board, fixtures, and cable. In the robot world the robot is
-simulated with the **MJWarpSolver**; in the cable world the cable is simulated with the
-**VBDSolver**.
-
-**Coupling approach:** the gripper pose from the robot world is continuously transferred
-to the cable world. There, the pose is used to generate four box-shaped collision bodies
-representing the four fingers of the two grippers. These four (red) boxes are used to
-compute contact with the cable, and the cable state is then updated by the VBDSolver.
-
----
+- The default robot asset is
+  `task1_isaacsim/assets/Robotiq_2f_85_with_d405_mobile_fr3_duo_v0_2.usd`.
+- The room at `assets/robot_room_v2/robot_room_v2.usdc` is loaded by default.
+- `--with-gello-pedal-teleop` Use the Franka GELLO to teleoperate the joints of both arms, while using a foot pedal to control the motion of the mobile base.
+- `--with-keyboard-teleop` Both arm TCPs and grippers are controlled directly using the keyboard. Meanwhile, the mobile base is also controlled via the keyboard.
+- The Up/Down arrow keys control `franka_spine_vertical_joint` in every
+  visible Kit session.
+- Base motion comes from `/pedal/state`.
 
 ## Architecture
 
-```
- teleoperation checkout
-          │ mounted into container
-          ▼
- task1_gello_pedal_teleop
- ├── gello_publisher ── /*/gello/* ──► gello_to_bridge.py ── /bridge/*
- └── pedal_state_publisher (interactive) ────────────────► /pedal/state
+```text
+ HOST / DEVICE INPUTS                         THIS REPO (task1_isaacsim)
+ ┌───────────────────────────┐
+ │ keyboard_state_publisher  │──/keyboard/state──► task1_teleop_adapters
+ │                           │                       keyboard_to_base.py
+ │ pedal_state_publisher     │──/pedal/state───────────────┐
+ │ gello_publisher (L/R)     │──/*/gello/*──┐              │
+ └───────────────────────────┘              │              │
+                                            ▼              │
+                              task1_gello_pedal_teleop     │
+                              gello_to_bridge.py           │
+                                            │ /bridge/*    │
+                                            ▼              │
+                                  task1_ros_republisher    │
+                                  (topic mapping +         │
+                                   gripper calibration)    │
+                                            │ /isaac/*     │
+        task1_position_controller ──────────┤              │
+        task1_browser_controller            │              │
+        (optional /isaac/browser/*) ────────┘              │
                                                            │
- task1_ros_republisher ◄────────────── /bridge/*            │
-          │ /isaac/*                                       │
-          ▼                                                ▼
- isaaclab_fr3duo_newton_bridge.py ◄─────────────────────────┘
-          │
-          ├── Newton/MJWarp robot simulation
-          └── run_cable_vbd_ros_headless.py (optional cable VBD)
-
- keyboard_state_publisher ── /keyboard/state ──► teleop_adapters
-                                                └── /pedal/state
+ KIT WINDOW KEYBOARD (direct, no ROS)                      │
+ ┌──────────────────────────────────────────────────────┐  │
+ │ --with-keyboard-teleop                               │  │
+ │   W/S... + O/L... -> DualArmKeyboardTeleop           │  │
+ │                      -> dual RMPflow -> arms/grippers├──┤
+ │   Up/Down arrows   -> SpineKeyboardController        ├──┤
+ └──────────────────────────────────────────────────────┘  │
+                                                           ▼
+ ISAAC LAB CONTAINER (ros2_jazzy)             isaaclab_fr3duo_newton_bridge.py
+ ┌────────────────────────────────────┐          (Newton/MJWarp robot)
+ │ run_cable_vbd_ros_headless.py      │                    │
+ │   Newton SolverVBD cable           │◄─/isaac/robotiq_finger_targets
+ │   board + fixture collisions       │                    │
+ │   4 kinematic finger boxes         │──/cable/body_centers──────────►
+ │                                    │──/cable/gripper_collision_boxes►
+ └────────────────────────────────────┘
+              cable process is always started by the launcher
 ```
 
-- `/isaac/*` — joint states and command topics the bridge publishes/subscribes.
-- `/bridge/*` — raw teleop commands; `ros_republisher` maps them to `/isaac/*`
-  and applies gripper open/close calibration.
-- `/pedal/state` — base motion tokens (`FWD`, `BACK`, `A`, `B`, `A+C`, `B+C`).
-- Cable process exchanges gripper pose/gap and cable body centers with the bridge.
+- `/isaac/*`: joint state and command topics published/subscribed by the
+  bridge. Browser commands are included only when browser control is enabled.
+- `/bridge/*`: raw GELLO commands. `task1_ros_republisher` maps them to
+  `/isaac/*` and applies Robotiq open/close calibration.
+- `/pedal/state`: base motion tokens (`FWD`, `BACK`, `A`, `B`, `A+C`,
+  `B+C`) converted by the bridge into steering and wheel targets.
+- Kit keyboard arm control bypasses ROS. While `--with-keyboard-teleop` is
+  active, the bridge ignores ROS arm/gripper commands and RMPflow owns those
+  targets; base and spine control remain available.
+- The bridge sends four live Robotiq inner-finger targets to the cable process.
+  The cable process applies them as kinematic collision boxes and returns cable
+  points and box poses for Isaac Sim visualization. Cable contact forces are
+  not fed back into the robot articulation.
 
----
-
-## Directory layout
+## Repository Layout
 
 ```text
-task1_isaacsim/
-├── scripts/
-│   ├── run_isaaclab_newton_teleop.sh      # launcher / orchestrator
-│   ├── isaaclab_fr3duo_newton_bridge.py   # Newton/MJWarp ROS bridge (runs in Isaac Lab)
-│   ├── run_cable_vbd_ros_headless.py       # headless cable VBD ROS process
-│   ├── isaac_bridge_constants.py           # joint-name constants (browser UI dep)
-│   ├── adapters/
-│   │   ├── keyboard_to_base.py              # /keyboard/state → /pedal/state
-│   │   └── gello_to_bridge.py               # /*/gello/joint_states → /bridge/*
-│   └── controllers/
-│       ├── ros_joint_republisher.py         # /bridge/* → /isaac/* + gripper calib
-│       └── joint_position_controller.py     # holds joint targets each step
-├── cable_world/                            # Newton VBD cable + board fixture assets
-│   ├── configs/*.yaml
-│   └── assets/…                            # table_board_fixture (large meshes via OneDrive)
-├── assets/
-│   ├── Robotiq_2f_85_with_d405_mobile_fr3_duo_v0_2.usd   # robot USD (via OneDrive)
-│   └── embodiments/fr3duo_mobile/*.yaml    # embodiment data contract / joint drives
-├── services/
-│   ├── teleop_adapters/start_teleop_adapters.sh
-│   ├── gello_pedal_teleop/                # GELLO + pedal ROS 2 container
-│   └── browser_controller/                 # optional no-hardware web UI (port 8090)
-├── isaaclab_overlay/                       # ros2_jazzy Isaac Lab overlay (see its README)
-├── docker-compose.yml                      # ROS 2 helper services
-└── .env                                    # helper-service configuration
+benchmark/
+|-- assets/
+|   `-- robot_room_v2/robot_room_v2.usdc
+`-- task1_isaacsim/
+    |-- README.md
+    |-- docker-compose.yml
+    |-- assets/
+    |   |-- Robotiq_2f_85_with_d405_mobile_fr3_duo_v0_2.usd
+    |   `-- embodiments/fr3duo_mobile/
+    |-- cable_world/
+    |   |-- configs/table_board_fixture_cable.yaml
+    |   |-- configs/gripper.yaml
+    |   `-- assets/
+    |-- scripts/
+    |   |-- run_isaaclab_newton_teleop.sh
+    |   |-- isaaclab_fr3duo_newton_bridge.py
+    |   |-- run_cable_vbd_ros_headless.py
+    |   |-- adapters/
+    |   `-- controllers/
+    |-- services/
+    |   |-- browser_controller/
+    |   |-- gello_pedal_teleop/
+    |   `-- teleop_adapters/
+    `-- isaaclab_overlay/
 ```
-
----
 
 ## Prerequisites
 
-1. Linux host with a supported NVIDIA GPU + recent driver.
-2. Docker Engine with Docker Compose v2 and the NVIDIA Container Toolkit.
-3. `git`, plus `curl` and `unzip` (to fetch the large assets — see below).
-4. X11 for the GUI window:
+1. Linux with an NVIDIA GPU and a compatible driver.
+2. Docker Engine, Docker Compose v2, and NVIDIA Container Toolkit.
+3. `git`, `curl`, and `unzip`.
+4. X11 access for the Isaac Sim window:
+
    ```bash
    xhost +local:docker
    export DISPLAY=${DISPLAY:-:0}
    ```
-5. For GELLO / pedal only: the physical devices and `dialout` / `input` group
-   permissions (see the `teleoperation` repo README).
 
-> **Large assets are not in git.** The robot USD (~68 MB) and the two cable board
-> meshes (~285 MB and ~1.5 GiB) are hosted on OneDrive and downloaded separately
-> (see step 2). They are gitignored, so the repo clone stays small.
-
----
+5. GELLO/pedal operation additionally requires access to the relevant
+   `/dev/ttyACM*` and input devices.
 
 ## One-time setup
 
@@ -172,63 +171,59 @@ cd ../IsaacLab && ./docker/container.py start ros2_jazzy && cd -
 After this, `docker ps` lists `isaac-lab-ros2_jazzy` with this repo mounted at
 `/workspace/EBiM_Challenge`. Override the checkout location with `ISAACLAB_ROOT`.
 
-### 4. Set up the teleoperation device layer
-
-Clone [`teleoperation`](https://github.com/EBiM-Benchmark/teleoperation) next
-to the benchmark repository. The GELLO + pedal container mounts this checkout
-and builds the two required ROS packages on startup:
-
+### 4. Prepare the GELLO/pedal device repository (optional)
+Clone the teleoperation repository. It provides the keyboard / GELLO / pedal publishers.
 ```bash
 cd ..
 git clone https://github.com/EBiM-Benchmark/teleoperation.git
 cd benchmark
 ```
 
-Set `TELEOPERATION_ROOT` in `task1_isaacsim/.env` when the checkout is elsewhere.
+## Quick Start
 
----
+Run these commands from the benchmark repository root.
 
-## Quick start
-
-All commands run from the **repository root**. `--usd-path` is relative to `task1_isaacsim/`.
-
-### Keyboard base + browser arms (no special hardware)
+### Isaac Sim keyboard arms and grippers
 
 ```bash
-EMBODIMENT=fr3duo_mobile bash task1_isaacsim/scripts/run_isaaclab_newton_teleop.sh \
-  --usd-path assets/Robotiq_2f_85_with_d405_mobile_fr3_duo_v0_2.usd \
-  --controller-mode position --with-keyboard-teleop \
-  -- --spine-keyboard-control --spine-keyboard-step 0.02 \
-     --spine-keyboard-min 0.0 --spine-keyboard-max 0.5
+EMBODIMENT=fr3duo_mobile \
+bash task1_isaacsim/scripts/run_isaaclab_newton_teleop.sh \
+  --with-keyboard-teleop \
+  --no-browser
 ```
 
-Then, in the teleoperation ROS 2 environment on the host, start the keyboard
-publisher and drive the base with `w/a/s/d/q/e`:
+Click the Isaac Sim viewport before using the keys:
+
+| Function | Left arm | Right arm |
+| --- | --- | --- |
+| TCP +/-X | `W` / `S` | `O` / `L` |
+| TCP +/-Y | `A` / `D` | `K` / `;` |
+| TCP +/-Z | `Q` / `E` | `I` / `P` |
+| Roll +/- | `Z` / `X` | `N` / `M` |
+| Pitch +/- | `T` / `G` | `U` / `J` |
+| Yaw +/- | `C` / `V` | `,` / `.` |
+| Toggle gripper | `F` | `'` |
+
+Additional controls:
+
+- `R`: reset both TCP targets to their startup poses.
+- Up/Down arrows: raise/lower the spine.
+
+Keyboard arm control requires a visible Kit window and cannot be used with
+`--headless`. While active, incoming ROS arm and gripper commands are ignored;
+base commands and spine control continue to use their normal paths.
+
+### GELLO arms and pedal base
 
 ```bash
-ros2 run keyboard_state_publisher keyboard_state_publisher
+EMBODIMENT=fr3duo_mobile \
+bash task1_isaacsim/scripts/run_isaaclab_newton_teleop.sh \
+  --with-gello-pedal-teleop \
+  --no-browser
 ```
 
-Open the browser UI at <http://localhost:8090> to move the arms/grippers.
-
-### Tested configuration (GELLO arms + foot pedal + cable)
-
-This mirrors the command the pipeline was validated with:
-
-```bash
-EMBODIMENT=fr3duo_mobile bash task1_isaacsim/scripts/run_isaaclab_newton_teleop.sh \
-  --usd-path assets/Robotiq_2f_85_with_d405_mobile_fr3_duo_v0_2.usd \
-  --controller-mode position --with-gello-pedal-teleop --with-cable --no-browser \
-  -- --cable-world-position-offset 1.8 0.0 0.73 \
-     --cable-robotiq-contact-x-offset 0.01 \
-     --cable-robotiq-contact-y-offset -0.045 \
-     --cable-robotiq-finger-size 0.025 0.006 0.04 \
-     --cable-robotiq-contact-z-offset -0.02 \
-     --spine-keyboard-step 0.02 --spine-keyboard-min 0.0 --spine-keyboard-max 0.5
-```
-
-The launcher creates `task1_gello_pedal_teleop` and starts GELLO automatically.
-Start the pedal publisher interactively in the same container:
+This starts `task1_gello_pedal_teleop`, which runs the GELLO publisher and
+`gello_to_bridge.py`. Start the pedal publisher in a second terminal:
 
 ```bash
 docker exec -it task1_gello_pedal_teleop bash -lc \
@@ -237,86 +232,143 @@ docker exec -it task1_gello_pedal_teleop bash -lc \
    ros2 run pedal_state_publisher pedal_state_publisher'
 ```
 
----
+### Browser control
 
-## Teleoperation options
+The browser service starts by default and is available at:
 
-| Input | Publisher location | Sim-side glue | Drives |
-| --- | --- | --- | --- |
-| **Keyboard** (default) | `keyboard_state_publisher` → `/keyboard/state` | `keyboard_to_base.py` | Mobile base (`w/s` fwd/back, `a/d` strafe, `q/e` yaw) |
-| **Foot pedal** (tested) | `task1_gello_pedal_teleop` → `/pedal/state` | none (direct) | Mobile base (strafe + yaw) |
-| **GELLO** (tested) | `task1_gello_pedal_teleop` → `/*/gello/joint_states` | `gello_to_bridge.py` | Both arms + grippers |
-| **Browser UI** | — | `browser_controller` (`/isaac/browser/*`) | Arms, grippers, base — no hardware |
-| **Spine (height)** | — | in bridge (`--spine-keyboard-control`) | Vertical spine joint (Up/Down arrows) |
+```text
+http://localhost:8090
+```
 
-`--with-gello-pedal-teleop` starts the dedicated GELLO + pedal container.
-`teleop_adapters` remains available for keyboard-to-base conversion and
-defaults to the keyboard adapter only.
+Use `--no-browser` to disable it. When browser control is disabled, the
+republisher is configured not to subscribe to `/isaac/browser/*` topics.
 
-The keyboard publisher only emits while a key is held; when you release, the
-bridge's `--pedal-timeout` stops the base automatically.
+### Base and spine
 
-> **Run the pedal publisher in a foreground terminal.** It reads directly from
-> terminal input, so launching it detached can freeze its input loop. GELLO and
-> `gello_to_bridge.py` are managed by `task1_gello_pedal_teleop`.
+The bridge converts `/pedal/state` into steering position targets and wheel
+velocity targets. The relevant runtime parameters are:
 
-**Foot pedal note:** after starting `pedal_state_publisher`, click once inside its
-terminal window to give it keyboard focus, switch your keyboard input method to
-English, then use the pedal to drive the mobile base. Pedal tokens: `A`/`B` strafe,
-`A+C`/`B+C` yaw.
+```text
+--pedal-linear-speed       default 0.5 m/s
+--pedal-angular-speed      default 0.5 rad/s
+--pedal-timeout            default 1.0 s
+--spine-keyboard-step      default 0.01 m
+--spine-keyboard-min       default 0.0 m
+--spine-keyboard-max       default 0.850 m
+```
 
----
+Pass bridge parameters after the launcher's `--` separator.
 
-## Cable world (`--with-cable`)
+## Cable World
 
-`--with-cable` starts `run_cable_vbd_ros_headless.py` inside the Isaac Lab
-container as a separate process. It simulates the deformable cable + board
-fixture (`cable_world/`) and exchanges gripper pose/gap and cable body centers
-with the bridge. Configs live in `cable_world/configs/`; the default
-`table_board_fixture_cable.yaml` references board meshes under
-`cable_world/assets/` (relative paths, no machine-specific paths). Tail its log:
+The launcher always starts the raw Newton VBD cable process. There is no cable
+enable/disable command-line switch. The defaults are:
+
+```text
+config:            cable_world/configs/table_board_fixture_cable.yaml
+gripper config:    cable_world/configs/gripper.yaml
+device:            cuda:0
+world translation: (1.5, 0.0, 0.73) m
+world yaw:         90 degrees
+finger box size:   (0.02, 0.007, 0.03) m
+finger offsets:    X=0.01, Y=-0.045, Z=-0.010 m
+invert opening:    false
+```
+
+Override bridge-side cable placement after `--`, for example:
+
+```bash
+bash task1_isaacsim/scripts/run_isaaclab_newton_teleop.sh \
+  --with-keyboard-teleop --no-browser -- \
+  --cable-world-position-offset 1.5 0.0 0.73 \
+  --cable-world-yaw-deg 90 \
+  --cable-robotiq-finger-size 0.02 0.007 0.03
+```
+
+`--cable-robotiq-invert-opening` uses
+`argparse.BooleanOptionalAction`, so both forms exist:
+
+```text
+--cable-robotiq-invert-opening
+--no-cable-robotiq-invert-opening
+```
+
+The default is `false`, so omitting both is equivalent to the `--no-...` form.
+Use `--show-table-board-fixture-collisions` to display collision meshes under
+`/World/TableBoardFixtureVisual` for debugging.
+
+Cable log:
 
 ```bash
 docker exec isaac-lab-ros2_jazzy tail -f /tmp/task1_cable_vbd.log
 ```
 
-The `-- --cable-*` arguments in the tested command position and size the cable /
-Robotiq contact model; pass any bridge argument after the `--` separator.
+## Launcher Options
 
----
+```text
+--embodiment NAME
+--usd-path PATH
+--controller-mode none|position
+--with-gello-pedal-teleop
+--with-keyboard-teleop
+--no-browser
+--no-republisher
+--headless
+--
+```
 
-## Launcher reference
+`--usd-path` is relative to `task1_isaacsim/`. Its default is the Robotiq
+robot USD listed above. Arguments after `--` are forwarded to
+`isaaclab_fr3duo_newton_bridge.py`.
 
-`task1_isaacsim/scripts/run_isaaclab_newton_teleop.sh [options]`:
+Useful environment overrides:
 
-| Option | Meaning |
-| --- | --- |
-| `--embodiment NAME` | Embodiment key under `task1_isaacsim/assets/embodiments` (default `fr3duo_mobile`). |
-| `--usd-path PATH` | USD relative to `task1_isaacsim/` (or absolute). |
-| `--controller-mode none\|position` | Start `position_controller` (default `position`). |
-| `--with-keyboard-teleop` | Start the keyboard→base adapter. |
-| `--with-gello-teleop` | Start the GELLO→bridge adapter (alias `--with-gello-pedal-teleop`). |
-| `--no-browser` | Do not start `browser_controller`. |
-| `--no-republisher` | Do not start `ros_republisher`. |
-| `--with-cable` | Run the Newton cable VBD world. |
-| `--headless` | No visible Kit window. |
-| `--` | Pass the rest to `isaaclab_fr3duo_newton_bridge.py`. |
+```text
+ISAACLAB_ROOT
+ISAACLAB_CONTAINER
+CONTAINER_REPO
+CABLE_DEVICE
+CABLE_CONFIG_PATH
+CABLE_GRIPPER_CONFIG_PATH
+CABLE_LOG_PATH
+```
 
-Environment overrides: `ISAACLAB_ROOT`, `ISAACLAB_CONTAINER`, `CONTAINER_REPO`,
-`CABLE_DEVICE`, `CABLE_CONFIG_PATH`, `CABLE_GRIPPER_CONFIG_PATH`.
+## Helper Containers
 
----
+| Container | Started when | Purpose |
+| --- | --- | --- |
+| `isaac-lab-ros2_jazzy` | Always | Isaac Lab robot process and cable VBD process |
+| `task1_ros_republisher` | Default | `/bridge/*` to `/isaac/*`; gripper calibration |
+| `task1_position_controller` | `--controller-mode position` (default) | Holds commanded arm/gripper targets |
+| `task1_browser_controller` | Unless `--no-browser` | Browser control on port 8090 |
+| `task1_gello_pedal_teleop` | `--with-gello-pedal-teleop` | GELLO publisher, GELLO adapter, pedal package |
+| `task1_teleop_adapters` | Manual Compose profile | Optional keyboard-to-base adapter |
+
+The launcher does not currently start `task1_teleop_adapters`. Start it
+manually when an external `/keyboard/state` publisher should drive the base:
+
+```bash
+cd task1_isaacsim
+docker compose --profile teleop up -d --no-deps teleop_adapters
+```
 
 ## Troubleshooting
 
-- **"repository not mounted at /workspace/EBiM_Challenge"** — re-run
-  `task1_isaacsim/isaaclab_overlay/apply_overlay.sh` and recreate the container.
-- **`git apply` fails in the overlay** — your Isaac Lab checkout isn't at the
-  pinned commit; `git -C ../IsaacLab checkout 0916ea3c0f…` and retry.
-- **Cable world can't find board USD / missing meshes** — run `task1_isaacsim/scripts/download_large_assets.sh`.
-- **Teleop topics not seen across host↔container** — match
-  `RMW_IMPLEMENTATION` (use `rmw_fastrtps_cpp` everywhere) and `ROS_DOMAIN_ID`.
-- **Robot falls / joints soft** — ensure `position_controller` is running
-  (`--controller-mode position`) so joint targets are held every step.
-- **No GUI window** — `xhost +local:docker`, verify `DISPLAY`, restart the
-  container.
+- **Default USD not found:** run `download_large_assets.sh` and confirm
+  `task1_isaacsim/assets/Robotiq_2f_85_with_d405_mobile_fr3_duo_v0_2.usd`.
+- **Room USD not found:** confirm
+  `assets/robot_room_v2/robot_room_v2.usdc`, or pass `-- --no-room`.
+- **Repository is not mounted in IsaacLab:** reapply
+  `task1_isaacsim/isaaclab_overlay/apply_overlay.sh` and recreate
+  `isaac-lab-ros2_jazzy`.
+- **Keyboard arms do not move:** use a visible Kit window, click the viewport,
+  and confirm `--with-keyboard-teleop` appears before the `--` separator.
+- **GELLO container restarts:** inspect
+  `docker logs task1_gello_pedal_teleop --tail=200` and verify
+  `TELEOPERATION_ROOT` plus `/dev/serial/by-id` access.
+- **Cable is missing:** inspect `/tmp/task1_cable_vbd.log` and verify
+  `/cable/body_centers` is being published.
+- **ROS topics do not cross host/container boundaries:** use
+  `RMW_IMPLEMENTATION=rmw_fastrtps_cpp` and the same `ROS_DOMAIN_ID`.
+- **No GUI window:** run `xhost +local:docker`, verify `DISPLAY`, and recreate
+  the IsaacLab container if its X11 mount is stale.

@@ -26,14 +26,14 @@ board:
     prim_paths:
       - /World/Table
       - /World/Table_01
-    clearance: 0.0002
+    clearance: 0.0
     expand: 0.005
   top_support:
     enabled: true
     visible: false
     prim_path: /World/board_segment/board_segment_bottom_left/Collisions/Collisions
     thickness: 0.004
-    offset: 0.0005
+    offset: 0.0
     expand: 0.02
   floor_constraint:
     enabled: false
@@ -62,8 +62,8 @@ solver:
   rigid_joint_linear_kd: 0.01
   rigid_joint_angular_kd: 0.0
 contact:
-  rigid_contact_margin: 0.005
-  rigid_gap: 0.003
+  rigid_contact_margin: 0.0005
+  rigid_gap: 0.0003
 shape:
   density: 1000.0
   ke: 12000.0

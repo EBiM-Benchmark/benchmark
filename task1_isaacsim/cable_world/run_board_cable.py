@@ -375,7 +375,7 @@ def _add_board_support_plane(
     last_height = 0.0
     for prim_path in prim_paths:
         min_pt, max_pt = _compute_world_bbox(stage, prim_path)
-        height = float(max_pt[2]) + float(cable_radius_m) + float(args.board_support_plane_clearance)
+        height = float(max_pt[2]) + float(args.board_support_plane_clearance)
         center = (
             0.5 * (float(min_pt[0]) + float(max_pt[0])),
             0.5 * (float(min_pt[1]) + float(max_pt[1])),

@@ -72,7 +72,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--pedal-angular-speed",
         type=float,
-        default=1.2,
+        default=0.5,
         help="Base yaw speed in rad/s used for pedal A+C/B+C commands.",
     )
     parser.add_argument(
@@ -98,6 +98,39 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         type=float,
         default=0.850,
         help="Maximum franka_spine_vertical_joint target in meters for keyboard control.",
+    )
+    parser.add_argument(
+        "--with-keyboard-teleop",
+        action="store_true",
+        help=(
+            "Drive both arm end effectors and grippers from the Kit-window "
+            "keyboard through dual RMPflow. ROS arm/gripper commands are "
+            "ignored while this mode is active."
+        ),
+    )
+    parser.add_argument(
+        "--arm-teleop-linear-speed",
+        type=float,
+        default=0.18,
+        help="End-effector translation speed in m/s while a move key is held.",
+    )
+    parser.add_argument(
+        "--arm-teleop-angular-speed-deg",
+        type=float,
+        default=60.0,
+        help="End-effector rotation speed in deg/s while a rotate key is held.",
+    )
+    parser.add_argument(
+        "--arm-teleop-gripper-open",
+        type=float,
+        default=0.0,
+        help="Robotiq driver joint target in radians for the open state.",
+    )
+    parser.add_argument(
+        "--arm-teleop-gripper-closed",
+        type=float,
+        default=0.8,
+        help="Robotiq driver joint target in radians for the closed state.",
     )
     parser.add_argument(
         "--physics-hz",
@@ -137,11 +170,6 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         metavar=("X", "Y", "Z"),
     )
     parser.add_argument(
-        "--with-cable",
-        action="store_true",
-        help="Run the raw Newton VBD board-cable world alongside the IsaacLab robot.",
-    )
-    parser.add_argument(
         "--cable-config-path",
         default="cable_world/configs/table_board_fixture_cable.yaml",
         help="Cable VBD config path, relative to --franka-root unless absolute.",
@@ -171,20 +199,20 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         "--cable-robotiq-finger-size",
         type=float,
         nargs=3,
-        default=(0.007, 0.010, 0.028),
+        default=(0.02, 0.007, 0.03),
         metavar=("X", "Y", "Z"),
         help="Collision box size in meters used for each Robotiq inner finger target.",
     )
     parser.add_argument(
         "--cable-robotiq-contact-x-offset",
         type=float,
-        default=0.0,
+        default=0.01,
         help="Additional local X offset in meters from the Robotiq visual bbox center to the red contact box center.",
     )
     parser.add_argument(
         "--cable-robotiq-contact-y-offset",
         type=float,
-        default=0.024,
+        default=-0.045,
         help="Absolute local Y offset in meters from each Robotiq inner_finger frame to the red contact box center.",
     )
     parser.add_argument(
@@ -203,14 +231,14 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         "--cable-world-position-offset",
         type=float,
         nargs=3,
-        default=(0.0, 0.0, 0.0),
+        default=(1.5, 0.0, 0.73),
         metavar=("X", "Y", "Z"),
         help="IsaacLab-world translation applied to cable/table/board visuals; robot gripper poses are shifted by the inverse before driving VBD.",
     )
     parser.add_argument(
         "--cable-world-yaw-deg",
         type=float,
-        default=0.0,
+        default=90.0,
         help="IsaacLab-world yaw rotation in degrees applied to the whole cable/table/board visual world.",
     )
     parser.add_argument(
@@ -227,6 +255,7 @@ args_cli.enable_cameras = True
 app_launcher = AppLauncher(args_cli)
 simulation_app = app_launcher.app
 
+import numpy as np
 import torch
 import omni.usd
 from pxr import UsdPhysics
@@ -234,6 +263,8 @@ from pxr import UsdPhysics
 import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg, AssetBaseCfg
 from isaaclab.actuators import ImplicitActuatorCfg
+from isaaclab.controllers.rmp_flow import RmpFlowController
+from isaaclab.controllers.rmp_flow_cfg import RmpFlowControllerCfg
 from isaaclab.scene import InteractiveScene, InteractiveSceneCfg
 from isaaclab.sensors import CameraCfg
 from isaaclab_newton.physics import MJWarpSolverCfg, NewtonCfg
@@ -1004,6 +1035,328 @@ class SpineKeyboardController:
             self.robot.set_joint_position_target(full_target)
 
 
+def _quat_xyzw_mul(q1, q2):
+    """Hamilton product for xyzw quaternions (q1 applied after q2)."""
+    x1, y1, z1, w1 = (float(value) for value in q1)
+    x2, y2, z2, w2 = (float(value) for value in q2)
+    return np.array(
+        [
+            w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2,
+            w1 * y2 - x1 * z2 + y1 * w2 + z1 * x2,
+            w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2,
+            w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2,
+        ],
+        dtype=np.float64,
+    )
+
+
+def _axis_angle_quat_xyzw(axis, angle: float):
+    half = 0.5 * float(angle)
+    axis = np.asarray(axis, dtype=np.float64)
+    return np.array([*(math.sin(half) * axis), math.cos(half)], dtype=np.float64)
+
+
+def _rotation_matrix_to_quat_xyzw(rotation):
+    matrix = np.asarray(rotation, dtype=np.float64)
+    trace = float(np.trace(matrix))
+    if trace > 0.0:
+        scale = math.sqrt(trace + 1.0) * 2.0
+        quat = np.array(
+            [
+                (matrix[2, 1] - matrix[1, 2]) / scale,
+                (matrix[0, 2] - matrix[2, 0]) / scale,
+                (matrix[1, 0] - matrix[0, 1]) / scale,
+                0.25 * scale,
+            ]
+        )
+    else:
+        axis = int(np.argmax(np.diag(matrix)))
+        if axis == 0:
+            scale = math.sqrt(1.0 + matrix[0, 0] - matrix[1, 1] - matrix[2, 2]) * 2.0
+            quat = np.array(
+                [
+                    0.25 * scale,
+                    (matrix[0, 1] + matrix[1, 0]) / scale,
+                    (matrix[0, 2] + matrix[2, 0]) / scale,
+                    (matrix[2, 1] - matrix[1, 2]) / scale,
+                ]
+            )
+        elif axis == 1:
+            scale = math.sqrt(1.0 + matrix[1, 1] - matrix[0, 0] - matrix[2, 2]) * 2.0
+            quat = np.array(
+                [
+                    (matrix[0, 1] + matrix[1, 0]) / scale,
+                    0.25 * scale,
+                    (matrix[1, 2] + matrix[2, 1]) / scale,
+                    (matrix[0, 2] - matrix[2, 0]) / scale,
+                ]
+            )
+        else:
+            scale = math.sqrt(1.0 + matrix[2, 2] - matrix[0, 0] - matrix[1, 1]) * 2.0
+            quat = np.array(
+                [
+                    (matrix[0, 2] + matrix[2, 0]) / scale,
+                    (matrix[1, 2] + matrix[2, 1]) / scale,
+                    0.25 * scale,
+                    (matrix[1, 0] - matrix[0, 1]) / scale,
+                ]
+            )
+    return quat / np.linalg.norm(quat)
+
+
+def _disable_conflicting_kit_hotkeys(used_keys) -> None:
+    try:
+        import omni.kit.hotkeys.core as hotkeys_core  # noqa: PLC0415
+    except ImportError:
+        return
+    registry = hotkeys_core.get_hotkey_registry()
+    removed = []
+    for hotkey in list(registry.get_all_hotkeys()):
+        combo = hotkey.key_combination
+        if combo is None or combo.modifiers or combo.key not in used_keys:
+            continue
+        if registry.deregister_hotkey(hotkey):
+            removed.append(f"{combo.as_string}->{hotkey.action_id}")
+    if removed:
+        print(f"Disabled {len(removed)} conflicting Kit hotkeys: {', '.join(removed)}")
+
+
+ARM_TELEOP_CONTROLS_BANNER = """\
+Dual-arm keyboard teleop enabled (focus the Isaac Sim window):
+  LEFT:  W/S A/D Q/E move, Z/X T/G C/V rotate, F toggles gripper
+  RIGHT: O/L K/; I/P move, N/M U/J ,/. rotate, ' toggles gripper
+  R resets both end-effector targets to their startup poses.
+Base commands and Up/Down spine control keep using the existing Task 1 paths.
+ROS arm/gripper commands are ignored while keyboard arm teleop is active."""
+
+
+class DualArmKeyboardTeleop:
+    """Task 2 keyboard layout backed by Isaac Lab's Newton-safe RMPflow."""
+
+    def __init__(self, robot, joint_names, group_indices, args, repo_root: Path):
+        self.robot = robot
+        self._joint_names = list(joint_names)
+        self._device = str(self._joint_positions().device)
+        self._linear_speed = float(args.arm_teleop_linear_speed)
+        self._angular_speed = math.radians(float(args.arm_teleop_angular_speed_deg))
+        self._gripper_positions = {
+            True: float(args.arm_teleop_gripper_open),
+            False: float(args.arm_teleop_gripper_closed),
+        }
+        self._spine_index = (
+            self._joint_names.index("franka_spine_vertical_joint")
+            if "franka_spine_vertical_joint" in self._joint_names
+            else None
+        )
+
+        lula_dir = repo_root / "task2_isaacsim" / "assets" / "lula" / "mobile_fr3_duo"
+        urdf_path = lula_dir / "mobile_fr3_duo_v0_2_lula.urdf"
+        arm_configs = {
+            "left": {
+                "description": lula_dir / "left_arm_description.yaml",
+                "rmpflow": lula_dir / "left_arm_rmpflow_config.yaml",
+                "frame": "left_tcp",
+                "label": "left_arm",
+                "gripper_label": "left_gripper",
+                "gripper_joint": LEFT_GRIPPER_DRIVER,
+            },
+            "right": {
+                "description": lula_dir / "right_arm_description.yaml",
+                "rmpflow": lula_dir / "right_arm_rmpflow_config.yaml",
+                "frame": "right_tcp",
+                "label": "right_arm",
+                "gripper_label": "right_gripper",
+                "gripper_joint": RIGHT_GRIPPER_DRIVER,
+            },
+        }
+        required_paths = [urdf_path]
+        for config in arm_configs.values():
+            required_paths.extend((config["description"], config["rmpflow"]))
+        missing_paths = [str(path) for path in required_paths if not path.is_file()]
+        if missing_paths:
+            raise FileNotFoundError("Missing Task 2 Lula assets: " + ", ".join(missing_paths))
+
+        self._arms = {}
+        evaluations_per_frame = max(1.0, (1.0 / float(args.physics_hz)) / 0.0034)
+        joint_pos = self._joint_positions()
+        for arm_name, config in arm_configs.items():
+            controller = RmpFlowController(
+                RmpFlowControllerCfg(
+                    name="rmp_flow",
+                    config_file=str(config["rmpflow"]),
+                    urdf_file=str(urdf_path),
+                    collision_file=str(config["description"]),
+                    frame_name=config["frame"],
+                    evaluations_per_frame=evaluations_per_frame,
+                    ignore_robot_state_updates=True,
+                ),
+                device=self._device,
+            )
+            controller.initialize(num_robots=1, joint_names=self._joint_names)
+            arm_indices = [self._joint_names.index(name) for name in controller.active_dof_names]
+            policy = controller._rmpflow_policies[0]
+            kinematics = policy._robot_description.kinematics()
+            active_position = joint_pos[0, arm_indices].detach().cpu().numpy()
+            pose = kinematics.pose(
+                np.expand_dims(active_position, axis=1), config["frame"]
+            )
+            position = np.array(pose.translation, dtype=np.float64, copy=True)
+            rotation = np.asarray(pose.rotation.matrix(), dtype=np.float64)
+            position[2] += self._spine_lift(joint_pos)
+            gripper_index = group_indices.get(config["gripper_label"], {}).get(config["gripper_joint"])
+            self._arms[arm_name] = {
+                "controller": controller,
+                "joint_indices": arm_indices,
+                "home_position": position.copy(),
+                "home_quat": _rotation_matrix_to_quat_xyzw(rotation),
+                "target_position": position.copy(),
+                "target_quat": _rotation_matrix_to_quat_xyzw(rotation),
+                "gripper_index": gripper_index,
+                "gripper_open": True,
+            }
+
+        self._held = set()
+        self._subscription = None
+        self._input = None
+        self._keyboard = None
+        self._carb_input = None
+        try:
+            import carb.input  # noqa: PLC0415
+            import omni.appwindow  # noqa: PLC0415
+
+            self._carb_input = carb.input
+            self._build_key_maps(carb.input.KeyboardInput)
+            self._input = carb.input.acquire_input_interface()
+            app_window = omni.appwindow.get_default_app_window()
+            if app_window is None:
+                raise RuntimeError("No Omniverse app window found")
+            self._keyboard = app_window.get_keyboard()
+            self._subscription = self._input.subscribe_to_keyboard_events(
+                self._keyboard, self._on_keyboard_event
+            )
+            _disable_conflicting_kit_hotkeys(self._teleop_keys())
+            print(ARM_TELEOP_CONTROLS_BANNER, flush=True)
+        except Exception as exc:  # noqa: BLE001
+            print(f"Warning: dual-arm keyboard teleop unavailable: {exc}", file=sys.stderr)
+
+    @property
+    def available(self) -> bool:
+        return self._subscription is not None
+
+    def _joint_positions(self):
+        value = self.robot.data.joint_pos
+        return value.torch if hasattr(value, "torch") else value
+
+    def _joint_velocities(self):
+        value = self.robot.data.joint_vel
+        return value.torch if hasattr(value, "torch") else value
+
+    def _spine_lift(self, joint_positions) -> float:
+        if self._spine_index is None:
+            return 0.0
+        return float(joint_positions[0, self._spine_index].item())
+
+    def _build_key_maps(self, keyboard_input) -> None:
+        bindings = {
+            "left": (
+                (keyboard_input.W, keyboard_input.S, keyboard_input.A, keyboard_input.D, keyboard_input.Q, keyboard_input.E),
+                (keyboard_input.Z, keyboard_input.X, keyboard_input.T, keyboard_input.G, keyboard_input.C, keyboard_input.V),
+                keyboard_input.F,
+            ),
+            "right": (
+                (keyboard_input.O, keyboard_input.L, keyboard_input.K, keyboard_input.SEMICOLON, keyboard_input.I, keyboard_input.P),
+                (keyboard_input.N, keyboard_input.M, keyboard_input.U, keyboard_input.J, keyboard_input.COMMA, keyboard_input.PERIOD),
+                keyboard_input.APOSTROPHE,
+            ),
+        }
+        for arm_name, (linear, angular, gripper_key) in bindings.items():
+            fwd, back, left, right, up, down = linear
+            roll_p, roll_n, pitch_p, pitch_n, yaw_p, yaw_n = angular
+            arm = self._arms[arm_name]
+            arm["linear_map"] = {
+                fwd: np.array([1.0, 0.0, 0.0]), back: np.array([-1.0, 0.0, 0.0]),
+                left: np.array([0.0, 1.0, 0.0]), right: np.array([0.0, -1.0, 0.0]),
+                up: np.array([0.0, 0.0, 1.0]), down: np.array([0.0, 0.0, -1.0]),
+            }
+            arm["angular_map"] = {
+                roll_p: np.array([1.0, 0.0, 0.0]), roll_n: np.array([-1.0, 0.0, 0.0]),
+                pitch_p: np.array([0.0, 1.0, 0.0]), pitch_n: np.array([0.0, -1.0, 0.0]),
+                yaw_p: np.array([0.0, 0.0, 1.0]), yaw_n: np.array([0.0, 0.0, -1.0]),
+            }
+            arm["gripper_key"] = gripper_key
+        self._reset_key = keyboard_input.R
+
+    def _teleop_keys(self):
+        keys = {self._reset_key}
+        for arm in self._arms.values():
+            keys.update(arm["linear_map"])
+            keys.update(arm["angular_map"])
+            keys.add(arm["gripper_key"])
+        return keys
+
+    def _on_keyboard_event(self, event, *args, **kwargs):
+        if self._carb_input is None:
+            return True
+        event_type = self._carb_input.KeyboardEventType
+        if event.type == event_type.KEY_PRESS:
+            self._held.add(event.input)
+            for arm_name, arm in self._arms.items():
+                if event.input == arm["gripper_key"]:
+                    arm["gripper_open"] = not arm["gripper_open"]
+                    print(f"{arm_name} gripper: {'open' if arm['gripper_open'] else 'closed'}", flush=True)
+            if event.input == self._reset_key:
+                for arm in self._arms.values():
+                    arm["target_position"] = arm["home_position"].copy()
+                    arm["target_quat"] = arm["home_quat"].copy()
+                print("Arm teleop targets reset to startup poses", flush=True)
+        elif event.type == event_type.KEY_RELEASE:
+            self._held.discard(event.input)
+        return True
+
+    def _integrate_held_keys(self, dt: float) -> None:
+        for key in list(self._held):
+            for arm in self._arms.values():
+                direction = arm["linear_map"].get(key)
+                if direction is not None:
+                    arm["target_position"] += direction * self._linear_speed * dt
+                axis = arm["angular_map"].get(key)
+                if axis is not None:
+                    quat = _quat_xyzw_mul(
+                        _axis_angle_quat_xyzw(axis, self._angular_speed * dt),
+                        arm["target_quat"],
+                    )
+                    arm["target_quat"] = quat / np.linalg.norm(quat)
+
+    def apply(self, dt: float) -> None:
+        self._integrate_held_keys(float(dt))
+        joint_pos = self._joint_positions()
+        joint_vel = self._joint_velocities()
+        spine = self._spine_lift(joint_pos)
+        for arm in self._arms.values():
+            command = torch.zeros((1, 7), device=self._device, dtype=torch.float32)
+            command[0, :3] = torch.as_tensor(arm["target_position"], device=self._device)
+            command[0, 2] -= spine
+            command[0, 3:] = torch.as_tensor(arm["target_quat"], device=self._device)
+            arm["controller"].set_command(command)
+            position_target, velocity_target = arm["controller"].compute(joint_pos, joint_vel)
+            self.robot.set_joint_position_target_index(
+                target=position_target, joint_ids=arm["joint_indices"]
+            )
+            self.robot.set_joint_velocity_target_index(
+                target=velocity_target, joint_ids=arm["joint_indices"]
+            )
+            if arm["gripper_index"] is not None:
+                gripper_target = torch.full(
+                    (1, 1),
+                    self._gripper_positions[arm["gripper_open"]],
+                    device=self._device,
+                    dtype=torch.float32,
+                )
+                self.robot.set_joint_position_target_index(
+                    target=gripper_target, joint_ids=[arm["gripper_index"]]
+                )
+
+
 class IsaacLabRosBridge(Node):
     def __init__(self, groups: List[JointGroup], *, enable_cable: bool = False):
         super().__init__("isaaclab_fr3duo_newton_bridge")
@@ -1125,7 +1478,13 @@ class IsaacLabRosBridge(Node):
             return 0.0, 0.0, -angular_speed_radps
         return 0.0, 0.0, 0.0
 
-    def apply_commands(self, robot, group_indices: Dict[str, Dict[str, int]]):
+    def apply_commands(
+        self,
+        robot,
+        group_indices: Dict[str, Dict[str, int]],
+        excluded_labels: Optional[set[str]] = None,
+    ):
+        excluded_labels = excluded_labels or set()
         joint_pos = robot.data.joint_pos.torch if hasattr(robot.data.joint_pos, "torch") else robot.data.joint_pos
         if joint_pos.ndim == 1:
             joint_pos = joint_pos.unsqueeze(0)
@@ -1133,6 +1492,8 @@ class IsaacLabRosBridge(Node):
 
         any_command = False
         for group in self.groups:
+            if group.label in excluded_labels:
+                continue
             resolved = group_indices.get(group.label, {})
             for requested_name, position in self.latest_commands[group.label].items():
                 joint_index = resolved.get(requested_name)
@@ -1632,7 +1993,7 @@ def _update_cable_stage_visual(curve, points):
     point_list = [tuple(float(v) for v in point) for point in points]
     curve.GetPointsAttr().Set(Vt.Vec3fArray(point_list))
     curve.GetCurveVertexCountsAttr().Set([len(point_list)])
-    curve.GetWidthsAttr().Set([0.006] * len(point_list))
+    curve.GetWidthsAttr().Set([0.004] * len(point_list))
     curve.GetDisplayColorAttr().Set([(1.0, 0.0, 0.0)])
 
 
@@ -1813,32 +2174,51 @@ def main():
     else:
         print("Warning: spine keyboard control disabled: franka_spine_vertical_joint not found", file=sys.stderr)
 
+    arm_keyboard_teleop = None
+    keyboard_owned_groups: set[str] = (
+        {"left_arm", "right_arm", "left_gripper", "right_gripper"}
+        if args_cli.with_keyboard_teleop
+        else set()
+    )
+    if args_cli.with_keyboard_teleop:
+        arm_keyboard_teleop = DualArmKeyboardTeleop(
+            robot,
+            actual_joint_names,
+            group_indices,
+            args_cli,
+            franka_root.parent,
+        )
+        if not arm_keyboard_teleop.available:
+            raise RuntimeError(
+                "--with-keyboard-teleop was requested, but the Isaac Sim keyboard is unavailable. "
+                "Run with a visible Kit window and inspect the preceding warning."
+            )
+
     cable_curve_visual = None
     cable_gripper_collision_visual = None
-    if args_cli.with_cable:
-        cable_config_path = Path(args_cli.cable_config_path).expanduser()
-        if not cable_config_path.is_absolute():
-            cable_config_path = franka_root / cable_config_path
-        cable_world_offset = tuple(float(v) for v in args_cli.cable_world_position_offset)
-        cable_world_yaw_deg = float(args_cli.cable_world_yaw_deg)
-        cable_curve_visual = _create_cable_stage_visuals(
-            franka_root,
-            cable_config_path,
-            cable_world_offset,
-            cable_world_yaw_deg,
-            args_cli.show_table_board_fixture_collisions,
-        )
-        cable_gripper_collision_visual = _create_cable_gripper_collision_box_visual(
-            cable_world_offset, cable_world_yaw_deg
-        )
-        print(
-            "Cable VBD ROS coupling enabled: "
-            f"config={cable_config_path} "
-            f"visual_offset={cable_world_offset} visual_yaw_deg={cable_world_yaw_deg:.3f}"
-        )
+    cable_config_path = Path(args_cli.cable_config_path).expanduser()
+    if not cable_config_path.is_absolute():
+        cable_config_path = franka_root / cable_config_path
+    cable_world_offset = tuple(float(v) for v in args_cli.cable_world_position_offset)
+    cable_world_yaw_deg = float(args_cli.cable_world_yaw_deg)
+    cable_curve_visual = _create_cable_stage_visuals(
+        franka_root,
+        cable_config_path,
+        cable_world_offset,
+        cable_world_yaw_deg,
+        args_cli.show_table_board_fixture_collisions,
+    )
+    cable_gripper_collision_visual = _create_cable_gripper_collision_box_visual(
+        cable_world_offset, cable_world_yaw_deg
+    )
+    print(
+        "Cable VBD ROS coupling enabled: "
+        f"config={cable_config_path} "
+        f"visual_offset={cable_world_offset} visual_yaw_deg={cable_world_yaw_deg:.3f}"
+    )
 
     rclpy.init()
-    node = IsaacLabRosBridge(groups, enable_cable=args_cli.with_cable)
+    node = IsaacLabRosBridge(groups, enable_cable=True)
     publish_period = 1.0 / max(args_cli.ros_publish_rate, 1.0)
     next_publish_time = 0.0
     logged_robotiq_finger_targets = False
@@ -1856,7 +2236,7 @@ def main():
     try:
         while simulation_app.is_running() and rclpy.ok():
             rclpy.spin_once(node, timeout_sec=0.0)
-            node.apply_commands(robot, group_indices)
+            node.apply_commands(robot, group_indices, excluded_labels=keyboard_owned_groups)
             if steering_ids and drive_ids:
                 vx, vy, wz = node.pedal_base_twist(
                     args_cli.pedal_linear_speed,
@@ -1877,46 +2257,47 @@ def main():
                 robot.set_joint_velocity_target_index(target=drive_targets, joint_ids=drive_ids)
             if spine_keyboard_controller is not None:
                 spine_keyboard_controller.apply()
+            if arm_keyboard_teleop is not None:
+                arm_keyboard_teleop.apply(sim.get_physics_dt())
             scene.write_data_to_sim()
             sim.step()
             scene.update(sim.get_physics_dt())
-            if args_cli.with_cable:
-                live_gripper_boxes = None
-                if args_cli.cable_robotiq_finger_targets:
-                    world_offset = tuple(float(v) for v in args_cli.cable_world_position_offset)
-                    finger_targets, resolved_paths = _collect_robotiq_finger_targets(
-                        robotiq_finger_selectors,
-                        args_cli.cable_robotiq_finger_size,
-                        world_offset,
-                        args_cli.cable_world_yaw_deg,
-                        args_cli.cable_robotiq_contact_x_offset,
-                        args_cli.cable_robotiq_contact_y_offset,
-                        args_cli.cable_robotiq_contact_z_offset,
-                        args_cli.cable_robotiq_invert_opening,
-                    )
-                    if finger_targets is None:
-                        if not logged_missing_robotiq_finger_targets:
-                            logged_missing_robotiq_finger_targets = True
-                            print(
-                                "Warning: could not resolve all Robotiq finger selectors for cable targets: "
-                                + ", ".join(robotiq_finger_selectors),
-                                file=sys.stderr,
-                            )
-                    else:
-                        if not logged_robotiq_finger_targets:
-                            logged_robotiq_finger_targets = True
-                            print(
-                                "Cable gripper collision uses live Robotiq finger poses: "
-                                + ", ".join(resolved_paths),
-                                flush=True,
-                            )
-                        node.publish_cable_robotiq_finger_targets(finger_targets)
-                        live_gripper_boxes = finger_targets
-                _update_cable_stage_visual(cable_curve_visual, node.latest_cable_points())
-                _update_cable_gripper_collision_box_visual(
-                    cable_gripper_collision_visual,
-                    live_gripper_boxes if live_gripper_boxes is not None else node.latest_cable_gripper_boxes(),
+            live_gripper_boxes = None
+            if args_cli.cable_robotiq_finger_targets:
+                world_offset = tuple(float(v) for v in args_cli.cable_world_position_offset)
+                finger_targets, resolved_paths = _collect_robotiq_finger_targets(
+                    robotiq_finger_selectors,
+                    args_cli.cable_robotiq_finger_size,
+                    world_offset,
+                    args_cli.cable_world_yaw_deg,
+                    args_cli.cable_robotiq_contact_x_offset,
+                    args_cli.cable_robotiq_contact_y_offset,
+                    args_cli.cable_robotiq_contact_z_offset,
+                    args_cli.cable_robotiq_invert_opening,
                 )
+                if finger_targets is None:
+                    if not logged_missing_robotiq_finger_targets:
+                        logged_missing_robotiq_finger_targets = True
+                        print(
+                            "Warning: could not resolve all Robotiq finger selectors for cable targets: "
+                            + ", ".join(robotiq_finger_selectors),
+                            file=sys.stderr,
+                        )
+                else:
+                    if not logged_robotiq_finger_targets:
+                        logged_robotiq_finger_targets = True
+                        print(
+                            "Cable gripper collision uses live Robotiq finger poses: "
+                            + ", ".join(resolved_paths),
+                            flush=True,
+                        )
+                    node.publish_cable_robotiq_finger_targets(finger_targets)
+                    live_gripper_boxes = finger_targets
+            _update_cable_stage_visual(cable_curve_visual, node.latest_cable_points())
+            _update_cable_gripper_collision_box_visual(
+                cable_gripper_collision_visual,
+                live_gripper_boxes if live_gripper_boxes is not None else node.latest_cable_gripper_boxes(),
+            )
             now = node.get_clock().now().nanoseconds * 1e-9
             if now >= next_publish_time:
                 node.publish_states(robot, group_indices)

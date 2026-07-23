@@ -11,12 +11,12 @@ ISAACLAB_CONTAINER_WS="${ISAACLAB_CONTAINER_WS:-/workspace/isaaclab}"
 CONTAINER_REPO="${CONTAINER_REPO:-/workspace/EBiM_Challenge}"
 CONTAINER_TASK1="${CONTAINER_TASK1:-${CONTAINER_REPO}/task1_isaacsim}"
 EMBODIMENT="${EMBODIMENT:-fr3duo_mobile}"
-USD_PATH="${USD_PATH:-assets/digital_twin_fr3Duo_mobile.usd}"
+USD_PATH="${USD_PATH:-assets/Robotiq_2f_85_with_d405_mobile_fr3_duo_v0_2.usd}"
 CONTROLLER_MODE="${CONTROLLER_MODE:-position}"
 WITH_GELLO_PEDAL_TELEOP=false
+WITH_KEYBOARD_TELEOP=false
 WITH_BROWSER=true
 WITH_REPUBLISHER=true
-WITH_CABLE=false
 HEADLESS=false
 CABLE_DEVICE="${CABLE_DEVICE:-cuda:0}"
 CABLE_CONFIG_PATH="${CABLE_CONFIG_PATH:-${CONTAINER_TASK1}/cable_world/configs/table_board_fixture_cable.yaml}"
@@ -34,9 +34,9 @@ Options:
   --usd-path PATH            USD path relative to repo root or absolute
   --controller-mode MODE     none|position (default: position)
   --with-gello-pedal-teleop  Start GELLO arm teleop and pedal base teleop together
+  --with-keyboard-teleop     Control both arm TCPs/grippers from the Isaac Sim keyboard
   --no-browser               Do not start browser_controller
   --no-republisher           Do not start ros_republisher
-  --with-cable               Run the raw Newton VBD board-cable world
   --headless                 Run IsaacLab without a visible Kit window
   --                         Pass remaining args to isaaclab_fr3duo_newton_bridge.py
 
@@ -63,16 +63,16 @@ while [[ $# -gt 0 ]]; do
       WITH_GELLO_PEDAL_TELEOP=true
       shift
       ;;
+    --with-keyboard-teleop)
+      WITH_KEYBOARD_TELEOP=true
+      shift
+      ;;
     --no-browser)
       WITH_BROWSER=false
       shift
       ;;
     --no-republisher)
       WITH_REPUBLISHER=false
-      shift
-      ;;
-    --with-cable)
-      WITH_CABLE=true
       shift
       ;;
     --headless)
@@ -121,7 +121,8 @@ echo "Embodiment: ${EMBODIMENT}"
 echo "USD: ${HOST_USD}"
 echo "Controller mode: ${CONTROLLER_MODE}"
 echo "GELLO + pedal teleop: ${WITH_GELLO_PEDAL_TELEOP}"
-echo "Cable VBD: ${WITH_CABLE}"
+echo "Keyboard arm teleop: ${WITH_KEYBOARD_TELEOP}"
+echo "Cable VBD: always enabled"
 
 if ! docker ps --format '{{.Names}}' | grep -qx "${ISAACLAB_CONTAINER}"; then
   echo "Starting IsaacLab container via ${ISAACLAB_ROOT}/docker/container.py..."
@@ -138,12 +139,10 @@ EOF
   exit 1
 fi
 
-if ${WITH_CABLE}; then
-  echo "Starting raw Newton cable VBD ROS process inside ${ISAACLAB_CONTAINER}..."
-  docker exec "${ISAACLAB_CONTAINER}" bash -lc "pkill -f '[r]un_cable_vbd_ros_headless.py' || true"
-  docker exec -d "${ISAACLAB_CONTAINER}" bash -lc "cd ${ISAACLAB_CONTAINER_WS} && source /opt/ros/jazzy/setup.bash && ./isaaclab.sh -p ${CONTAINER_TASK1}/scripts/run_cable_vbd_ros_headless.py --viewer null --device ${CABLE_DEVICE} --config-path ${CABLE_CONFIG_PATH} --gripper-config-path ${CABLE_GRIPPER_CONFIG_PATH} --cable-point-topic /cable/body_centers --num-frames 0 > ${CABLE_LOG_PATH} 2>&1"
-  echo "Cable VBD log: docker exec ${ISAACLAB_CONTAINER} tail -f ${CABLE_LOG_PATH}"
-fi
+echo "Starting raw Newton cable VBD ROS process inside ${ISAACLAB_CONTAINER}..."
+docker exec "${ISAACLAB_CONTAINER}" bash -lc "pkill -f '[r]un_cable_vbd_ros_headless.py' || true"
+docker exec -d "${ISAACLAB_CONTAINER}" bash -lc "cd ${ISAACLAB_CONTAINER_WS} && source /opt/ros/jazzy/setup.bash && ./isaaclab.sh -p ${CONTAINER_TASK1}/scripts/run_cable_vbd_ros_headless.py --viewer null --device ${CABLE_DEVICE} --config-path ${CABLE_CONFIG_PATH} --gripper-config-path ${CABLE_GRIPPER_CONFIG_PATH} --cable-point-topic /cable/body_centers --num-frames 0 > ${CABLE_LOG_PATH} 2>&1"
+echo "Cable VBD log: docker exec ${ISAACLAB_CONTAINER} tail -f ${CABLE_LOG_PATH}"
 
 if ${WITH_REPUBLISHER}; then
   echo "Starting ros_republisher without old isaac-sim dependency..."
@@ -166,6 +165,11 @@ if ${WITH_GELLO_PEDAL_TELEOP}; then
   echo "  docker exec -it task1_gello_pedal_teleop bash -lc 'source /opt/ros/jazzy/setup.bash && source /tmp/task1_teleop_install/setup.bash && ros2 run pedal_state_publisher pedal_state_publisher'"
 fi
 
+if ${WITH_KEYBOARD_TELEOP} && ! ${WITH_GELLO_PEDAL_TELEOP}; then
+  echo "Stopping any previously running GELLO teleop container for keyboard-only mode..."
+  (cd "${TASK1_ROOT}" && docker compose --profile teleop stop gello_pedal_teleop)
+fi
+
 if ${WITH_BROWSER}; then
   echo "Starting browser_controller without old isaac-sim dependency..."
   (cd "${TASK1_ROOT}" && docker compose up -d --no-deps browser_controller)
@@ -184,8 +188,9 @@ BRIDGE_ARGS=(
   "--franka-root" "${CONTAINER_TASK1}"
 )
 
-if ${WITH_CABLE}; then
-  BRIDGE_ARGS+=("--with-cable")
+
+if ${WITH_KEYBOARD_TELEOP}; then
+  BRIDGE_ARGS+=("--with-keyboard-teleop")
 fi
 
 if ! ${WITH_BROWSER}; then
