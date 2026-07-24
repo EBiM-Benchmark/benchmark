@@ -12,7 +12,7 @@
   <size memory="128M" />
   <visual>
     <quality shadowsize="8192" offsamples="16" />
-    <map znear="0.01" zfar="200" />
+    <map znear="0.0005" zfar="200" />
     <global offwidth="1280" offheight="720" />
     <headlight ambient="0.18 0.18 0.18" diffuse="0.40 0.40 0.40" specular="0.20 0.20 0.20" />
     <rgba fog="0.4 0.45 0.5 1" />
@@ -53,6 +53,19 @@
     <mesh name="robots_fr3v2_1_visual_link7" content_type="model/obj" file="robots_fr3v2_1_visual_link7.obj" />
     <mesh name="robots_fr3v2_1_collision_link7" content_type="model/stl" file="robots_fr3v2_1_collision_link7.stl" />
     <mesh name="robot_ee_robotiq_arg85_visual_robotiq_base" content_type="model/obj" file="robot_ee_robotiq_arg85_visual_robotiq_base.obj" />
+    <!-- D405 wrist-camera body + mount bracket, extracted from the
+         Robotiq-2F-85-specific Isaac Sim asset
+         "Robotiq_2f_85_with_d405_mobile_fr3_duo_v0_2 (2).usd" (2026-07-23)
+         - visual only, transform baked into vertices relative to each
+         side's gripper base_link at export time (identity pos/quat here). -->
+    <mesh name="left_d405_realsense_body" content_type="model/obj" file="d405_cam/left_d405_realsense_body.obj" />
+    <mesh name="left_d405_mount_bracket" content_type="model/obj" file="d405_cam/left_d405_mount_bracket.obj" />
+    <mesh name="right_d405_realsense_body" content_type="model/obj" file="d405_cam/right_d405_realsense_body.obj" />
+    <mesh name="right_d405_mount_bracket" content_type="model/obj" file="d405_cam/right_d405_mount_bracket.obj" />
+    <!-- ZED Mini head-camera body, extracted from the same USD asset
+         (zedmini/zed_mini_camera_link), transform baked relative to
+         head_camera_mounting_point (same body it's placed on below). -->
+    <mesh name="zedmini_body" content_type="model/obj" file="head_cam_mesh/zedmini_body.obj" />
     <mesh name="robot_ee_robotiq_arg85_collision_robotiq_base" content_type="model/stl" file="robot_ee_robotiq_arg85_collision_robotiq_base.stl" />
     <mesh name="robot_ee_robotiq_arg85_visual_left_knuckle" content_type="model/obj" file="robot_ee_robotiq_arg85_visual_left_knuckle.obj" />
     <mesh name="robot_ee_robotiq_arg85_collision_left_knuckle" content_type="model/stl" file="robot_ee_robotiq_arg85_collision_left_knuckle.stl" />
@@ -372,9 +385,18 @@
                                   <body name="left_fr3v2_1_link8" pos="0 0 0.107">
                                     <body name="left_fr3v2_1_robotiq_85_base_link" quat="0.92388 0 0 -0.382683">
                                       <inertial pos="0 2.274e-05 0.0323229" quat="0.707251 -0.000590537 0.000590296 0.706962" mass="0.663202" diaginertia="0.000588023 0.000516178 0.000394627" />
-                                      <camera name="left_wrist_cam" pos="0 0 0.04" xyaxes="1 0 0 0 -1 0" fovy="58" />
+                                      <!-- Pose read directly from the USD's own left_Camera prim
+                                           (left_d405_camera_with_mount/d405_camera_link/left_Camera),
+                                           relative to this gripper's base_link with the same +90deg Z
+                                           axis-convention correction verified for the mesh (2026-07-23). -->
+                                      <camera name="left_wrist_cam" pos="0 0.06153 0.06217" xyaxes="1 0 0 0 -0.9397 -0.342" fovy="58" />
                                       <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" material="mat_gripper_dark" mesh="robot_ee_robotiq_arg85_visual_robotiq_base" />
                                       <geom type="mesh" group="3" mesh="robot_ee_robotiq_arg85_collision_robotiq_base" contype="4" conaffinity="1" />
+                                      <!-- D405 wrist-camera body + mount bracket, extracted from the
+                                           Robotiq-2F-85-specific USD asset (2026-07-23) - transform baked
+                                           into vertices relative to this gripper's own base_link. -->
+                                      <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" material="mat_gripper_dark" mesh="left_d405_realsense_body" />
+                                      <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" material="mat_gripper_dark" mesh="left_d405_mount_bracket" />
                                       <body name="left_fr3v2_1_robotiq_arg85_tcp" pos="0 0 0.1034" />
                                       <body name="left_fr3v2_1_robotiq_85_left_knuckle_link" pos="0.0306011 0 0.0549045">
                                         <inertial pos="0.012132 0.0002 -0.00058647" quat="0.484217 0.5153 0.5153 0.484217" mass="0.0138477" diaginertia="2.31944e-06 2.23867e-06 3.45008e-07" />
@@ -498,9 +520,18 @@
                                   <body name="right_fr3v2_1_link8" pos="0 0 0.107">
                                     <body name="right_fr3v2_1_robotiq_85_base_link" quat="0.92388 0 0 -0.382683">
                                       <inertial pos="0 2.274e-05 0.0323229" quat="0.707251 -0.000590537 0.000590296 0.706962" mass="0.663202" diaginertia="0.000588023 0.000516178 0.000394627" />
-                                      <camera name="right_wrist_cam" pos="0 0 0.04" xyaxes="1 0 0 0 -1 0" fovy="58" />
+                                      <!-- Pose read directly from the USD's own right_Camera prim
+                                           (right_d405_camera_with_mount/d405_camera_link/right_Camera),
+                                           relative to this gripper's base_link with the same +90deg Z
+                                           axis-convention correction verified for the mesh (2026-07-23). -->
+                                      <camera name="right_wrist_cam" pos="0 0.06153 0.06217" xyaxes="1 0 0 0 -0.9397 -0.342" fovy="58" />
                                       <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" material="mat_gripper_dark" mesh="robot_ee_robotiq_arg85_visual_robotiq_base" />
                                       <geom type="mesh" group="3" mesh="robot_ee_robotiq_arg85_collision_robotiq_base" contype="4" conaffinity="1" />
+                                      <!-- D405 wrist-camera body + mount bracket, extracted from the
+                                           Robotiq-2F-85-specific USD asset (2026-07-23) - transform baked
+                                           into vertices relative to this gripper's own base_link. -->
+                                      <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" material="mat_gripper_dark" mesh="right_d405_realsense_body" />
+                                      <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" material="mat_gripper_dark" mesh="right_d405_mount_bracket" />
                                       <body name="right_fr3v2_1_robotiq_arg85_tcp" pos="0 0 0.1034" />
                                       <body name="right_fr3v2_1_robotiq_85_left_knuckle_link" pos="0.0306011 0 0.0549045">
                                         <inertial pos="0.012132 0.0002 -0.00058647" quat="0.484217 0.5153 0.5153 0.484217" mass="0.0138477" diaginertia="2.31944e-06 2.23867e-06 3.45008e-07" />
@@ -579,8 +610,16 @@
                      head_cam = left eye at the original mounting point, head_cam_right offset
                      along the shared optical frame's local +X ("right") by the full baseline -
                      both share the same quat (parallel optical axes). -->
-                <camera name="head_cam" pos="0 0 0" quat="0.274 0.635 -0.652 -0.312" fovy="58" />
-                <camera name="head_cam_right" pos="-0.00278 -0.06289 -0.00245" quat="0.274 0.635 -0.652 -0.312" fovy="58" />
+                <camera name="head_cam" pos="0 0 0" quat="0.274 0.635 -0.652 -0.312" fovy="60" />
+                <camera name="head_cam_right" pos="-0.00278 -0.06289 -0.00245" quat="0.274 0.635 -0.652 -0.312" fovy="60" />
+                <!-- shifted -0.027m along -head_cam-forward: the raw mesh (baked
+                     transform, origin = USD lens position) extends ~27mm IN FRONT
+                     of that origin, so the camera was sitting inside its own
+                     housing and rendering a near-clipped cross-section of it
+                     (confirmed via raycast: every ray into the artifact hit this
+                     geom at ~9mm). Offset puts the housing's front face at the
+                     lens instead of wrapping around it. -->
+                <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" material="mat_gripper_dark" mesh="zedmini_body" pos="-0.02033 0.00159 -0.01770" />
               </body>
             </body>
           </body>

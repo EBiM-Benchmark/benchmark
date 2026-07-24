@@ -34,6 +34,9 @@ Each mode has its own flags — see `python main.py --help` and
 - `duo_full_scene_grasp.xml` + `assets/` — the scene.
 - `duo_full_scene_gamepad_demo.py`, `duo_full_scene_vr_demo.py` — deprecated
   shims forwarding to `main.py` (old commands keep working).
+- `teleop/data_record.py`, `teleop/run_policy.py` — LeRobotDataset
+  recording and policy rollout; see `DATA_COLLECTION.md` and
+  `demo_data_collection.py`.
 
 ## Controls
 

@@ -15,6 +15,11 @@ rgba alpha is toggled here, so the text shows up in every render context
 
 Set the code with --display-code at startup, or at runtime by typing
 ``code <TEXT>`` into the sim terminal (see stdin_command_listener).
+
+stdin_command_listener() is also the control channel for --record-dataset
+(train branch): typing ``record`` toggles start/stop+save, avoiding any
+GLFW keyboard hotkey (the viewer's own single-letter shortcuts already
+claim most of the keyboard, and stdin has no such conflicts).
 """
 
 from __future__ import annotations
@@ -109,17 +114,19 @@ class CodeDisplay:
         log(f"[code] displaying on the board plate: '{text}'")
 
 
-def stdin_command_listener() -> queue.Queue[str]:
-    """Background stdin reader: typing ``code ABC123`` into the sim terminal
-    queues the text for the main loop (viewer windows can't take text input).
-    Returns the queue; the thread dies with the process."""
-    q: queue.Queue[str] = queue.Queue()
+def stdin_command_listener() -> queue.Queue[tuple[str, str | None]]:
+    """Background stdin reader: the sim terminal takes text commands since
+    viewer windows can't (typing ``code ABC123``, ``record``, ...). Queues
+    (command, argument) pairs, lowercased command / raw-case argument or
+    None. Returns the queue; the thread dies with the process."""
+    q: queue.Queue[tuple[str, str | None]] = queue.Queue()
 
     def reader() -> None:
         for line in sys.stdin:
             parts = line.strip().split(maxsplit=1)
-            if len(parts) == 2 and parts[0].lower() == "code":
-                q.put(parts[1])
+            if not parts:
+                continue
+            q.put((parts[0].lower(), parts[1] if len(parts) == 2 else None))
 
-    threading.Thread(target=reader, daemon=True, name="stdin-code").start()
+    threading.Thread(target=reader, daemon=True, name="stdin-cmd").start()
     return q

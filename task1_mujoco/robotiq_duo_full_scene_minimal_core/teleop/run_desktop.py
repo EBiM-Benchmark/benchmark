@@ -7,6 +7,7 @@ teleop); the frame is selectable with --arm-frame.
 
 from __future__ import annotations
 
+import atexit
 import math
 import sys
 import time
@@ -67,6 +68,8 @@ Keyboard (motion = arrows + PageUp/PageDown only, letters stay free):
   B: print all current contacts (debug)
   N: toggle collision-geometry display
   F / H: report task finished / skipped (--mnet eval mode)
+  terminal: type 'record' to start/stop+save an episode (--record-dataset mode)
+  terminal: type 'quit' to shut down cleanly (preferred over Ctrl+C)
 """
 
 
@@ -207,8 +210,36 @@ def main(args) -> None:
             from .mnet_bridge import MnetBridge
 
             mnet = MnetBridge(model, args)
+            # same reasoning as the recorder below: make sure the ROS node
+            # and camera subprocess get torn down even on Ctrl+C, instead of
+            # leaking (this is the FastDDS zombie-shared-memory pattern seen
+            # elsewhere in this repo's troubleshooting notes)
+            atexit.register(mnet.close)
         except Exception as exc:
             log(f"[mnet] eval bridge disabled: {exc}")
+
+    # optional LeRobotDataset recording (train branch): type 'record' in the
+    # terminal to start/stop+save (no GLFW hotkey - avoids clashing with the
+    # viewer's own single-letter shortcuts)
+    recorder = None
+    if getattr(args, "record_dataset", None):
+        from .data_record import EpisodeRecorder
+
+        recorder = EpisodeRecorder(
+            model,
+            session,
+            args.record_dataset,
+            task=args.record_task,
+            record_fps=args.record_fps,
+            camera_names=args.record_camera,
+        )
+        # Ctrl+C / any crash inside the loop below raises past the final
+        # recorder.close() call at the end of this function - without this,
+        # finalize() never runs and the dataset is left unloadable (episode
+        # data is on disk but the meta/episodes index was never flushed).
+        # atexit still fires during interpreter shutdown after an unhandled
+        # KeyboardInterrupt, unlike a plain statement after the viewer loop.
+        atexit.register(recorder.close)
 
     # one-time-code plate (works with or without ROS)
     from .code_display import CodeDisplay, stdin_command_listener
@@ -219,6 +250,9 @@ def main(args) -> None:
     code_queue = stdin_command_listener()
     if mnet is not None:
         log("[code] when the client shows the one-time code, type: code <TEXT> here")
+    if recorder is not None:
+        log("[record] type 'record' into this terminal to start/stop+save an episode")
+    log("[main] type 'quit' into this terminal to shut down cleanly (preferred over Ctrl+C)")
 
     if args.no_viewer:
         session.smoke()
@@ -241,238 +275,263 @@ def main(args) -> None:
 
     filtered_base_cmd = np.zeros(4, dtype=np.float64)
 
-    with mujoco.viewer.launch_passive(model, data, key_callback=keyboard.key_callback) as viewer:
-        viewer_ref[0] = viewer
-        session.setup_viewer_cam(viewer)
-        if mnet is not None:
-            mnet.ensure_renderer()  # create GL contexts before the loop starts
-        while viewer.is_running():
-            start = time.perf_counter()
-            dt = min(max(start - last, model.opt.timestep), 1.0 / 60.0)
-            last = start
-            control_start = time.perf_counter()
+    try:
+        with mujoco.viewer.launch_passive(model, data, key_callback=keyboard.key_callback) as viewer:
+            viewer_ref[0] = viewer
+            session.setup_viewer_cam(viewer)
+            if mnet is not None:
+                mnet.ensure_renderer()  # create GL contexts before the loop starts
+            while viewer.is_running():
+                start = time.perf_counter()
+                dt = min(max(start - last, model.opt.timestep), 1.0 / 60.0)
+                last = start
+                control_start = time.perf_counter()
 
-            # discrete keys queued by the viewer thread, handled here on the
-            # main thread (MuJoCo state is only ever touched from this loop)
-            for key in keyboard.drain():
-                handle_discrete_key(key)
-            while not code_queue.empty():
-                code_display.show(code_queue.get_nowait())
+                # discrete keys queued by the viewer thread, handled here on the
+                # main thread (MuJoCo state is only ever touched from this loop)
+                for key in keyboard.drain():
+                    handle_discrete_key(key)
+                while not code_queue.empty():
+                    cmd, arg = code_queue.get_nowait()
+                    if cmd == "code" and arg:
+                        code_display.show(arg)
+                    elif cmd == "record":
+                        if recorder is not None:
+                            recorder.toggle()
+                        else:
+                            log("[record] not running (start with --record-dataset PATH to record episodes)")
+                    elif cmd in ("quit", "exit"):
+                        # graceful shutdown: closes the viewer so the while
+                        # loop below ends normally next iteration (no
+                        # exception involved) and falls straight into the
+                        # finally block's cleanup - the reliable path,
+                        # unlike Ctrl+C which depends on interrupt delivery
+                        log("[main] 'quit' received - closing")
+                        viewer.close()
 
-            arm = active_arm()
-            base_cmd = np.zeros(4, dtype=np.float64)
-            twist_cmd = np.zeros(6, dtype=np.float64)
-            translation_active = False
-            rotation_active = False
+                arm = active_arm()
+                base_cmd = np.zeros(4, dtype=np.float64)
+                twist_cmd = np.zeros(6, dtype=np.float64)
+                translation_active = False
+                rotation_active = False
 
-            if joy.connected:
-                joy.pump()
-                # semantic one-shot events (edge detection lives in Gamepad,
-                # so the physical layout is identical on every OS)
-                for event in joy.pressed_events():
-                    if event == "mode_left":
-                        set_mode("left")
-                    elif event == "mode_right":
-                        set_mode("right")
-                    elif event == "mode_base":
-                        set_mode("base")
-                    elif event == "close":
-                        active_arm().close_ramp = True
-                    elif event == "open":
-                        open_gripper(data, active_arm())
-                    elif event == "help":
-                        log("gamepad rotation is always active: right stick yaw/pitch, D-pad roll")
-                    elif event == "speed_down":
-                        bump_speed(1.0 / 1.5)
-                    elif event == "speed_up":
-                        bump_speed(1.5)
+                if joy.connected:
+                    joy.pump()
+                    # semantic one-shot events (edge detection lives in Gamepad,
+                    # so the physical layout is identical on every OS)
+                    for event in joy.pressed_events():
+                        if event == "mode_left":
+                            set_mode("left")
+                        elif event == "mode_right":
+                            set_mode("right")
+                        elif event == "mode_base":
+                            set_mode("base")
+                        elif event == "close":
+                            active_arm().close_ramp = True
+                        elif event == "open":
+                            open_gripper(data, active_arm())
+                        elif event == "help":
+                            log("gamepad rotation is always active: right stick yaw/pitch, D-pad roll")
+                        elif event == "speed_down":
+                            bump_speed(1.0 / 1.5)
+                        elif event == "speed_up":
+                            bump_speed(1.5)
 
-                lx, ly = joy.left_stick()
-                rx, ry = joy.right_stick()
-                l2 = joy.trigger_left()
-                r2 = joy.trigger_right()
-                hx = joy.dpad_x()
+                    lx, ly = joy.left_stick()
+                    rx, ry = joy.right_stick()
+                    l2 = joy.trigger_left()
+                    r2 = joy.trigger_right()
+                    hx = joy.dpad_x()
+
+                    if mode[0] == "base":
+                        # stick in screen axes (up = into the screen, right =
+                        # screen-right) — same convention as the keyboard arrows,
+                        # so base driving matches what the operator sees
+                        bfwd, bleft = screen_to_base_local(
+                            viewer.cam,
+                            lx,
+                            -ly,
+                            data,
+                            session.base_body,
+                            args.robot_forward_axis,
+                        )
+                        base_cmd += np.array([bfwd, bleft, r2 - l2, -rx], dtype=np.float64)
+                    else:
+                        move = config.MOVE_SPEED * speed_scale[0]
+                        rot = config.ROT_SPEED * speed_scale[0]
+                        xy_world = arm_xy_to_world(-ly, lx)
+                        twist_cmd[:3] += (
+                            np.array(
+                                [xy_world[0], xy_world[1], r2 - l2],
+                                dtype=np.float64,
+                            )
+                            * move
+                        )
+                        twist_cmd[5] += -rx * rot
+                        twist_cmd[3] += ry * rot
+                        twist_cmd[4] += hx * rot
+                        translation_active = float(np.linalg.norm(twist_cmd[:3])) > config.TWIST_DEAD
+                        rotation_active = float(np.linalg.norm(twist_cmd[3:])) > config.TWIST_DEAD
+
+                poll_base_cmd, poll_key_twist, poll_translation, poll_rotation = keyboard.poll(
+                    getattr(viewer, "_window", None),
+                    mode[0],
+                    arm.rotate_mode,
+                    config.MOVE_SPEED * speed_scale[0],
+                    config.ROT_SPEED * speed_scale[0],
+                )
+                if float(np.linalg.norm(poll_base_cmd)) > config.TWIST_DEAD:
+                    kb_base = poll_base_cmd.copy()
+                    # keyboard arrows are screen axes: up = into the screen,
+                    # left = screen-left — convert to the robot's heading frame
+                    # so driving matches what the operator sees (same convention
+                    # as the VR base stick)
+                    if abs(kb_base[0]) > 0 or abs(kb_base[1]) > 0:
+                        lx, ly = screen_to_base_local(
+                            viewer.cam,
+                            -kb_base[1],
+                            kb_base[0],
+                            data,
+                            session.base_body,
+                            args.robot_forward_axis,
+                        )
+                        kb_base[0], kb_base[1] = lx, ly
+                    base_cmd += kb_base
+                if float(np.linalg.norm(poll_key_twist)) > config.TWIST_DEAD:
+                    key_twist = poll_key_twist.copy()
+                    xy_world = arm_xy_to_world(key_twist[0], key_twist[1])
+                    key_twist[0] = xy_world[0]
+                    key_twist[1] = xy_world[1]
+                    twist_cmd += key_twist
+                    translation_active = translation_active or poll_translation
+                    rotation_active = rotation_active or poll_rotation
 
                 if mode[0] == "base":
-                    # stick in screen axes (up = into the screen, right =
-                    # screen-right) — same convention as the keyboard arrows,
-                    # so base driving matches what the operator sees
-                    bfwd, bleft = screen_to_base_local(
-                        viewer.cam,
-                        lx,
-                        -ly,
-                        data,
-                        session.base_body,
-                        args.robot_forward_axis,
-                    )
-                    base_cmd += np.array([bfwd, bleft, r2 - l2, -rx], dtype=np.float64)
-                else:
-                    move = config.MOVE_SPEED * speed_scale[0]
-                    rot = config.ROT_SPEED * speed_scale[0]
-                    xy_world = arm_xy_to_world(-ly, lx)
-                    twist_cmd[:3] += (
-                        np.array(
-                            [xy_world[0], xy_world[1], r2 - l2],
-                            dtype=np.float64,
+                    if session.any_arm_grasped():
+                        # holding the cable: slow and low-pass the base so driving
+                        # doesn't rip the grasp loose
+                        base_cmd[:2] *= config.GRASPED_BASE_SPEED_SCALE
+                        base_cmd[3] *= config.GRASPED_BASE_SPEED_SCALE
+                        base_cmd[2] *= max(config.GRASPED_BASE_SPEED_SCALE, 0.35)
+                        filtered_base_cmd[:] = smooth_twist(
+                            filtered_base_cmd,
+                            base_cmd,
+                            dt,
+                            config.GRASPED_BASE_FILTER_TAU,
                         )
-                        * move
-                    )
-                    twist_cmd[5] += -rx * rot
-                    twist_cmd[3] += ry * rot
-                    twist_cmd[4] += hx * rot
-                    translation_active = float(np.linalg.norm(twist_cmd[:3])) > config.TWIST_DEAD
-                    rotation_active = float(np.linalg.norm(twist_cmd[3:])) > config.TWIST_DEAD
-
-            poll_base_cmd, poll_key_twist, poll_translation, poll_rotation = keyboard.poll(
-                getattr(viewer, "_window", None),
-                mode[0],
-                arm.rotate_mode,
-                config.MOVE_SPEED * speed_scale[0],
-                config.ROT_SPEED * speed_scale[0],
-            )
-            if float(np.linalg.norm(poll_base_cmd)) > config.TWIST_DEAD:
-                kb_base = poll_base_cmd.copy()
-                # keyboard arrows are screen axes: up = into the screen,
-                # left = screen-left — convert to the robot's heading frame
-                # so driving matches what the operator sees (same convention
-                # as the VR base stick)
-                if abs(kb_base[0]) > 0 or abs(kb_base[1]) > 0:
-                    lx, ly = screen_to_base_local(
-                        viewer.cam,
-                        -kb_base[1],
-                        kb_base[0],
-                        data,
-                        session.base_body,
-                        args.robot_forward_axis,
-                    )
-                    kb_base[0], kb_base[1] = lx, ly
-                base_cmd += kb_base
-            if float(np.linalg.norm(poll_key_twist)) > config.TWIST_DEAD:
-                key_twist = poll_key_twist.copy()
-                xy_world = arm_xy_to_world(key_twist[0], key_twist[1])
-                key_twist[0] = xy_world[0]
-                key_twist[1] = xy_world[1]
-                twist_cmd += key_twist
-                translation_active = translation_active or poll_translation
-                rotation_active = rotation_active or poll_rotation
-
-            if mode[0] == "base":
-                if session.any_arm_grasped():
-                    # holding the cable: slow and low-pass the base so driving
-                    # doesn't rip the grasp loose
-                    base_cmd[:2] *= config.GRASPED_BASE_SPEED_SCALE
-                    base_cmd[3] *= config.GRASPED_BASE_SPEED_SCALE
-                    base_cmd[2] *= max(config.GRASPED_BASE_SPEED_SCALE, 0.35)
-                    filtered_base_cmd[:] = smooth_twist(
-                        filtered_base_cmd,
-                        base_cmd,
-                        dt,
-                        config.GRASPED_BASE_FILTER_TAU,
-                    )
-                    base_cmd = filtered_base_cmd.copy()
+                        base_cmd = filtered_base_cmd.copy()
+                    else:
+                        filtered_base_cmd[:] = base_cmd
+                    session.base_driver.drive(base_cmd[0], base_cmd[1], base_cmd[2], base_cmd[3], dt)
+                    for hold_arm in arms.values():
+                        hard_hold_arm(model, data, hold_arm)
                 else:
-                    filtered_base_cmd[:] = base_cmd
-                session.base_driver.drive(base_cmd[0], base_cmd[1], base_cmd[2], base_cmd[3], dt)
-                for hold_arm in arms.values():
-                    hard_hold_arm(model, data, hold_arm)
-            else:
-                session.base_driver.drive(0.0, 0.0, 0.0, 0.0, dt)
-                command_active = float(np.linalg.norm(twist_cmd)) > config.TWIST_DEAD
-                if translation_active and not rotation_active and config.ORIENTATION_LOCK_GAIN > 0.0:
-                    arm.target_quat = arm.translate_lock_quat.copy()
-                    rot_hold = rot_error(arm.target_quat, data.xmat[arm.tcp_body].reshape(3, 3))
-                    twist_cmd[3:] += np.clip(
-                        config.ORIENTATION_LOCK_GAIN * rot_hold,
-                        -config.ORIENTATION_LOCK_MAX,
-                        config.ORIENTATION_LOCK_MAX,
-                    )
+                    session.base_driver.drive(0.0, 0.0, 0.0, 0.0, dt)
                     command_active = float(np.linalg.norm(twist_cmd)) > config.TWIST_DEAD
+                    if translation_active and not rotation_active and config.ORIENTATION_LOCK_GAIN > 0.0:
+                        arm.target_quat = arm.translate_lock_quat.copy()
+                        rot_hold = rot_error(arm.target_quat, data.xmat[arm.tcp_body].reshape(3, 3))
+                        twist_cmd[3:] += np.clip(
+                            config.ORIENTATION_LOCK_GAIN * rot_hold,
+                            -config.ORIENTATION_LOCK_MAX,
+                            config.ORIENTATION_LOCK_MAX,
+                        )
+                        command_active = float(np.linalg.norm(twist_cmd)) > config.TWIST_DEAD
 
-                if arm.grasped_body is not None:
+                    if arm.grasped_body is not None:
+                        if command_active:
+                            twist_cmd[:3] *= config.GRASPED_SPEED_SCALE
+                            twist_cmd[3:] *= max(config.GRASPED_SPEED_SCALE, 0.65)
+                        if arm.filtered_twist is None:
+                            arm.filtered_twist = np.zeros(6, dtype=np.float64)
+                        arm.filtered_twist[:] = smooth_twist(
+                            arm.filtered_twist,
+                            twist_cmd,
+                            dt,
+                            config.GRASPED_TWIST_FILTER_TAU,
+                        )
+                        twist_cmd = arm.filtered_twist.copy()
+                        command_active = float(np.linalg.norm(twist_cmd)) > config.TWIST_DEAD
+                    elif arm.filtered_twist is not None:
+                        arm.filtered_twist[:] = 0.0
+
                     if command_active:
-                        twist_cmd[:3] *= config.GRASPED_SPEED_SCALE
-                        twist_cmd[3:] *= max(config.GRASPED_SPEED_SCALE, 0.65)
-                    if arm.filtered_twist is None:
-                        arm.filtered_twist = np.zeros(6, dtype=np.float64)
-                    arm.filtered_twist[:] = smooth_twist(
-                        arm.filtered_twist,
-                        twist_cmd,
-                        dt,
-                        config.GRASPED_TWIST_FILTER_TAU,
+                        twist_cmd = clamp_tcp_twist_for_contact(model, twist_cmd, arm.grasped_body is not None)
+                        apply_twist_ik(model, data, arm, twist_cmd)
+                        arm.was_command_active = True
+                    else:
+                        if arm.was_command_active:
+                            seed_arm(model, data, arm)  # capture the new hold anchor
+                        hard_hold_arm(model, data, arm)
+                        arm.was_command_active = False
+
+                    for other_name, other_arm in arms.items():
+                        if other_name != arm.name:
+                            hard_hold_arm(model, data, other_arm)
+
+                if recorder is not None:
+                    # data.qpos/data.ctrl here are (o_t, a_t): last step's resulting
+                    # state, and this tick's just-computed action about to be applied
+                    recorder.maybe_record(data, dt)
+
+                control_end = time.perf_counter()
+                step_start = control_end
+                session.step_once(dt)
+                step_end = time.perf_counter()
+
+                if joy.connected:
+                    # touch feedback: one pulse when a gripper FIRST makes
+                    # contact (silent while it persists, re-armed on release)
+                    amp = max(
+                        pulser.update(side, session.gripper_contact_force(side), step_end) for side in ("left", "right")
                     )
-                    twist_cmd = arm.filtered_twist.copy()
-                    command_active = float(np.linalg.norm(twist_cmd)) > config.TWIST_DEAD
-                elif arm.filtered_twist is not None:
-                    arm.filtered_twist[:] = 0.0
+                    if amp > 0.0:
+                        joy.pulse(amp)
 
-                if command_active:
-                    twist_cmd = clamp_tcp_twist_for_contact(model, twist_cmd, arm.grasped_body is not None)
-                    apply_twist_ik(model, data, arm, twist_cmd)
-                    arm.was_command_active = True
-                else:
-                    if arm.was_command_active:
-                        seed_arm(model, data, arm)  # capture the new hold anchor
-                    hard_hold_arm(model, data, arm)
-                    arm.was_command_active = False
+                if mnet is not None:
+                    mnet_start = time.perf_counter()
+                    mnet.maybe_publish(data, viewer.cam)
+                    cfg = mnet.consume_board_config()
+                    if cfg is not None and getattr(args, "mnet_randomize", False):
+                        from .mnet_board import apply_board_config
 
-                for other_name, other_arm in arms.items():
-                    if other_name != arm.name:
-                        hard_hold_arm(model, data, other_arm)
+                        apply_board_config(session, cfg)
+                    prof_mnet += time.perf_counter() - mnet_start
 
-            control_end = time.perf_counter()
-            step_start = control_end
-            session.step_once(dt)
-            step_end = time.perf_counter()
-
-            if joy.connected:
-                # touch feedback: one pulse when a gripper FIRST makes
-                # contact (silent while it persists, re-armed on release)
-                amp = max(
-                    pulser.update(side, session.gripper_contact_force(side), step_end) for side in ("left", "right")
-                )
-                if amp > 0.0:
-                    joy.pulse(amp)
-
-            if mnet is not None:
-                mnet_start = time.perf_counter()
-                mnet.maybe_publish(data, viewer.cam)
-                cfg = mnet.consume_board_config()
-                if cfg is not None and getattr(args, "mnet_randomize", False):
-                    from .mnet_board import apply_board_config
-
-                    apply_board_config(session, cfg)
-                prof_mnet += time.perf_counter() - mnet_start
-
-            if render_dt <= 0.0 or time.perf_counter() >= next_render:
-                render_start = time.perf_counter()
-                viewer.sync()
-                prof_render += time.perf_counter() - render_start
-                next_render = time.perf_counter() + render_dt
-            prof_frames += 1
-            prof_control += control_end - control_start
-            prof_step += step_end - step_start
-            prof_max_ncon = max(prof_max_ncon, int(data.ncon))
-            if args.profile and time.perf_counter() - prof_last >= 1.0:
-                elapsed = time.perf_counter() - prof_last
-                msg = (
-                    f"[profile] loop={prof_frames / elapsed:6.1f}Hz "
-                    f"control={prof_control / max(prof_frames, 1) * 1000:6.2f}ms "
-                    f"step={prof_step / max(prof_frames, 1) * 1000:6.2f}ms "
-                    f"render={prof_render / max(prof_frames, 1) * 1000:6.2f}ms "
-                    f"mnet={prof_mnet / max(prof_frames, 1) * 1000:6.2f}ms "
-                    f"ncon={prof_max_ncon:3d} mode={mode[0]} "
-                    f"grasped={session.any_arm_grasped()} speed={speed_scale[0]:.2f}"
-                )
-                if args.profile_contacts:
-                    msg += f" contacts=[{contact_pair_summary(model, data)}]"
-                print(msg, flush=True)
-                prof_last = time.perf_counter()
-                prof_frames = 0
-                prof_control = prof_step = prof_render = prof_mnet = 0.0
-                prof_max_ncon = 0
-            sleep = loop_dt - (time.perf_counter() - start)
-            if sleep > 0:
-                time.sleep(sleep)
-
-    if mnet is not None:
-        mnet.close()
+                if render_dt <= 0.0 or time.perf_counter() >= next_render:
+                    render_start = time.perf_counter()
+                    viewer.sync()
+                    prof_render += time.perf_counter() - render_start
+                    next_render = time.perf_counter() + render_dt
+                prof_frames += 1
+                prof_control += control_end - control_start
+                prof_step += step_end - step_start
+                prof_max_ncon = max(prof_max_ncon, int(data.ncon))
+                if args.profile and time.perf_counter() - prof_last >= 1.0:
+                    elapsed = time.perf_counter() - prof_last
+                    msg = (
+                        f"[profile] loop={prof_frames / elapsed:6.1f}Hz "
+                        f"control={prof_control / max(prof_frames, 1) * 1000:6.2f}ms "
+                        f"step={prof_step / max(prof_frames, 1) * 1000:6.2f}ms "
+                        f"render={prof_render / max(prof_frames, 1) * 1000:6.2f}ms "
+                        f"mnet={prof_mnet / max(prof_frames, 1) * 1000:6.2f}ms "
+                        f"ncon={prof_max_ncon:3d} mode={mode[0]} "
+                        f"grasped={session.any_arm_grasped()} speed={speed_scale[0]:.2f}"
+                    )
+                    if args.profile_contacts:
+                        msg += f" contacts=[{contact_pair_summary(model, data)}]"
+                    print(msg, flush=True)
+                    prof_last = time.perf_counter()
+                    prof_frames = 0
+                    prof_control = prof_step = prof_render = prof_mnet = 0.0
+                    prof_max_ncon = 0
+                sleep = loop_dt - (time.perf_counter() - start)
+                if sleep > 0:
+                    time.sleep(sleep)
+    except KeyboardInterrupt:
+        log("[main] Ctrl+C - shutting down")
+    finally:
+        if mnet is not None:
+            mnet.close()
+        if recorder is not None:
+            recorder.close()

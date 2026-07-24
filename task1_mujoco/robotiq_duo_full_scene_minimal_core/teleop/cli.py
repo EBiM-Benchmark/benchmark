@@ -212,6 +212,101 @@ def add_mnet_args(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def add_record_args(parser: argparse.ArgumentParser) -> None:
+    g = parser.add_argument_group("dataset recording (data_record.py, train branch)")
+    g.add_argument(
+        "--record-dataset",
+        type=str,
+        default=None,
+        help="root directory for a LeRobotDataset recorded from this session (needs the "
+        "'lerobot' package); type 'record' into the terminal to start/stop+save an episode",
+    )
+    g.add_argument(
+        "--record-task",
+        type=str,
+        default="route the cable across the board",
+        help="natural-language task string stored with each recorded episode",
+    )
+    g.add_argument("--record-fps", type=float, default=10.0, help="recorded frame rate (independent of the physics/render rate)")
+    g.add_argument(
+        "--record-camera",
+        type=str,
+        default="head_cam,left_wrist_cam,right_wrist_cam",
+        help="model camera name(s) to record, comma-separated for multiple views - each becomes "
+        "its own observation.images.<name> feature. Default matches task1_isaacsim's own 3-camera "
+        "data contract (wrist_left/wrist_right/head - see camera_sensors.yaml); head_cam_right "
+        "(the stereo pair's 2nd eye) is NOT in the contract's default and must be added "
+        "explicitly if wanted. Other available cameras: mnet_overhead, main",
+    )
+
+
+def add_policy_args(parser: argparse.ArgumentParser) -> None:
+    g = parser.add_argument_group("policy rollout (run_policy.py, train branch)")
+    g.add_argument(
+        "--policy-path",
+        type=str,
+        default=None,
+        help="trained LeRobot policy checkpoint directory (needs --policy-dataset-root too). "
+        "Mutually exclusive with --policy-adapter",
+    )
+    g.add_argument(
+        "--policy-dataset-root",
+        type=str,
+        default=None,
+        help="root of the LeRobotDataset the policy was trained on (only meta/ is read - used to "
+        "match the policy's input/output feature shapes and normalization stats)",
+    )
+    g.add_argument(
+        "--policy-adapter",
+        type=str,
+        default=None,
+        help="'path/to/file.py:ClassName' - bring your own model trained however you like, as "
+        "long as it implements .predict(state, images) -> action (see run_policy.py's module "
+        "docstring for the exact contract). Mutually exclusive with --policy-path",
+    )
+    g.add_argument("--policy-dataset-repo-id", type=str, default="local/duo_fr3_cable_management")
+    g.add_argument(
+        "--policy-task",
+        type=str,
+        default="route the cable across the board",
+        help="task string passed to the policy",
+    )
+    g.add_argument(
+        "--policy-camera",
+        type=str,
+        default="head_cam,left_wrist_cam,right_wrist_cam",
+        help="model camera name(s), comma-separated for multiple views - MUST match what the "
+        "policy was trained with (same --record-camera value used for --record-dataset). "
+        "Default matches task1_isaacsim's 3-camera data contract.",
+    )
+    g.add_argument(
+        "--policy-width",
+        type=int,
+        default=320,
+        help="fallback render width for cameras with no known real-hardware resolution (e.g. "
+        "mnet_overhead, main). head_cam/left_wrist_cam/right_wrist_cam always render at their "
+        "real device's own resolution (see data_record.CAMERA_RENDER_RESOLUTION) regardless of this",
+    )
+    g.add_argument("--policy-height", type=int, default=240, help="fallback render height, see --policy-width")
+
+
+def build_policy_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Duo-FR3 full-scene teleop - policy rollout mode (train branch)",
+    )
+    parser.add_argument(
+        "--input",
+        choices=("keyboard", "gamepad", "vr", "gello", "ros_teleop", "policy"),
+        default="policy",
+        help="input method (dispatched by main.py)",
+    )
+    add_physics_args(parser, timestep_default=0.001)
+    add_grasp_args(parser)
+    add_base_args(parser, base_speed_default=3.0, base_yaw_default=360.0, with_control_modes=True)
+    add_policy_args(parser)
+    return parser
+
+
 def add_gello_args(parser: argparse.ArgumentParser) -> None:
     g = parser.add_argument_group("gello (input_gello.py / run_gello.py)")
     g.add_argument(
@@ -240,6 +335,7 @@ def build_desktop_parser() -> argparse.ArgumentParser:
     add_arm_args(parser)
     add_gamepad_args(parser)
     add_mnet_args(parser)
+    add_record_args(parser)
     return parser
 
 

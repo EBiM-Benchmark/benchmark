@@ -283,7 +283,7 @@ def teleport_base_fixed(
     return True
 
 
-# fixed spawn for the data-collection recording setup (Jerry's reference
+# fixed spawn for the data-collection recording setup (reference
 # screenshot: robot stands on the poster-wall side (world y=2.53, past the
 # board's cclip-side long edge at y~1.045), back to the poster, facing the
 # board so head_cam frames fixture 0 / adapter_0 clearly). Tuned by

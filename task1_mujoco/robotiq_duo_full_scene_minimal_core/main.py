@@ -40,7 +40,7 @@ def main(argv: list[str] | None = None) -> None:
     pre = argparse.ArgumentParser(add_help=False)
     pre.add_argument(
         "--input",
-        choices=("keyboard", "gamepad", "vr", "gello", "ros_teleop"),
+        choices=("keyboard", "gamepad", "vr", "gello", "ros_teleop", "policy"),
         default="keyboard",
     )
     ns, rest = pre.parse_known_args(argv)
@@ -90,6 +90,21 @@ def main(argv: list[str] | None = None) -> None:
         args = cli.build_ros_teleop_parser().parse_args(rest)
         args.input = "ros_teleop"
         run_ros_teleop.main(args)
+        return
+
+    if ns.input == "policy":
+        try:
+            from teleop import run_policy
+        except Exception as exc:  # lerobot/torch missing - other modes unaffected
+            print(f"[main] policy mode unavailable: {exc!r}", flush=True)
+            print(
+                "[main] keyboard/gamepad/vr still work: python main.py --input keyboard",
+                flush=True,
+            )
+            raise SystemExit(1)
+        args = cli.build_policy_parser().parse_args(rest)
+        args.input = "policy"
+        run_policy.main(args)
         return
 
     from teleop import run_desktop
