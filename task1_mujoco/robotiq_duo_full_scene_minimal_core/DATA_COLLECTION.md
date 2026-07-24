@@ -71,6 +71,39 @@ ds = LeRobotDataset(repo_id="local/duo_fr3_cable_management", root="/path/to/dat
 print(len(ds), ds.meta.total_episodes, ds.meta.features.keys())
 ```
 
+## Reading state / action / RGB from a recording
+
+`LeRobotDataset` is a standard PyTorch `Dataset` - index it directly, or
+wrap it in a `DataLoader` for batched/multi-worker loading. Video frames
+are decoded and time-aligned with the tabular state/action data
+automatically:
+
+```python
+from lerobot.datasets.lerobot_dataset import LeRobotDataset
+
+ds = LeRobotDataset(repo_id="local/duo_fr3_cable_management", root="/path/to/dataset")
+
+frame = ds[0]
+state = frame["observation.state"]                       # (50,) tensor
+action = frame["action"]                                  # (19,) tensor
+head_rgb = frame["observation.images.head_cam"]           # (3, 720, 1280) tensor
+left_rgb = frame["observation.images.left_wrist_cam"]     # (3, 480, 848) tensor
+right_rgb = frame["observation.images.right_wrist_cam"]   # (3, 480, 848) tensor
+
+# batched loading:
+from torch.utils.data import DataLoader
+loader = DataLoader(ds, batch_size=32, shuffle=True)
+batch = next(iter(loader))
+```
+
+No dependency on `lerobot`'s own training code is required to read a
+dataset this way - only the `LeRobotDataset` class itself. The
+underlying storage is also just standard parquet (`data/`) and video
+files (`videos/`), readable directly with `pandas`/`pyarrow` and any
+video decoder (`opencv-python`, `PyAV`, ...) if a project needs to avoid
+the `lerobot` dependency entirely - `meta/info.json` documents the exact
+per-feature shapes and dtypes.
+
 ## Scripted / non-interactive recording
 
 `teleop/data_record.EpisodeRecorder` doesn't care what drives the robot —

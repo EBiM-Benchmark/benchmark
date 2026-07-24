@@ -54,7 +54,8 @@ def main() -> None:
         shutil.rmtree(out)
 
     session_args = build_desktop_parser().parse_args(
-        ["--input", "keyboard", "--no-viewer", "--start-at-board"]
+        # ["--input", "keyboard", "--no-viewer", "--start-at-board"]
+        ["--input", "keyboard"]
     )
     session = TeleopSession(session_args)
     model, data = session.model, session.data
