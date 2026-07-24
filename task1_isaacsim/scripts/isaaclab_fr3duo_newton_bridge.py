@@ -61,7 +61,10 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         "--ros-publish-rate",
         type=float,
         default=60.0,
-        help="Joint-state publish rate in Hz for /isaac/*_joint_states",
+        help=(
+            "Synchronized ROS publish rate in Hz for camera images, arm and "
+            "gripper joint states, base pose, and base command."
+        ),
     )
     parser.add_argument(
         "--pedal-linear-speed",
@@ -276,8 +279,8 @@ except Exception:  # pragma: no cover - optional extension/package
 
 import rclpy
 from rclpy.node import Node
-from sensor_msgs.msg import ChannelFloat32, JointState, PointCloud
-from geometry_msgs.msg import Point32
+from sensor_msgs.msg import ChannelFloat32, Image, JointState, PointCloud
+from geometry_msgs.msg import Point32, PoseStamped
 from std_msgs.msg import String
 
 try:
@@ -334,6 +337,22 @@ LEFT_GRIPPER_DRIVER = "left_right_finger_joint"
 RIGHT_GRIPPER_DRIVER = "right_right_finger_joint"
 
 PEDAL_STATE_TOPIC = "/pedal/state"
+BASE_RELATIVE_POSE_TOPIC = "/isaac/base_pose_relative"
+BASE_COMMAND_TOPIC = "/isaac/base_command"
+CAMERA_TOPICS = {
+    "left_camera": (
+        "/isaac/left_wrist_camera/image_raw",
+        "left_fr3v2_d405_color_optical_frame",
+    ),
+    "right_camera": (
+        "/isaac/right_wrist_camera/image_raw",
+        "right_fr3v2_d405_color_optical_frame",
+    ),
+    "head_camera": (
+        "/isaac/head_camera/image_raw",
+        "zed_mini_left_camera_optical_frame",
+    ),
+}
 WHEEL_RADIUS_M = 0.05
 MAX_WHEEL_SPEED_RADPS = 18.0
 STOP_EPS = 1.0e-4
@@ -847,6 +866,39 @@ def _make_scene_cfg(usd_path: str, prim_path: str, room_usd_path: str | None = N
             ),
         )
         robot = robot_cfg
+        left_camera = CameraCfg(
+            prim_path=(
+                "{ENV_REGEX_NS}/Robot/left_d405_camera_with_mount/"
+                "d405_camera_link/left_Camera"
+            ),
+            update_period=1.0 / 60.0,
+            height=480,
+            width=848,
+            data_types=["rgb"],
+            spawn=None,
+        )
+        right_camera = CameraCfg(
+            prim_path=(
+                "{ENV_REGEX_NS}/Robot/right_d405_camera_with_mount/"
+                "d405_camera_link/right_Camera"
+            ),
+            update_period=1.0 / 60.0,
+            height=480,
+            width=848,
+            data_types=["rgb"],
+            spawn=None,
+        )
+        head_camera = CameraCfg(
+            prim_path=(
+                "{ENV_REGEX_NS}/Robot/zedmini/zed_mini_camera_link/"
+                "zed_mini_left_camera_frame/head_Camera"
+            ),
+            update_period=1.0 / 60.0,
+            height=720,
+            width=1280,
+            data_types=["rgb"],
+            spawn=None,
+        )
         if room_cfg is not None:
             room = room_cfg
 
@@ -1357,6 +1409,31 @@ class DualArmKeyboardTeleop:
                 )
 
 
+def _sim_array_to_numpy(value) -> np.ndarray:
+    """Copy an Isaac Lab proxy, Warp array, or torch tensor to host NumPy."""
+    if hasattr(value, "torch"):
+        value = value.torch
+    if torch.is_tensor(value):
+        return value.detach().cpu().numpy()
+    if hasattr(value, "numpy"):
+        return np.asarray(value.numpy())
+    return np.asarray(value)
+
+
+def _quat_xyzw_conjugate(quat) -> np.ndarray:
+    x, y, z, w = (float(value) for value in quat)
+    return np.asarray((-x, -y, -z, w), dtype=np.float64)
+
+
+def _quat_xyzw_rotate_vector(quat, vector) -> np.ndarray:
+    """Rotate a 3-D vector by an XYZW quaternion."""
+    quat = np.asarray(quat, dtype=np.float64)
+    quat /= max(float(np.linalg.norm(quat)), 1.0e-12)
+    vector = np.asarray(vector, dtype=np.float64)
+    twice_cross = 2.0 * np.cross(quat[:3], vector)
+    return vector + quat[3] * twice_cross + np.cross(quat[:3], twice_cross)
+
+
 class IsaacLabRosBridge(Node):
     def __init__(self, groups: List[JointGroup], *, enable_cable: bool = False):
         super().__init__("isaaclab_fr3duo_newton_bridge")
@@ -1366,6 +1443,16 @@ class IsaacLabRosBridge(Node):
         self._latest_cable_gripper_boxes: Optional[List[dict]] = None
         self._latest_pedal_state = "NONE"
         self._latest_pedal_time_sec = None
+        self._initial_root_pose: Optional[np.ndarray] = None
+        self._camera_warning_keys: set[str] = set()
+        self._base_pose_publisher = self.create_publisher(
+            PoseStamped, BASE_RELATIVE_POSE_TOPIC, 10
+        )
+        self._base_command_publisher = self.create_publisher(String, BASE_COMMAND_TOPIC, 10)
+        self._camera_publishers = {
+            key: self.create_publisher(Image, topic, 2)
+            for key, (topic, _frame_id) in CAMERA_TOPICS.items()
+        }
         self._state_publishers = {
             group.label: self.create_publisher(JointState, group.state_topic, 10)
             for group in groups
@@ -1510,7 +1597,7 @@ class IsaacLabRosBridge(Node):
         else:
             robot.set_joint_position_target(target)
 
-    def publish_states(self, robot, group_indices: Dict[str, Dict[str, int]]):
+    def publish_states(self, robot, group_indices: Dict[str, Dict[str, int]], stamp):
         joint_pos = robot.data.joint_pos.torch if hasattr(robot.data.joint_pos, "torch") else robot.data.joint_pos
         joint_vel = robot.data.joint_vel.torch if hasattr(robot.data.joint_vel, "torch") else robot.data.joint_vel
         if joint_pos.ndim == 2:
@@ -1518,7 +1605,6 @@ class IsaacLabRosBridge(Node):
         if joint_vel.ndim == 2:
             joint_vel = joint_vel[0]
 
-        stamp = self.get_clock().now().to_msg()
         for group in self.groups:
             msg = JointState()
             msg.header.stamp = stamp
@@ -1537,6 +1623,81 @@ class IsaacLabRosBridge(Node):
             msg.velocity = velocities
             msg.effort = [0.0] * len(names)
             self._state_publishers[group.label].publish(msg)
+
+    def publish_base_state(self, robot, stamp) -> None:
+        root_pose = _sim_array_to_numpy(robot.data.root_pose_w)
+        if root_pose.ndim == 2:
+            root_pose = root_pose[0]
+        root_pose = np.asarray(root_pose, dtype=np.float64)
+        if self._initial_root_pose is None:
+            self._initial_root_pose = root_pose.copy()
+
+        origin_position = self._initial_root_pose[:3]
+        origin_quat = self._initial_root_pose[3:7]
+        current_position = root_pose[:3]
+        current_quat = root_pose[3:7]
+        origin_quat_inverse = _quat_xyzw_conjugate(origin_quat)
+        relative_position = _quat_xyzw_rotate_vector(
+            origin_quat_inverse, current_position - origin_position
+        )
+        relative_quat = _quat_xyzw_mul(origin_quat_inverse, current_quat)
+        relative_quat /= max(float(np.linalg.norm(relative_quat)), 1.0e-12)
+
+        pose_msg = PoseStamped()
+        pose_msg.header.stamp = stamp
+        pose_msg.header.frame_id = "base_initial"
+        pose_msg.pose.position.x = float(relative_position[0])
+        pose_msg.pose.position.y = float(relative_position[1])
+        pose_msg.pose.position.z = float(relative_position[2])
+        pose_msg.pose.orientation.x = float(relative_quat[0])
+        pose_msg.pose.orientation.y = float(relative_quat[1])
+        pose_msg.pose.orientation.z = float(relative_quat[2])
+        pose_msg.pose.orientation.w = float(relative_quat[3])
+        self._base_pose_publisher.publish(pose_msg)
+
+        command_msg = String()
+        command_msg.data = {
+            "C+A": "A+C",
+            "C+B": "B+C",
+        }.get(self._latest_pedal_state, self._latest_pedal_state)
+        self._base_command_publisher.publish(command_msg)
+
+    def publish_camera_images(self, cameras: Dict[str, object], stamp) -> None:
+        for key, camera in cameras.items():
+            try:
+                rgb = _sim_array_to_numpy(camera.data.output["rgb"])
+                if rgb.ndim == 4:
+                    rgb = rgb[0]
+                rgb = np.ascontiguousarray(rgb[..., :3], dtype=np.uint8)
+                if rgb.ndim != 3 or rgb.shape[2] != 3:
+                    raise RuntimeError(f"unexpected RGB shape {rgb.shape}")
+            except Exception as exc:
+                if key not in self._camera_warning_keys:
+                    self._camera_warning_keys.add(key)
+                    self.get_logger().warning(f"Camera {key} is not ready: {exc}")
+                continue
+
+            image_msg = Image()
+            image_msg.header.stamp = stamp
+            image_msg.header.frame_id = CAMERA_TOPICS[key][1]
+            image_msg.height = int(rgb.shape[0])
+            image_msg.width = int(rgb.shape[1])
+            image_msg.encoding = "rgb8"
+            image_msg.is_bigendian = False
+            image_msg.step = int(rgb.shape[1] * 3)
+            image_msg.data = rgb.tobytes()
+            self._camera_publishers[key].publish(image_msg)
+
+    def publish_sample(
+        self,
+        robot,
+        group_indices: Dict[str, Dict[str, int]],
+        cameras: Dict[str, object],
+    ) -> None:
+        stamp = self.get_clock().now().to_msg()
+        self.publish_states(robot, group_indices, stamp)
+        self.publish_base_state(robot, stamp)
+        self.publish_camera_images(cameras, stamp)
 
     def publish_cable_robotiq_finger_targets(self, targets: List[dict]):
         if self._cable_robotiq_finger_pub is None or not targets:
@@ -2219,8 +2380,19 @@ def main():
 
     rclpy.init()
     node = IsaacLabRosBridge(groups, enable_cable=True)
-    publish_period = 1.0 / max(args_cli.ros_publish_rate, 1.0)
-    next_publish_time = 0.0
+    cameras = {
+        key: scene[key]
+        for key in CAMERA_TOPICS
+    }
+    sample_every_steps = max(
+        1, int(round(args_cli.physics_hz / max(args_cli.ros_publish_rate, 1.0)))
+    )
+    actual_sample_rate = args_cli.physics_hz / sample_every_steps
+    print(
+        f"Synchronized ROS data publication: {actual_sample_rate:.3f} Hz "
+        f"(every {sample_every_steps} physics steps)"
+    )
+    step_count = 0
     logged_robotiq_finger_targets = False
     logged_missing_robotiq_finger_targets = False
     # Cable-world finger ids are ordered opposite to the Robotiq inner_finger link
@@ -2262,6 +2434,7 @@ def main():
             scene.write_data_to_sim()
             sim.step()
             scene.update(sim.get_physics_dt())
+            step_count += 1
             live_gripper_boxes = None
             if args_cli.cable_robotiq_finger_targets:
                 world_offset = tuple(float(v) for v in args_cli.cable_world_position_offset)
@@ -2298,10 +2471,8 @@ def main():
                 cable_gripper_collision_visual,
                 live_gripper_boxes if live_gripper_boxes is not None else node.latest_cable_gripper_boxes(),
             )
-            now = node.get_clock().now().nanoseconds * 1e-9
-            if now >= next_publish_time:
-                node.publish_states(robot, group_indices)
-                next_publish_time = now + publish_period
+            if step_count % sample_every_steps == 0:
+                node.publish_sample(robot, group_indices, cameras)
 
     except BaseException as e:
         print("MAIN LOOP EXCEPTION:", repr(e), flush=True)

@@ -317,6 +317,59 @@ velocity targets. The relevant runtime parameters are:
 
 Pass bridge parameters after the launcher's `--` separator.
 
+## Data Recording
+
+The bridge publishes one synchronized data sample every four physics steps by
+default (`240 Hz / 4 = 60 Hz`). Change the requested rate with
+`-- --ros-publish-rate RATE`. Start the simulator first, then run the recorder
+from a second host terminal:
+
+```bash
+docker exec -it isaac-lab-ros2_jazzy bash -lc \
+  '/workspace/EBiM_Challenge/task1_isaacsim/scripts/record_task1_dataset.sh \
+   /workspace/EBiM_Challenge/task1_isaacsim/recordings/experiment_001'
+```
+
+The recorder writes an MCAP rosbag containing:
+
+| Data | ROS topic | Message |
+| --- | --- | --- |
+| Left wrist RGB | `/isaac/left_wrist_camera/image_raw` | `sensor_msgs/Image` |
+| Right wrist RGB | `/isaac/right_wrist_camera/image_raw` | `sensor_msgs/Image` |
+| Head RGB | `/isaac/head_camera/image_raw` | `sensor_msgs/Image` |
+| Left arm joint angles | `/isaac/left_joint_states` | `sensor_msgs/JointState` |
+| Right arm joint angles | `/isaac/right_joint_states` | `sensor_msgs/JointState` |
+| Left gripper opening | `/isaac/left_robotiq_joint_states` | `sensor_msgs/JointState` |
+| Right gripper opening | `/isaac/right_robotiq_joint_states` | `sensor_msgs/JointState` |
+| Base pose relative to startup | `/isaac/base_pose_relative` | `geometry_msgs/PoseStamped` |
+| Base command token | `/isaac/base_command` | `std_msgs/String` |
+
+For each gripper topic, `position[0]` is the Robotiq driver-joint position in
+radians. With the current model, approximately `0.0` means fully open and
+`0.8` means fully closed. Base commands are recorded as `A`, `B`, `A+C`,
+`B+C`, or `NONE`. Camera images, joint states, and base pose from a sample
+share one ROS header timestamp; the headerless base-command message is emitted
+in the same sample cycle.
+
+Press `Ctrl+C` once in the recorder terminal and wait for rosbag to finish
+closing the file. Inspect the result with:
+
+```bash
+docker exec -it isaac-lab-ros2_jazzy bash -lc \
+  'source /opt/ros/jazzy/setup.bash && \
+   ros2 bag info \
+   /workspace/EBiM_Challenge/task1_isaacsim/recordings/experiment_001'
+```
+
+If the container reports `Permission denied` while creating `recordings`,
+create the directory on the host and grant the container's UID 1000 access
+(no `sudo` is required when the repository belongs to the current user):
+
+```bash
+mkdir -p task1_isaacsim/recordings
+setfacl -m u:1000:rwx,d:u:1000:rwx task1_isaacsim/recordings
+```
+
 ## Cable World
 
 The launcher always starts the raw Newton VBD cable process. There is no cable
