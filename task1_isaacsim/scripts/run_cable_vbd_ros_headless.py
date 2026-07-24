@@ -123,10 +123,9 @@ def main() -> None:
         while rclpy.ok():
             frame_start = time.monotonic()
             rclpy.spin_once(node, timeout_sec=0.0)
-            node.apply_external_gripper_command()
+            node.apply_robotiq_finger_targets()
             example.step()
             node.publish_cable_state()
-            node.publish_gripper_root_pose()
             node.publish_gripper_collision_boxes()
             frame_count += 1
 

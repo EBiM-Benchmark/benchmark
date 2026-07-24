@@ -452,6 +452,234 @@ class GraspPoseBindController:
                     right_normals[object_body] = normal
 
 
+class RobotiqFingerPoseBindController:
+    """Bind a pinched cable body to the midpoint between a pair of kinematic finger bodies."""
+
+    def __init__(
+        self,
+        config: GraspPoseBindConfig,
+        model: newton.Model,
+        candidate_body_ids: tuple[int, ...],
+        finger_body_ids: tuple[int, ...],
+        finger_shape_ids: tuple[int, ...],
+        finger_pairs: tuple[tuple[int, int], ...] = ((0, 1), (2, 3)),
+    ):
+        if config.confirm_steps <= 0:
+            raise ValueError("Robotiq grasp pose bind confirm_steps must be positive.")
+        if config.release_gap_m < 0.0:
+            raise ValueError("Robotiq grasp pose bind release_gap_m must be non-negative.")
+        if config.max_position_error_m < 0.0:
+            raise ValueError("Robotiq grasp pose bind max_position_error_m must be non-negative.")
+        if config.max_rotation_error_rad < 0.0:
+            raise ValueError("Robotiq grasp pose bind max_rotation_error_rad must be non-negative.")
+        if config.activation_radius_m < 0.0:
+            raise ValueError("Robotiq grasp pose bind activation_radius_m must be non-negative.")
+        if len(candidate_body_ids) == 0:
+            raise ValueError("Robotiq grasp pose bind requires at least one candidate body id.")
+
+        self.config = config
+        self.model = model
+        self.candidate_body_ids = tuple(int(body_id) for body_id in candidate_body_ids)
+        self._candidate_body_id_set = frozenset(self.candidate_body_ids)
+        self.finger_body_ids = tuple(int(body_id) for body_id in finger_body_ids)
+        self.finger_shape_ids = tuple(int(shape_id) for shape_id in finger_shape_ids)
+        self.finger_pairs = tuple((int(a), int(b)) for a, b in finger_pairs)
+        self._shape_body = model.shape_body.numpy()
+        self._states = [
+            {
+                "state_name": "idle",
+                "grasped_body_id": None,
+                "confirm_body_id": None,
+                "confirm_steps": 0,
+                "relative_position": None,
+                "relative_rotation": None,
+            }
+            for _ in self.finger_pairs
+        ]
+
+    def release(self, pair_index: int | None = None) -> None:
+        states = self._states if pair_index is None else (self._states[pair_index],)
+        for state in states:
+            state["state_name"] = "idle"
+            state["grasped_body_id"] = None
+            state["confirm_body_id"] = None
+            state["confirm_steps"] = 0
+            state["relative_position"] = None
+            state["relative_rotation"] = None
+
+    def update_from_contacts(self, state: newton.State, contacts: Any) -> None:
+        if not self.config.enabled:
+            return
+        for pair_index, pair in enumerate(self.finger_pairs):
+            self._update_pair_from_contacts(pair_index, pair, state, contacts)
+
+    def apply_pose_binding(self, state: newton.State) -> None:
+        body_q = state.body_q.numpy()
+        body_qd = state.body_qd.numpy()
+        updated = False
+        for pair_index, pair in enumerate(self.finger_pairs):
+            pair_state = self._states[pair_index]
+            if pair_state["state_name"] != "grasped":
+                continue
+            body_id = pair_state["grasped_body_id"]
+            rel_pos = pair_state["relative_position"]
+            rel_rot = pair_state["relative_rotation"]
+            if body_id is None or rel_pos is None or rel_rot is None:
+                raise ValueError("Robotiq grasp pose bind state is missing grasp data.")
+            root_pose = self._pair_pose_from_body_q(body_q, pair)
+            target_pose = _compose_pose_np(root_pose, rel_pos, rel_rot)
+            body_q[int(body_id), :] = target_pose.astype(body_q.dtype)
+            body_qd[int(body_id), :] = 0.0
+            updated = True
+        if updated:
+            state.body_q.assign(body_q)
+            state.body_qd.assign(body_qd)
+
+    def _update_pair_from_contacts(self, pair_index: int, pair: tuple[int, int], state: newton.State, contacts: Any) -> None:
+        pair_state = self._states[pair_index]
+        if self._pair_gap_m(state, pair) > self.config.release_gap_m:
+            self.release(pair_index)
+            return
+        if pair_state["state_name"] == "grasped":
+            if self._grasp_error_exceeds_limit(pair_index, pair, state):
+                self.release(pair_index)
+                return
+            self.apply_pose_binding(state)
+            return
+        if not self._candidate_inside_activation_radius(state, pair):
+            self.release(pair_index)
+            return
+
+        candidate_body_id = self._detect_attach_candidate(state, contacts, pair)
+        if candidate_body_id is None:
+            self.release(pair_index)
+            return
+        if pair_state["confirm_body_id"] == candidate_body_id:
+            pair_state["confirm_steps"] = int(pair_state["confirm_steps"]) + 1
+        else:
+            pair_state["confirm_body_id"] = candidate_body_id
+            pair_state["confirm_steps"] = 1
+        pair_state["state_name"] = "confirming"
+        if int(pair_state["confirm_steps"]) >= self.config.confirm_steps:
+            self._enter_grasped(pair_index, pair, state, candidate_body_id)
+            self.apply_pose_binding(state)
+
+    def _enter_grasped(self, pair_index: int, pair: tuple[int, int], state: newton.State, body_id: int) -> None:
+        body_q = state.body_q.numpy()
+        root_pose = self._pair_pose_from_body_q(body_q, pair)
+        relative_position, relative_rotation = _relative_pose_np(root_pose, body_q[body_id])
+        pair_state = self._states[pair_index]
+        pair_state["state_name"] = "grasped"
+        pair_state["grasped_body_id"] = int(body_id)
+        pair_state["relative_position"] = relative_position
+        pair_state["relative_rotation"] = relative_rotation
+
+    def _grasp_error_exceeds_limit(self, pair_index: int, pair: tuple[int, int], state: newton.State) -> bool:
+        pair_state = self._states[pair_index]
+        body_id = pair_state["grasped_body_id"]
+        rel_pos = pair_state["relative_position"]
+        rel_rot = pair_state["relative_rotation"]
+        if body_id is None or rel_pos is None or rel_rot is None:
+            raise ValueError("Robotiq grasp pose bind state is missing grasp data.")
+        body_q = state.body_q.numpy()
+        target_pose = _compose_pose_np(self._pair_pose_from_body_q(body_q, pair), rel_pos, rel_rot)
+        current_pose = body_q[int(body_id)]
+        position_error = float(np.linalg.norm(np.asarray(current_pose[:3], dtype=np.float64) - target_pose[:3]))
+        rotation_error = _quat_angle_np(np.asarray(current_pose[3:7], dtype=np.float64), target_pose[3:7])
+        return position_error > self.config.max_position_error_m or rotation_error > self.config.max_rotation_error_rad
+
+    def _detect_attach_candidate(self, state: newton.State, contacts: Any, pair: tuple[int, int]) -> int | None:
+        contact_count = int(contacts.rigid_contact_count.numpy()[0])
+        shape0 = contacts.rigid_contact_shape0.numpy()[:contact_count]
+        shape1 = contacts.rigid_contact_shape1.numpy()[:contact_count]
+        normals = contacts.rigid_contact_normal.numpy()[:contact_count]
+        root_pose = self._pair_pose_from_body_q(state.body_q.numpy(), pair)
+        grasp_axis = rotate_vector_by_quat(root_pose[3:7], np.asarray((0.0, 1.0, 0.0), dtype=np.float64))
+
+        first_shape = self.finger_shape_ids[pair[0]]
+        second_shape = self.finger_shape_ids[pair[1]]
+        first_normals: dict[int, np.ndarray] = {}
+        first_alignments: dict[int, float] = {}
+        second_normals: dict[int, np.ndarray] = {}
+        second_alignments: dict[int, float] = {}
+        for shape_a_raw, shape_b_raw, normal_raw in zip(shape0, shape1, normals, strict=True):
+            shape_a = int(shape_a_raw)
+            shape_b = int(shape_b_raw)
+            normal = np.asarray(normal_raw, dtype=np.float64)
+            self._record_contact_normal(
+                shape_a, shape_b, normal, grasp_axis, first_shape, second_shape,
+                first_normals, first_alignments, second_normals, second_alignments
+            )
+            self._record_contact_normal(
+                shape_b, shape_a, -normal, grasp_axis, first_shape, second_shape,
+                first_normals, first_alignments, second_normals, second_alignments
+            )
+
+        for body_id in self.candidate_body_ids:
+            if body_id in first_normals and body_id in second_normals:
+                opposing_alignment = float(np.dot(first_normals[body_id], -second_normals[body_id]))
+                if opposing_alignment >= self.config.opposing_normal_min_cos:
+                    return body_id
+        return None
+
+    def _record_contact_normal(
+        self,
+        finger_shape: int,
+        object_shape: int,
+        finger_to_object_normal: np.ndarray,
+        grasp_axis: np.ndarray,
+        first_shape: int,
+        second_shape: int,
+        first_normals: dict[int, np.ndarray],
+        first_alignments: dict[int, float],
+        second_normals: dict[int, np.ndarray],
+        second_alignments: dict[int, float],
+    ) -> None:
+        object_body = int(self._shape_body[object_shape])
+        if object_body not in self._candidate_body_id_set:
+            return
+        normal_length = float(np.linalg.norm(finger_to_object_normal))
+        if normal_length <= 0.0:
+            return
+        normal = finger_to_object_normal / normal_length
+        # Robotiq target boxes inherit orientation from visual finger frames, whose
+        # local axes are not guaranteed to match the pinch direction. For this path
+        # the robust signal is bilateral contact plus opposing contact normals.
+        alignment = 1.0
+        if finger_shape == first_shape:
+            if object_body not in first_alignments or alignment > first_alignments[object_body]:
+                first_alignments[object_body] = alignment
+                first_normals[object_body] = normal
+        elif finger_shape == second_shape:
+            if object_body not in second_alignments or alignment > second_alignments[object_body]:
+                second_alignments[object_body] = alignment
+                second_normals[object_body] = normal
+
+    def _candidate_inside_activation_radius(self, state: newton.State, pair: tuple[int, int]) -> bool:
+        if self.config.activation_radius_m == 0.0:
+            return True
+        body_q = state.body_q.numpy()
+        root_position = self._pair_pose_from_body_q(body_q, pair)[:3]
+        candidate_positions = np.asarray(body_q[list(self.candidate_body_ids), :3], dtype=np.float64)
+        deltas = candidate_positions - root_position[None, :]
+        min_distance_sq = float(np.min(np.sum(deltas * deltas, axis=1)))
+        activation_radius_sq = float(self.config.activation_radius_m * self.config.activation_radius_m)
+        return min_distance_sq <= activation_radius_sq
+
+    def _pair_gap_m(self, state: newton.State, pair: tuple[int, int]) -> float:
+        body_q = state.body_q.numpy()
+        first = np.asarray(body_q[self.finger_body_ids[pair[0]], :3], dtype=np.float64)
+        second = np.asarray(body_q[self.finger_body_ids[pair[1]], :3], dtype=np.float64)
+        return float(np.linalg.norm(second - first))
+
+    def _pair_pose_from_body_q(self, body_q: np.ndarray, pair: tuple[int, int]) -> np.ndarray:
+        first_pose = np.asarray(body_q[self.finger_body_ids[pair[0]]], dtype=np.float64)
+        second_pose = np.asarray(body_q[self.finger_body_ids[pair[1]]], dtype=np.float64)
+        position = 0.5 * (first_pose[:3] + second_pose[:3])
+        quat = _normalize_quat_np(first_pose[3:7])
+        return np.asarray((position[0], position[1], position[2], quat[0], quat[1], quat[2], quat[3]), dtype=np.float64)
+
+
 @dataclass
 class SraGripperTeleopState:
     position_m: list[float]
