@@ -68,7 +68,7 @@ Current launcher behavior:
   bridge. Browser commands are included only when browser control is enabled.
 - `/bridge/*`: raw GELLO commands. `task1_ros_republisher` maps them to
   `/isaac/*` and applies Robotiq open/close calibration.
-- `/pedal/state`: base motion tokens (`FWD`, `BACK`, `A`, `B`, `A+C`,
+- `/pedal/state`: base motion tokens (`A`, `B`, `A+C`,
   `B+C`) converted by the bridge into steering and wheel targets.
 - Kit keyboard arm control bypasses ROS. While `--with-keyboard-teleop` is
   active, the bridge ignores ROS arm/gripper commands and RMPflow owns those
@@ -183,7 +183,7 @@ cd benchmark
 
 Run these commands from the benchmark repository root.
 
-### Isaac Sim keyboard arms and grippers
+### Keyboard Teleoperation
 
 ```bash
 EMBODIMENT=fr3duo_mobile \
@@ -192,7 +192,62 @@ bash task1_isaacsim/scripts/run_isaaclab_newton_teleop.sh \
   --no-browser
 ```
 
-Click the Isaac Sim viewport before using the keys:
+`--with-keyboard-teleop` enables arm and gripper control from the Isaac Sim
+window. Keyboard base control requires the
+keyboard adapter plus the keyboard publisher.
+
+#### Base keyboard control
+
+In a second terminal, start `keyboard_to_base.py` through the helper container:
+
+```bash
+cd task1_isaacsim
+TELEOP_ADAPTERS=keyboard \
+docker compose --profile teleop up -d --no-deps teleop_adapters
+docker exec -it task1_teleop_adapters bash
+source /opt/ros/jazzy/setup.bash
+python3 /workspace/scripts/adapters/keyboard_to_base.py
+```
+
+In a third terminal, enter the built
+[`teleoperation`](https://github.com/EBiM-Benchmark/teleoperation) workspace and
+start its keyboard publisher:
+
+```bash
+cd ../teleoperation
+pixi shell
+source install/setup.bash
+export RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+ros2 run keyboard_state_publisher keyboard_state_publisher
+```
+
+Keep the keyboard-publisher terminal focused while driving the base:
+
+| Key | Base motion | `/pedal/state` token |
+| --- | --- | --- |
+| `a` | Strafe left | `A` |
+| `d` | Strafe right | `B` |
+| `q` | Rotate left | `A+C` |
+| `e` | Rotate right | `B+C` |
+
+The publisher emits messages while a key is held or auto-repeated. After no
+new message arrives for `--pedal-timeout` (default: 1.0 s), the bridge stops
+the base. The adapter also maps `w/s` to `FWD/BACK`, but the current Task 1
+bridge does not handle those two tokens, so keyboard forward/backward motion
+is not currently available.
+
+The base input path is:
+
+```text
+keyboard_state_publisher (/keyboard/state)
+  -> task1_teleop_adapters / keyboard_to_base.py
+  -> /pedal/state
+  -> IsaacLab bridge steering-position and wheel-velocity targets
+```
+
+#### Arm and gripper keyboard control
+
+Click the Isaac Sim viewport before using the arm and gripper keys:
 
 | Function | Left arm | Right arm |
 | --- | --- | --- |
@@ -210,10 +265,13 @@ Additional controls:
 - Up/Down arrows: raise/lower the spine.
 
 Keyboard arm control requires a visible Kit window and cannot be used with
-`--headless`. While active, incoming ROS arm and gripper commands are ignored;
-base commands and spine control continue to use their normal paths.
+`--headless`. The arm keys require the Isaac Sim viewport to have focus, while
+the base keys require the keyboard-publisher terminal to have focus. While arm
+keyboard control is active, incoming ROS arm and gripper commands are ignored;
+base commands continue through `/pedal/state`, and spine control continues
+through the Isaac Sim Up/Down key handler.
 
-### GELLO arms and pedal base
+### GELLO arms and pedal base Teleoperation
 
 ```bash
 EMBODIMENT=fr3duo_mobile \

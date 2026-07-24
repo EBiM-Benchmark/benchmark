@@ -34,8 +34,8 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--franka-root",
-        default="/workspace/franka_isaacSim",
-        help="franka_isaacSim repository mount inside the isaac-lab-ros2_jazzy container.",
+        default="/workspace/EBiM_Challenge/task1_isaacsim",
+        help="Task 1 repository mount inside the isaac-lab-ros2_jazzy container.",
     )
     parser.add_argument(
         "--robot-prim-path",
@@ -1149,7 +1149,7 @@ class DualArmKeyboardTeleop:
             else None
         )
 
-        lula_dir = repo_root / "task2_isaacsim" / "assets" / "lula" / "mobile_fr3_duo"
+        lula_dir = repo_root / "task1_isaacsim" / "assets" / "lula" / "mobile_fr3_duo"
         urdf_path = lula_dir / "mobile_fr3_duo_v0_2_lula.urdf"
         arm_configs = {
             "left": {
@@ -1174,7 +1174,7 @@ class DualArmKeyboardTeleop:
             required_paths.extend((config["description"], config["rmpflow"]))
         missing_paths = [str(path) for path in required_paths if not path.is_file()]
         if missing_paths:
-            raise FileNotFoundError("Missing Task 2 Lula assets: " + ", ".join(missing_paths))
+            raise FileNotFoundError("Missing Task 1 Lula assets: " + ", ".join(missing_paths))
 
         self._arms = {}
         evaluations_per_frame = max(1.0, (1.0 / float(args.physics_hz)) / 0.0034)
