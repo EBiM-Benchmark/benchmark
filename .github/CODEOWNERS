@@ -3,3 +3,6 @@
 
 # Task 1 Isaac Sim implementation (adapted from the franka_isaacSim prototype).
 /task1_isaacsim/ @QGSQ @2houyuhang
+
+# Task 1 MuJoCo implementation.
+/task1_mujoco/ @QGSQ @2houyuhang
