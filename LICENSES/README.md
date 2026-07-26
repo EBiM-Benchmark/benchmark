@@ -15,7 +15,9 @@ agree. That is correct and deliberate. Do not "fix" it.
 Upstream is internally inconsistent at a single commit. At `isaac-sim/IsaacLab`
 `0916ea3c0f126821ef1783c7119d248834fc8d0b` — the commit Task 1 pins — its `LICENSE` reads
 `2022-2025` while its own `pyproject.toml` and `.vscode/tools/setup_vscode.py` headers read
-`2022-2026`. We inherit that inconsistency because we copied both sides exactly:
+`2022-2026`. That gap is upstream's own: its tree-wide 2026 copyright bump (`54cf64be`,
+2026-01-02 UTC) rewrote file headers but did not touch `LICENSE`. We inherit the
+inconsistency because we copied both sides exactly:
 
 - `LICENSES/BSD-3-Clause.txt` is git blob `dee9ba551f428dd44471e7ee461528374233ad3c`
   (`git rev-parse HEAD:LICENSES/BSD-3-Clause.txt`) — byte-identical to
