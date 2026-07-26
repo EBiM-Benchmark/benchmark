@@ -57,10 +57,14 @@ repos:
       - id: rst-directive-colons
       - id: rst-inline-touching-normal
 
-# NOTE: `.vscode/` below is load-bearing, not just noise reduction.
-# `.vscode/tools/setup_vscode.py` is a `.py` file carrying Isaac Lab's upstream
-# BSD-3-Clause header, so it matches insert-license's `files:` filter above.
-# This exclusion is the only thing stopping the hook from stamping an EBiM
-# Apache-2.0 header on top of a third-party BSD-3-Clause one. Do not drop it
-# without first excluding that file from insert-license. See LICENSES/README.md.
+# NOTE: three entries below are load-bearing, not just noise reduction:
+#   .vscode/                 -> tools/setup_vscode.py, Isaac Lab BSD-3-Clause
+#   scripts/newton_examples/ -> 3 files, Newton Developers Apache-2.0
+#   task1_isaacsim/          -> cable_world/*.py, Newton Developers Apache-2.0
+# All are .py, so they match insert-license's `files:` filter above, and these
+# exclusions are the only thing stopping the hook from stamping an EBiM
+# copyright on top of a third party's. Verified: at a non-excluded path the
+# hook does stamp them, and pre-commit still reports success. Before removing
+# any of the three, add a per-hook `exclude:` to insert-license covering those
+# paths (tested: the hook then reports Skipped). See LICENSES/README.md.
 exclude: ^(scripts/deprecated/|scripts/manual_tests/|scripts/newton_examples/|assets/|DEMO/|docker/|.vscode/|.github/|task1_isaacsim/|task1_mujoco/)
