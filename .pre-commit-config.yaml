@@ -66,5 +66,7 @@ repos:
 # copyright on top of a third party's. Verified: at a non-excluded path the
 # hook does stamp them, and pre-commit still reports success. Before removing
 # any of the three, add a per-hook `exclude:` to insert-license covering those
-# paths (tested: the hook then reports Skipped). See LICENSES/README.md.
+# paths (tested: the hook then reports Skipped).
+# LICENSES/README.md covers the Isaac Lab case in detail; the Newton-headered
+# files are Apache-2.0, same as this repo's root LICENSE.
 exclude: ^(scripts/deprecated/|scripts/manual_tests/|scripts/newton_examples/|assets/|DEMO/|docker/|.vscode/|.github/|task1_isaacsim/|task1_mujoco/)
