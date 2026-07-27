@@ -8,7 +8,7 @@ agree. That is correct and deliberate. Do not "fix" it.
 | `LICENSES/BSD-3-Clause.txt` line 1 | `2022-2025` | Upstream's `LICENSE`, copied verbatim |
 | `pyproject.toml` line 1 | `2022-2026` | Upstream's own file header, inherited |
 | `.vscode/tools/setup_vscode.py` line 1 | `2022-2026` | Upstream's own file header, inherited |
-| `NOTICE`, the paragraph beginning "This repository also incorporates portions of Isaac Lab" (line 12) | `2022-2026` | Describes the two headers above |
+| `NOTICE`, the paragraph beginning "This repository also incorporates portions of Isaac Lab" (line 12) | `2022-2026` | Describes what we incorporate, not the license text |
 
 ## Why
 
@@ -28,8 +28,11 @@ inconsistency because we copied both sides exactly:
   written here. `git log -L 1,1:pyproject.toml` and
   `git log -L 1,1:.vscode/tools/setup_vscode.py` show the last change to each line
   predates this benchmark.
-- `NOTICE` says `2022-2026` because that paragraph describes the *incorporated portions* —
-  those two headers — and not the license text.
+- `NOTICE` says `2022-2026` because that paragraph describes the *incorporated portions*, not
+  the license text. The two headers above are what carry that string; PR #24, which wrote the
+  paragraph, also named `task1_isaacsim/isaaclab_overlay/` — that directory carries no Isaac
+  Lab header and so contributes no year, but it is already acknowledged and needs nothing
+  added.
 
 ## Do not reconcile these
 
