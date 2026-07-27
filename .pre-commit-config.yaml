@@ -18,7 +18,12 @@ repos:
       - id: check-symlinks
       - id: destroyed-symlinks
       - id: check-added-large-files
-        args: ["--maxkb=2000"]  # restrict files more than 2 MB. Should use git-lfs instead.
+        # Files over 2 MB are rejected. Do NOT add them via git-lfs: LFS bandwidth is
+        # metered against the repository owner, and every clone that fetches an LFS object
+        # draws on a 10 GiB/month allowance, while ordinary git objects draw on none of it.
+        # Small binaries belong in git as ordinary blobs; assets in the hundreds of MB
+        # belong in external hosting. See .gitattributes for the paths still on LFS.
+        args: ["--maxkb=2000"]
       - id: check-yaml
       - id: check-merge-conflict
       - id: check-case-conflict
