@@ -11,6 +11,7 @@ the older Isaac Sim bridge so `ros_republisher`, `position_controller`,
 from __future__ import annotations
 
 import argparse
+import json
 import math
 import sys
 from dataclasses import dataclass
@@ -24,8 +25,8 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--usd-path",
-        default="../assets/Robotiq_2f_85_with_d405_mobile_fr3_duo_v0_2.usd",
-        help="USD file to load into the IsaacLab scene.",
+        default="assets/Robotiq_2f_85_with_d405_mobile_fr3_duo_v0_2.usd",
+        help="Robot USD path, relative to --franka-root unless absolute.",
     )
     parser.add_argument(
         "--embodiment",
@@ -61,10 +62,19 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         "--ros-publish-rate",
         type=float,
         default=60.0,
-        help=(
-            "Synchronized ROS publish rate in Hz for camera images, arm and "
-            "gripper joint states, base pose, and base command."
-        ),
+        help="Synchronized data-contract state/action publish rate in Hz.",
+    )
+    parser.add_argument(
+        "--camera-publish-rate",
+        type=float,
+        default=10.0,
+        help="JPEG-compressed RGB camera publish rate in Hz (default: 10).",
+    )
+    parser.add_argument(
+        "--camera-jpeg-quality",
+        type=int,
+        default=85,
+        help="JPEG quality for the three compressed RGB topics, from 1 to 100.",
     )
     parser.add_argument(
         "--pedal-linear-speed",
@@ -258,6 +268,7 @@ args_cli.enable_cameras = True
 app_launcher = AppLauncher(args_cli)
 simulation_app = app_launcher.app
 
+import cv2
 import numpy as np
 import torch
 import omni.usd
@@ -279,9 +290,9 @@ except Exception:  # pragma: no cover - optional extension/package
 
 import rclpy
 from rclpy.node import Node
-from sensor_msgs.msg import ChannelFloat32, Image, JointState, PointCloud
+from sensor_msgs.msg import ChannelFloat32, CompressedImage, JointState, PointCloud
 from geometry_msgs.msg import Point32, PoseStamped
-from std_msgs.msg import String
+from std_msgs.msg import Float32MultiArray, Float64, String, UInt64
 
 try:
     import yaml
@@ -341,15 +352,15 @@ BASE_RELATIVE_POSE_TOPIC = "/isaac/base_pose_relative"
 BASE_COMMAND_TOPIC = "/isaac/base_command"
 CAMERA_TOPICS = {
     "left_camera": (
-        "/isaac/left_wrist_camera/image_raw",
+        "/isaac/left_wrist_camera/image_compressed",
         "left_fr3v2_d405_color_optical_frame",
     ),
     "right_camera": (
-        "/isaac/right_wrist_camera/image_raw",
+        "/isaac/right_wrist_camera/image_compressed",
         "right_fr3v2_d405_color_optical_frame",
     ),
     "head_camera": (
-        "/isaac/head_camera/image_raw",
+        "/isaac/head_camera/image_compressed",
         "zed_mini_left_camera_optical_frame",
     ),
 }
@@ -381,6 +392,72 @@ class JointGroup:
     state_topic: str
     command_topics: List[str]
     requested_names: List[str]
+
+
+@dataclass(frozen=True)
+class DataContractSpec:
+    contract_name: str
+    contract_version: str
+    frequency_hz: float
+    base_fields: List[str]
+    left_arm_names: List[str]
+    right_arm_names: List[str]
+    left_gripper_name: str
+    right_gripper_name: str
+    base_action_order: List[str]
+
+    @property
+    def arm_names(self) -> List[str]:
+        return self.left_arm_names + self.right_arm_names
+
+    @property
+    def action_names(self) -> List[str]:
+        return (
+            self.base_action_order
+            + [f"left_{index}" for index in range(len(self.left_arm_names))]
+            + [f"right_{index}" for index in range(len(self.right_arm_names))]
+            + ["left_opening", "right_opening"]
+        )
+
+
+def _load_data_contract(franka_root: Path, embodiment: str) -> DataContractSpec:
+    if yaml is None:
+        raise RuntimeError("PyYAML is required to load data_contract.yaml")
+    path = franka_root / "assets" / "embodiments" / embodiment / "data_contract.yaml"
+    if not path.exists():
+        raise FileNotFoundError(f"Data contract does not exist: {path}")
+    with path.open("r", encoding="utf-8") as stream:
+        contract = yaml.safe_load(stream) or {}
+
+    state = contract.get("state_structure", {})
+    arms = state.get("arms", {})
+    gripper = state.get("gripper", {})
+    actions = contract.get("action_structure", {})
+    spec = DataContractSpec(
+        contract_name=str(contract.get("contract_name", "fr3_duo_mobile_data_contract")),
+        contract_version=str(contract.get("contract_version", contract.get("version", "unknown"))),
+        frequency_hz=float(contract.get("sampling", {}).get("frequency_hz", 60.0)),
+        base_fields=list(state.get("base", {}).get("fields", [])),
+        left_arm_names=list(arms.get("left", {}).get("joint_names", [])),
+        right_arm_names=list(arms.get("right", {}).get("joint_names", [])),
+        left_gripper_name=str(gripper.get("left", {}).get("joint_name", "")),
+        right_gripper_name=str(gripper.get("right", {}).get("joint_name", "")),
+        base_action_order=list(actions.get("base_targets", {}).get("order", [])),
+    )
+    if len(spec.base_fields) != 6:
+        raise ValueError(f"Expected 6 base-state fields in {path}, got {spec.base_fields}")
+    if len(spec.left_arm_names) != 7 or len(spec.right_arm_names) != 7:
+        raise ValueError(f"Expected 7 joints per arm in {path}")
+    if len(spec.base_action_order) != 3:
+        raise ValueError(f"Expected 3 base action fields in {path}")
+    expected_action_count = (
+        int(actions.get("base_targets", {}).get("count", -1))
+        + int(actions.get("arm_targets", {}).get("count", -1))
+        + int(actions.get("gripper_targets", {}).get("count", -1))
+    )
+    if expected_action_count != 19 or len(spec.action_names) != 19:
+        raise ValueError(f"Expected a 19-dimensional action in {path}")
+    return spec
 
 
 def _load_joint_groups(*, include_browser_commands: bool = True) -> List[JointGroup]:
@@ -871,7 +948,7 @@ def _make_scene_cfg(usd_path: str, prim_path: str, room_usd_path: str | None = N
                 "{ENV_REGEX_NS}/Robot/left_d405_camera_with_mount/"
                 "d405_camera_link/left_Camera"
             ),
-            update_period=1.0 / 60.0,
+            update_period=1.0 / args_cli.camera_publish_rate,
             height=480,
             width=848,
             data_types=["rgb"],
@@ -882,7 +959,7 @@ def _make_scene_cfg(usd_path: str, prim_path: str, room_usd_path: str | None = N
                 "{ENV_REGEX_NS}/Robot/right_d405_camera_with_mount/"
                 "d405_camera_link/right_Camera"
             ),
-            update_period=1.0 / 60.0,
+            update_period=1.0 / args_cli.camera_publish_rate,
             height=480,
             width=848,
             data_types=["rgb"],
@@ -893,7 +970,7 @@ def _make_scene_cfg(usd_path: str, prim_path: str, room_usd_path: str | None = N
                 "{ENV_REGEX_NS}/Robot/zedmini/zed_mini_camera_link/"
                 "zed_mini_left_camera_frame/head_Camera"
             ),
-            update_period=1.0 / 60.0,
+            update_period=1.0 / args_cli.camera_publish_rate,
             height=720,
             width=1280,
             data_types=["rgb"],
@@ -1434,11 +1511,30 @@ def _quat_xyzw_rotate_vector(quat, vector) -> np.ndarray:
     return vector + quat[3] * twice_cross + np.cross(quat[:3], twice_cross)
 
 
+def _quat_xyzw_yaw(quat) -> float:
+    x, y, z, w = (float(value) for value in quat)
+    return math.atan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z))
+
+
+def _gripper_open_fraction(driver_position_rad: float) -> float:
+    # The current Robotiq model uses 0 rad=open and 0.8 rad=closed.
+    return float(np.clip(1.0 - float(driver_position_rad) / 0.8, 0.0, 1.0))
+
+
 class IsaacLabRosBridge(Node):
-    def __init__(self, groups: List[JointGroup], *, enable_cable: bool = False):
+    def __init__(
+        self,
+        groups: List[JointGroup],
+        data_contract: DataContractSpec,
+        *,
+        enable_cable: bool = False,
+    ):
         super().__init__("isaaclab_fr3duo_newton_bridge")
         self.groups = groups
+        self.data_contract = data_contract
         self.latest_commands: Dict[str, Dict[str, float]] = {group.label: {} for group in groups}
+        self._applied_base_twist = (0.0, 0.0, 0.0)
+        self._contract_sample_count = 0
         self._latest_cable_points: Optional[List[tuple[float, float, float]]] = None
         self._latest_cable_gripper_boxes: Optional[List[dict]] = None
         self._latest_pedal_state = "NONE"
@@ -1449,8 +1545,29 @@ class IsaacLabRosBridge(Node):
             PoseStamped, BASE_RELATIVE_POSE_TOPIC, 10
         )
         self._base_command_publisher = self.create_publisher(String, BASE_COMMAND_TOPIC, 10)
+        self._contract_base_state_publisher = self.create_publisher(
+            Float32MultiArray, "/isaac/data_contract/base_state", 10
+        )
+        self._contract_arm_state_publisher = self.create_publisher(
+            JointState, "/isaac/data_contract/arm_state", 10
+        )
+        self._contract_gripper_state_publisher = self.create_publisher(
+            Float32MultiArray, "/isaac/data_contract/gripper_state", 10
+        )
+        self._contract_action_publisher = self.create_publisher(
+            Float32MultiArray, "/isaac/data_contract/action", 10
+        )
+        self._contract_timestamp_publisher = self.create_publisher(
+            Float64, "/isaac/data_contract/timestamp", 10
+        )
+        self._contract_step_publisher = self.create_publisher(
+            UInt64, "/isaac/data_contract/step_count", 10
+        )
+        self._contract_metadata_publisher = self.create_publisher(
+            String, "/isaac/data_contract/metadata", 10
+        )
         self._camera_publishers = {
-            key: self.create_publisher(Image, topic, 2)
+            key: self.create_publisher(CompressedImage, topic, 2)
             for key, (topic, _frame_id) in CAMERA_TOPICS.items()
         }
         self._state_publishers = {
@@ -1555,6 +1672,12 @@ class IsaacLabRosBridge(Node):
             self._latest_pedal_state = "NONE"
             return 0.0, 0.0, 0.0
         state = self._latest_pedal_state
+        # Keyboard and browser controls emit FWD/BACK; the physical pedal
+        # continues to use the strafe/yaw tokens below.
+        if state == "FWD":
+            return linear_speed_mps, 0.0, 0.0
+        if state == "BACK":
+            return -linear_speed_mps, 0.0, 0.0
         if state == "A":
             return 0.0, linear_speed_mps, 0.0
         if state == "B":
@@ -1597,6 +1720,9 @@ class IsaacLabRosBridge(Node):
         else:
             robot.set_joint_position_target(target)
 
+    def set_applied_base_twist(self, vx: float, vy: float, wz: float) -> None:
+        self._applied_base_twist = (float(vx), float(vy), float(wz))
+
     def publish_states(self, robot, group_indices: Dict[str, Dict[str, int]], stamp):
         joint_pos = robot.data.joint_pos.torch if hasattr(robot.data.joint_pos, "torch") else robot.data.joint_pos
         joint_vel = robot.data.joint_vel.torch if hasattr(robot.data.joint_vel, "torch") else robot.data.joint_vel
@@ -1624,7 +1750,7 @@ class IsaacLabRosBridge(Node):
             msg.effort = [0.0] * len(names)
             self._state_publishers[group.label].publish(msg)
 
-    def publish_base_state(self, robot, stamp) -> None:
+    def publish_base_state(self, robot, stamp) -> np.ndarray:
         root_pose = _sim_array_to_numpy(robot.data.root_pose_w)
         if root_pose.ndim == 2:
             root_pose = root_pose[0]
@@ -1633,9 +1759,10 @@ class IsaacLabRosBridge(Node):
             self._initial_root_pose = root_pose.copy()
 
         origin_position = self._initial_root_pose[:3]
-        origin_quat = self._initial_root_pose[3:7]
         current_position = root_pose[:3]
-        current_quat = root_pose[3:7]
+        # Isaac Lab root poses use wxyz; the local quaternion helpers use xyzw.
+        origin_quat = self._initial_root_pose[[4, 5, 6, 3]]
+        current_quat = root_pose[[4, 5, 6, 3]]
         origin_quat_inverse = _quat_xyzw_conjugate(origin_quat)
         relative_position = _quat_xyzw_rotate_vector(
             origin_quat_inverse, current_position - origin_position
@@ -1662,6 +1789,33 @@ class IsaacLabRosBridge(Node):
         }.get(self._latest_pedal_state, self._latest_pedal_state)
         self._base_command_publisher.publish(command_msg)
 
+        linear_velocity = np.zeros(3, dtype=np.float64)
+        angular_velocity = np.zeros(3, dtype=np.float64)
+        try:
+            linear_velocity = _sim_array_to_numpy(robot.data.root_link_lin_vel_b)
+            angular_velocity = _sim_array_to_numpy(robot.data.root_link_ang_vel_b)
+            if linear_velocity.ndim == 2:
+                linear_velocity = linear_velocity[0]
+            if angular_velocity.ndim == 2:
+                angular_velocity = angular_velocity[0]
+        except (AttributeError, RuntimeError):
+            self.get_logger().warning(
+                "Root-link body velocity is unavailable; publishing zero base velocity",
+                once=True,
+            )
+
+        return np.asarray(
+            (
+                relative_position[0],
+                relative_position[1],
+                _quat_xyzw_yaw(relative_quat),
+                linear_velocity[0],
+                linear_velocity[1],
+                angular_velocity[2],
+            ),
+            dtype=np.float32,
+        )
+
     def publish_camera_images(self, cameras: Dict[str, object], stamp) -> None:
         for key, camera in cameras.items():
             try:
@@ -1677,27 +1831,154 @@ class IsaacLabRosBridge(Node):
                     self.get_logger().warning(f"Camera {key} is not ready: {exc}")
                 continue
 
-            image_msg = Image()
+            bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+            encoded_ok, encoded = cv2.imencode(
+                ".jpg",
+                bgr,
+                [cv2.IMWRITE_JPEG_QUALITY, int(args_cli.camera_jpeg_quality)],
+            )
+            if not encoded_ok:
+                if key not in self._camera_warning_keys:
+                    self._camera_warning_keys.add(key)
+                    self.get_logger().warning(f"JPEG encoding failed for camera {key}")
+                continue
+
+            image_msg = CompressedImage()
             image_msg.header.stamp = stamp
             image_msg.header.frame_id = CAMERA_TOPICS[key][1]
-            image_msg.height = int(rgb.shape[0])
-            image_msg.width = int(rgb.shape[1])
-            image_msg.encoding = "rgb8"
-            image_msg.is_bigendian = False
-            image_msg.step = int(rgb.shape[1] * 3)
-            image_msg.data = rgb.tobytes()
+            image_msg.format = "jpeg"
+            image_msg.data = encoded.tobytes()
             self._camera_publishers[key].publish(image_msg)
+
+    def publish_contract_sample(
+        self,
+        robot,
+        group_indices: Dict[str, Dict[str, int]],
+        base_state: np.ndarray,
+        stamp,
+        timestamp_sec: float,
+    ) -> None:
+        joint_position = _sim_array_to_numpy(robot.data.joint_pos)
+        joint_velocity = _sim_array_to_numpy(robot.data.joint_vel)
+        if joint_position.ndim == 2:
+            joint_position = joint_position[0]
+        if joint_velocity.ndim == 2:
+            joint_velocity = joint_velocity[0]
+        try:
+            joint_effort = _sim_array_to_numpy(robot.data.applied_torque)
+            if joint_effort.ndim == 2:
+                joint_effort = joint_effort[0]
+        except (AttributeError, RuntimeError):
+            joint_effort = np.zeros_like(joint_position)
+
+        arm_indices = []
+        for label, names in (
+            ("left_arm", self.data_contract.left_arm_names),
+            ("right_arm", self.data_contract.right_arm_names),
+        ):
+            resolved = group_indices.get(label, {})
+            missing = [name for name in names if name not in resolved]
+            if missing:
+                raise RuntimeError(f"Data-contract joints are unresolved: {missing}")
+            arm_indices.extend(resolved[name] for name in names)
+
+        arm_state_msg = JointState()
+        arm_state_msg.header.stamp = stamp
+        arm_state_msg.name = list(self.data_contract.arm_names)
+        arm_state_msg.position = [float(joint_position[index]) for index in arm_indices]
+        arm_state_msg.velocity = [float(joint_velocity[index]) for index in arm_indices]
+        arm_state_msg.effort = [float(joint_effort[index]) for index in arm_indices]
+        self._contract_arm_state_publisher.publish(arm_state_msg)
+
+        gripper_indices = []
+        for label, driver_name in (
+            ("left_gripper", LEFT_GRIPPER_DRIVER),
+            ("right_gripper", RIGHT_GRIPPER_DRIVER),
+        ):
+            index = group_indices.get(label, {}).get(driver_name)
+            if index is None:
+                raise RuntimeError(f"Data-contract gripper driver is unresolved: {driver_name}")
+            gripper_indices.append(index)
+        gripper_state = [
+            _gripper_open_fraction(joint_position[index]) for index in gripper_indices
+        ]
+
+        try:
+            joint_target = _sim_array_to_numpy(robot.data.joint_pos_target)
+            if joint_target.ndim == 2:
+                joint_target = joint_target[0]
+            joint_target = np.asarray(joint_target, dtype=np.float64)
+        except (AttributeError, RuntimeError):
+            joint_target = np.asarray(joint_position, dtype=np.float64)
+        invalid_target = ~np.isfinite(joint_target)
+        if np.any(invalid_target):
+            joint_target[invalid_target] = np.asarray(joint_position)[invalid_target]
+
+        action = (
+            list(self._applied_base_twist)
+            + [float(joint_target[index]) for index in arm_indices]
+            + [_gripper_open_fraction(joint_target[index]) for index in gripper_indices]
+        )
+        if len(action) != 19:
+            raise RuntimeError(f"Expected 19 action values, got {len(action)}")
+
+        base_msg = Float32MultiArray()
+        base_msg.data = [float(value) for value in base_state]
+        self._contract_base_state_publisher.publish(base_msg)
+        gripper_msg = Float32MultiArray()
+        gripper_msg.data = gripper_state
+        self._contract_gripper_state_publisher.publish(gripper_msg)
+        action_msg = Float32MultiArray()
+        action_msg.data = action
+        self._contract_action_publisher.publish(action_msg)
+        timestamp_msg = Float64()
+        timestamp_msg.data = float(timestamp_sec)
+        self._contract_timestamp_publisher.publish(timestamp_msg)
+        step_msg = UInt64()
+        step_msg.data = self._contract_sample_count
+        self._contract_step_publisher.publish(step_msg)
+
+        # Republish metadata once per second so recorders started later capture it.
+        if self._contract_sample_count % max(1, int(round(self.data_contract.frequency_hz))) == 0:
+            metadata_msg = String()
+            metadata_msg.data = json.dumps(
+                {
+                    "contract_name": self.data_contract.contract_name,
+                    "contract_version": self.data_contract.contract_version,
+                    "base_state_fields": self.data_contract.base_fields,
+                    "arm_state_joint_names": self.data_contract.arm_names,
+                    "gripper_state_fields": [
+                        self.data_contract.left_gripper_name,
+                        self.data_contract.right_gripper_name,
+                    ],
+                    "gripper_state_semantics": "open_fraction: 1=open, 0=closed",
+                    "action_order": self.data_contract.action_names,
+                },
+                separators=(",", ":"),
+            )
+            self._contract_metadata_publisher.publish(metadata_msg)
+        self._contract_sample_count += 1
 
     def publish_sample(
         self,
         robot,
         group_indices: Dict[str, Dict[str, int]],
         cameras: Dict[str, object],
+        publish_cameras: bool = False,
     ) -> None:
-        stamp = self.get_clock().now().to_msg()
+        now = self.get_clock().now()
+        stamp = now.to_msg()
         self.publish_states(robot, group_indices, stamp)
-        self.publish_base_state(robot, stamp)
-        self.publish_camera_images(cameras, stamp)
+        base_state = self.publish_base_state(robot, stamp)
+        self.publish_contract_sample(
+            robot,
+            group_indices,
+            base_state,
+            stamp,
+            now.nanoseconds * 1.0e-9,
+        )
+        if publish_cameras:
+            self.publish_camera_images(cameras, stamp)
 
     def publish_cable_robotiq_finger_targets(self, targets: List[dict]):
         if self._cable_robotiq_finger_pub is None or not targets:
@@ -2246,8 +2527,8 @@ def _update_cable_gripper_collision_box_visual(visual, boxes):
 
 
 def main():
-    usd_path = Path(args_cli.usd_path).expanduser()
     franka_root = Path(args_cli.franka_root).expanduser()
+    usd_path = _path_relative_to_franka_root(args_cli.usd_path, franka_root)
     if not usd_path.exists():
         raise FileNotFoundError(f"USD path does not exist: {usd_path}")
     room_usd_path = None
@@ -2258,7 +2539,16 @@ def main():
         _prepare_robot_room_texture_links(room_path)
         room_usd_path = str(room_path)
 
+    data_contract = _load_data_contract(franka_root, args_cli.embodiment)
+    if args_cli.camera_publish_rate <= 0.0:
+        raise ValueError("--camera-publish-rate must be greater than zero")
+    if not 1 <= args_cli.camera_jpeg_quality <= 100:
+        raise ValueError("--camera-jpeg-quality must be between 1 and 100")
     groups = _load_joint_groups(include_browser_commands=not args_cli.no_browser)
+    if groups[0].requested_names != data_contract.left_arm_names:
+        raise ValueError("Left arm joint order does not match data_contract.yaml")
+    if groups[1].requested_names != data_contract.right_arm_names:
+        raise ValueError("Right arm joint order does not match data_contract.yaml")
     visualizer_cfgs = _make_visualizer_cfgs()
     solver_cfg = MJWarpSolverCfg(
         njmax=args_cli.mj_njmax,
@@ -2379,7 +2669,7 @@ def main():
     )
 
     rclpy.init()
-    node = IsaacLabRosBridge(groups, enable_cable=True)
+    node = IsaacLabRosBridge(groups, data_contract, enable_cable=True)
     cameras = {
         key: scene[key]
         for key in CAMERA_TOPICS
@@ -2387,10 +2677,31 @@ def main():
     sample_every_steps = max(
         1, int(round(args_cli.physics_hz / max(args_cli.ros_publish_rate, 1.0)))
     )
+    camera_every_steps = max(
+        sample_every_steps,
+        int(round(args_cli.physics_hz / args_cli.camera_publish_rate)),
+    )
+    # Keep image timestamps aligned to a 60 Hz contract sample.
+    camera_every_steps = max(
+        sample_every_steps,
+        int(round(camera_every_steps / sample_every_steps)) * sample_every_steps,
+    )
     actual_sample_rate = args_cli.physics_hz / sample_every_steps
+    actual_camera_rate = args_cli.physics_hz / camera_every_steps
+    rate_error_percent = abs(actual_sample_rate - data_contract.frequency_hz) / data_contract.frequency_hz * 100.0
+    if rate_error_percent > 5.0:
+        raise ValueError(
+            f"Actual sample rate {actual_sample_rate:.3f} Hz violates the data contract "
+            f"({data_contract.frequency_hz:.3f} Hz, 5% tolerance)"
+        )
     print(
         f"Synchronized ROS data publication: {actual_sample_rate:.3f} Hz "
-        f"(every {sample_every_steps} physics steps)"
+        f"(every {sample_every_steps} physics steps, contract={data_contract.contract_name} "
+        f"v{data_contract.contract_version})"
+    )
+    print(
+        f"JPEG RGB publication: {actual_camera_rate:.3f} Hz "
+        f"(quality={args_cli.camera_jpeg_quality}, every {camera_every_steps} physics steps)"
     )
     step_count = 0
     logged_robotiq_finger_targets = False
@@ -2409,6 +2720,7 @@ def main():
         while simulation_app.is_running() and rclpy.ok():
             rclpy.spin_once(node, timeout_sec=0.0)
             node.apply_commands(robot, group_indices, excluded_labels=keyboard_owned_groups)
+            vx, vy, wz = 0.0, 0.0, 0.0
             if steering_ids and drive_ids:
                 vx, vy, wz = node.pedal_base_twist(
                     args_cli.pedal_linear_speed,
@@ -2427,6 +2739,7 @@ def main():
                 )
                 robot.set_joint_position_target_index(target=steering_targets, joint_ids=steering_ids)
                 robot.set_joint_velocity_target_index(target=drive_targets, joint_ids=drive_ids)
+            node.set_applied_base_twist(vx, vy, wz)
             if spine_keyboard_controller is not None:
                 spine_keyboard_controller.apply()
             if arm_keyboard_teleop is not None:
@@ -2472,7 +2785,12 @@ def main():
                 live_gripper_boxes if live_gripper_boxes is not None else node.latest_cable_gripper_boxes(),
             )
             if step_count % sample_every_steps == 0:
-                node.publish_sample(robot, group_indices, cameras)
+                node.publish_sample(
+                    robot,
+                    group_indices,
+                    cameras,
+                    publish_cameras=step_count % camera_every_steps == 0,
+                )
 
     except BaseException as e:
         print("MAIN LOOP EXCEPTION:", repr(e), flush=True)

@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Copyright (c) 2026 The EBiM Benchmark Contributors
+# SPDX-License-Identifier: Apache-2.0
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -31,7 +33,7 @@ Usage:
 
 Options:
   --embodiment NAME          Embodiment config key (default: fr3duo_mobile)
-  --usd-path PATH            USD path relative to repo root or absolute
+  --usd-path PATH            USD path relative to task1_isaacsim or absolute
   --controller-mode MODE     none|position (default: position)
   --with-gello-pedal-teleop  Start GELLO arm teleop and pedal base teleop together
   --with-keyboard-teleop     Control both arm TCPs/grippers from the Isaac Sim keyboard

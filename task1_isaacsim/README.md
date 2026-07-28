@@ -225,6 +225,8 @@ Keep the keyboard-publisher terminal focused while driving the base:
 
 | Key | Base motion | `/pedal/state` token |
 | --- | --- | --- |
+| `w` | Move forward | `FWD` |
+| `s` | Move backward | `BACK` |
 | `a` | Strafe left | `A` |
 | `d` | Strafe right | `B` |
 | `q` | Rotate left | `A+C` |
@@ -232,9 +234,8 @@ Keep the keyboard-publisher terminal focused while driving the base:
 
 The publisher emits messages while a key is held or auto-repeated. After no
 new message arrives for `--pedal-timeout` (default: 1.0 s), the bridge stops
-the base. The adapter also maps `w/s` to `FWD/BACK`, but the current Task 1
-bridge does not handle those two tokens, so keyboard forward/backward motion
-is not currently available.
+the base. `FWD/BACK` are accepted from both `keyboard_to_base.py` and the Task
+1 browser controller.
 
 The base input path is:
 
@@ -319,10 +320,12 @@ Pass bridge parameters after the launcher's `--` separator.
 
 ## Data Recording
 
-The bridge publishes one synchronized data sample every four physics steps by
-default (`240 Hz / 4 = 60 Hz`). Change the requested rate with
-`-- --ros-publish-rate RATE`. Start the simulator first, then run the recorder
-from a second host terminal:
+The bridge loads
+`assets/embodiments/fr3duo_mobile/data_contract.yaml` at startup and publishes
+one synchronized sample at the contract rate (`60 Hz`, normally every four
+`240 Hz` physics steps). The actual rate must remain within the contract's 5%
+tolerance. Start the simulator first, then run the recorder from a second host
+terminal:
 
 ```bash
 docker exec -it isaac-lab-ros2_jazzy bash -lc \
@@ -330,26 +333,45 @@ docker exec -it isaac-lab-ros2_jazzy bash -lc \
    /workspace/EBiM_Challenge/task1_isaacsim/recordings/experiment_001'
 ```
 
-The recorder writes an MCAP rosbag containing:
+The recorder stores the fields required by `data_contract.yaml` plus three
+JPEG-compressed RGB streams. Robot state and action remain at 60 Hz; images
+default to 10 Hz with JPEG quality 85. Publishing the original three raw
+`rgb8` streams at 60 Hz would require about 312 MB/s (roughly 560 GB for 30
+minutes), so raw image topics are deliberately not recorded.
 
-| Data | ROS topic | Message |
+| Data | ROS topic | Message and order |
 | --- | --- | --- |
-| Left wrist RGB | `/isaac/left_wrist_camera/image_raw` | `sensor_msgs/Image` |
-| Right wrist RGB | `/isaac/right_wrist_camera/image_raw` | `sensor_msgs/Image` |
-| Head RGB | `/isaac/head_camera/image_raw` | `sensor_msgs/Image` |
-| Left arm joint angles | `/isaac/left_joint_states` | `sensor_msgs/JointState` |
-| Right arm joint angles | `/isaac/right_joint_states` | `sensor_msgs/JointState` |
-| Left gripper opening | `/isaac/left_robotiq_joint_states` | `sensor_msgs/JointState` |
-| Right gripper opening | `/isaac/right_robotiq_joint_states` | `sensor_msgs/JointState` |
-| Base pose relative to startup | `/isaac/base_pose_relative` | `geometry_msgs/PoseStamped` |
-| Base command token | `/isaac/base_command` | `std_msgs/String` |
+| Left wrist RGB | `/isaac/left_wrist_camera/image_compressed` | `sensor_msgs/CompressedImage`, JPEG, 848x480 |
+| Right wrist RGB | `/isaac/right_wrist_camera/image_compressed` | `sensor_msgs/CompressedImage`, JPEG, 848x480 |
+| Head RGB | `/isaac/head_camera/image_compressed` | `sensor_msgs/CompressedImage`, JPEG, 1280x720 |
+| Base state | `/isaac/data_contract/base_state` | `Float32MultiArray`: `[x, y, theta, vx, vy, omega]` |
+| Arm state | `/isaac/data_contract/arm_state` | `JointState`: 7 left then 7 right joints, with position, velocity, and applied effort |
+| Gripper state | `/isaac/data_contract/gripper_state` | `Float32MultiArray`: `[left_open_fraction, right_open_fraction]` |
+| Applied action | `/isaac/data_contract/action` | `Float32MultiArray`: base 3, left arm 7, right arm 7, grippers 2 |
+| Sample timestamp | `/isaac/data_contract/timestamp` | `Float64`, seconds |
+| Episode step count | `/isaac/data_contract/step_count` | `UInt64`, zero-based recorded step |
 
-For each gripper topic, `position[0]` is the Robotiq driver-joint position in
-radians. With the current model, approximately `0.0` means fully open and
-`0.8` means fully closed. Base commands are recorded as `A`, `B`, `A+C`,
-`B+C`, or `NONE`. Camera images, joint states, and base pose from a sample
-share one ROS header timestamp; the headerless base-command message is emitted
-in the same sample cycle.
+The 19-dimensional action is ordered exactly as specified by
+`data_contract.yaml`: `[vx, vy, omega, left_arm_0..6, right_arm_0..6,
+left_opening, right_opening]`. Arm actions are the position targets actually
+held by Isaac Lab after command arbitration. Gripper state and action use the
+contract's normalized semantics: `1.0` is fully open and `0.0` is fully
+closed. Base pose is relative to the startup pose, and base velocity is
+expressed in the base frame.
+
+Compatibility and visualization topics may still be published by the bridge,
+but the recorder deliberately excludes them. The explicit float64 timestamp
+and sample index synchronize the headerless contract arrays with the
+header-bearing arm state. Each compressed image uses the timestamp of the
+corresponding 60 Hz contract sample. Override the image rate and quality after
+the launcher's `--` separator, for example:
+
+```bash
+-- --camera-publish-rate 15 --camera-jpeg-quality 90
+```
+
+Higher rates and JPEG quality increase ROS bandwidth, CPU encoding load, and
+recording size.
 
 Press `Ctrl+C` once in the recorder terminal and wait for rosbag to finish
 closing the file. Inspect the result with:

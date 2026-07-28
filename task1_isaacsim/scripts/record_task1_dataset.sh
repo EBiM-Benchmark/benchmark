@@ -12,15 +12,15 @@ fi
 set -u
 
 TOPICS=(
-    /isaac/left_wrist_camera/image_raw
-    /isaac/right_wrist_camera/image_raw
-    /isaac/head_camera/image_raw
-    /isaac/left_joint_states
-    /isaac/right_joint_states
-    /isaac/left_robotiq_joint_states
-    /isaac/right_robotiq_joint_states
-    /isaac/base_pose_relative
-    /isaac/base_command
+    /isaac/left_wrist_camera/image_compressed
+    /isaac/right_wrist_camera/image_compressed
+    /isaac/head_camera/image_compressed
+    /isaac/data_contract/base_state
+    /isaac/data_contract/arm_state
+    /isaac/data_contract/gripper_state
+    /isaac/data_contract/action
+    /isaac/data_contract/timestamp
+    /isaac/data_contract/step_count
 )
 
 echo "Recording synchronized Task 1 data to: ${OUTPUT_DIR}"
