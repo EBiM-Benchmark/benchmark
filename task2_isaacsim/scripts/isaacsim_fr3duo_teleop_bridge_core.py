@@ -28,6 +28,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import numpy as np  # noqa: E402
 import rclpy  # noqa: E402
+import yaml  # noqa: E402
 from geometry_msgs.msg import PoseStamped, Twist  # noqa: E402
 from isaac_bridge_constants import (  # noqa: E402
     LEFT_GRIPPER_COUPLED_JOINT_MULTIPLIERS,
@@ -108,6 +109,13 @@ LULA_ASSETS_DIR = (
 )
 LULA_URDF_PATH = LULA_ASSETS_DIR / "mobile_fr3_duo_v0_2_lula.urdf"
 RMPFLOW_MAX_SUBSTEP_SIZE = 0.0034
+# Per-axis half-extents (m) of the keyboard teleop target box around each
+# arm's ready-pose TCP position (robot-root frame). FR3 reach is ~0.855 m,
+# so held keys cannot wind the RMPflow target far outside the workspace.
+# Targets are stored in the root frame while the spine physically raises
+# the arm base, so the upper z bound gets the spine travel on top.
+ARM_TARGET_EXTENTS_M = np.array([0.7, 0.7, 0.7])
+ARM_TARGET_SPINE_ALLOWANCE_M = np.array([0.0, 0.0, 0.85])
 
 ARM_TELEOP_CONFIGS = {
     "left": {
@@ -184,12 +192,42 @@ def _command_topics(
 
 
 def _load_joint_groups(
+    franka_root: Path,
+    embodiment: str,
     *,
     include_browser_commands: bool = True,
 ) -> list[JointGroup]:
+    contract_path = (
+        franka_root
+        / "assets"
+        / "embodiments"
+        / embodiment
+        / "data_contract.yaml"
+    )
+    left_names = list(LEFT_JOINTS)
+    right_names = list(RIGHT_JOINTS)
+
+    if contract_path.is_file():
+        contract = (
+            yaml.safe_load(contract_path.read_text(encoding="utf-8")) or {}
+        )
+        arms = contract.get("state_structure", {}).get("arms", {})
+        left_names = list(
+            arms.get("left", {}).get("joint_names") or left_names
+        )
+        right_names = list(
+            arms.get("right", {}).get("joint_names") or right_names
+        )
+    else:
+        print(
+            f"Warning: joint contract not found at {contract_path}; "
+            "using built-in joint names.",
+            file=sys.stderr,
+        )
+
     requested_names = {
-        "left_arm": list(LEFT_JOINTS),
-        "right_arm": list(RIGHT_JOINTS),
+        "left_arm": left_names,
+        "right_arm": right_names,
         "left_gripper": [LEFT_GRIPPER_DRIVER_JOINT],
         "right_gripper": [RIGHT_GRIPPER_DRIVER_JOINT],
     }
@@ -457,6 +495,17 @@ def _wrap_to_pi(angle: float) -> float:
     return math.atan2(math.sin(angle), math.cos(angle))
 
 
+def _physx_continuous_target(current: float, delta: float) -> float:
+    """Keep the nearest equivalent target inside PhysX's continuous range."""
+    target = current + delta
+    period = 2.0 * math.pi
+    while target >= period:
+        target -= period
+    while target <= -period:
+        target += period
+    return target
+
+
 def _steering_alignment_scale(error: float) -> float:
     scale = (STEERING_ZERO_SPEED_ERROR_RAD - error) / (
         STEERING_ZERO_SPEED_ERROR_RAD - STEERING_FULL_SPEED_ERROR_RAD
@@ -506,7 +555,12 @@ def _compute_drive_targets(
         use_flipped = abs(flipped_delta) < abs(direct_delta)
         steering_delta = flipped_delta if use_flipped else direct_delta
 
-        steering_targets[module_index] = current_angle + steering_delta
+        # PhysX only accepts reduced-coordinate drive targets in [-2π, 2π].
+        # Preserve the nearest representation instead of jumping between the
+        # equivalent +π and -π targets at the wrap boundary.
+        steering_targets[module_index] = _physx_continuous_target(
+            current_angle, steering_delta
+        )
         wheel_speed = (speed_mps / WHEEL_RADIUS_M) * _steering_alignment_scale(
             abs(steering_delta)
         )
@@ -918,6 +972,10 @@ class DualArmKeyboardTeleop:
             position = np.array(position, dtype=float)
             position[2] += spine
             arm["home_position"] = position
+            arm["target_min"] = position - ARM_TARGET_EXTENTS_M
+            arm["target_max"] = (
+                position + ARM_TARGET_EXTENTS_M + ARM_TARGET_SPINE_ALLOWANCE_M
+            )
             # Store the orientation as a quaternion: an euler round-trip
             # is lossy near the flange's pitch singularity (the left arm's
             # ready pose sits close to one, which sent RMPflow sideways).
@@ -952,8 +1010,10 @@ class DualArmKeyboardTeleop:
             for arm in self._arms.values():
                 direction = arm["linear_map"].get(key)
                 if direction is not None:
-                    arm["target_position"] = (
-                        arm["target_position"] + direction * linear_step
+                    arm["target_position"] = np.clip(
+                        arm["target_position"] + direction * linear_step,
+                        arm["target_min"],
+                        arm["target_max"],
                     )
                 axis = arm["angular_map"].get(key)
                 if axis is not None:
@@ -1083,6 +1143,12 @@ class IsaacSimRosBridge(Node):
         self.latest_commands: dict[str, dict[str, float]] = {
             group.label: {} for group in groups
         }
+        self._latest_command_time_sec: dict[str, float | None] = {
+            group.label: None for group in groups
+        }
+        self._command_stale: dict[str, bool] = {
+            group.label: False for group in groups
+        }
         self._latest_pedal_state = "NONE"
         self._latest_pedal_time_sec = None
         # Applied base twist of the current loop iteration (body frame),
@@ -1157,6 +1223,9 @@ class IsaacSimRosBridge(Node):
                 break
             if math.isfinite(float(msg.position[idx])):
                 command[name] = float(msg.position[idx])
+        self._latest_command_time_sec[label] = (
+            self.get_clock().now().nanoseconds * 1e-9
+        )
 
     def _on_pedal_state(self, msg: String):
         state = msg.data.strip().upper().replace(" ", "")
@@ -1195,14 +1264,49 @@ class IsaacSimRosBridge(Node):
             return 0.0, 0.0, -angular_speed_radps
         return 0.0, 0.0, 0.0
 
+    def _command_group_stale(self, label: str, timeout_sec: float) -> bool:
+        """Watchdog: True when a group's last command is older than timeout.
+
+        Skipping a stale group only stops re-applying its cached targets;
+        the drives hold the last applied position, so a dead publisher
+        (GELLO republisher, browser, position controller) leaves the arms
+        parked instead of stomping later state such as the post-reset
+        ready pose. Negative timeout disables the gate.
+        """
+        if timeout_sec < 0.0:
+            return False
+        received_sec = self._latest_command_time_sec[label]
+        if received_sec is None:
+            return False
+        now_sec = self.get_clock().now().nanoseconds * 1e-9
+        stale = now_sec - received_sec > timeout_sec
+        if stale != self._command_stale[label]:
+            self._command_stale[label] = stale
+            if stale:
+                print(
+                    f"[bridge] {label} command stream stale "
+                    f"(> {timeout_sec:.1f} s); holding last applied "
+                    "targets",
+                    flush=True,
+                )
+            else:
+                print(
+                    f"[bridge] {label} command stream resumed",
+                    flush=True,
+                )
+        return stale
+
     def apply_commands(
         self,
         robot: SingleArticulation,
         group_indices: dict[str, dict[str, int]],
         coupled_indices: dict[str, dict[int, float]],
+        timeout_sec: float = -1.0,
     ):
         targets: dict[int, float] = {}
         for group in self.groups:
+            if self._command_group_stale(group.label, timeout_sec):
+                continue
             resolved = group_indices.get(group.label, {})
             coupled = coupled_indices.get(group.label)
             for requested_name, position in self.latest_commands[
@@ -1597,7 +1701,12 @@ def run_teleop_loop(
             # arm and gripper commands (the only groups apply_commands
             # handles); joint states are still published below.
             if not arm_teleop_active:
-                node.apply_commands(robot, group_indices, coupled_indices)
+                node.apply_commands(
+                    robot,
+                    group_indices,
+                    coupled_indices,
+                    timeout_sec=args.command_timeout,
+                )
             vx, vy, wz = node.pedal_base_twist(
                 args.pedal_linear_speed,
                 args.pedal_angular_speed,

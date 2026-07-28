@@ -118,6 +118,11 @@ def _build_camera_table(topics):
     """Recorder camera table (keys = --cameras / dataset video keys)."""
     entries = dict(topics["cameras"]["robot"])
     entries["eval_camera"] = topics["cameras"]["eval"]
+    # Any other top-level cameras.* entry (namespace + shape) is a scene
+    # camera contract key and recordable when selected via --cameras.
+    for key, entry in topics["cameras"].items():
+        if key not in ("subtopics", "robot", "eval"):
+            entries[key] = entry
     return {
         key: {
             "image_topic": camera_topic(topics, entry["namespace"], "image"),
@@ -1016,6 +1021,20 @@ def launch_dataset_visualization(repo_id, dataset_path, episode_index):
     return subprocess.Popen(cmd, env=env)
 
 
+def stop_visualization(process, message=None) -> None:
+    """Stop a running Rerun viewer server so its port (9090) is freed."""
+    if process is None or process.poll() is not None:
+        return
+    if message:
+        print(message)
+    process.terminate()
+    try:
+        process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait()
+
+
 # ---------------------------------------------------------------------------
 # Console controls
 
@@ -1029,7 +1048,10 @@ IDLE_KEYBINDS = {
         "start recording without reset (episode starts at the current sim "
         "time; use after manually reposing)",
     ),
-    "4": ("visualize", "visualize a saved episode"),
+    "4": (
+        "visualize",
+        "visualize a saved episode (restarts the viewer if one is running)",
+    ),
     "5": (
         "reset",
         "reset/randomize the scene (same key as in the sim window)",
@@ -1245,13 +1267,11 @@ def handle_visualize_command(
 ):
     """Menu command 4: serve an episode in the Rerun web viewer.
 
-    Returns the (possibly reopened) dataset and the viewer process.
+    Stops any previously launched viewer first, then returns the (possibly
+    reopened) dataset and the new viewer process.
     """
     if dataset.num_episodes == 0:
         print("⚠️  No saved episodes to visualize yet.")
-        return dataset, visualization_process
-    if visualization_process and visualization_process.poll() is None:
-        print("ℹ️  Visualization already running.")
         return dataset, visualization_process
     latest = dataset.num_episodes - 1
     raw = CONSOLE.line_input(
@@ -1267,6 +1287,14 @@ def handle_visualize_command(
         if not 0 <= episode_to_view <= latest:
             print(f"⚠️  Episode out of range: {episode_to_view}")
             return dataset, visualization_process
+    # The Rerun server never exits on its own and two of them would fight
+    # over port 9090, so replace any running viewer with the new episode.
+    if visualization_process and visualization_process.poll() is None:
+        print(
+            f"   Restarting viewer with episode {episode_to_view} "
+            "(reload the browser tab) ..."
+        )
+        stop_visualization(visualization_process)
     # The episodes-metadata parquet is buffered in memory and only becomes
     # readable once its writer is closed, so finalize before visualizing
     # and reopen for appending (resume rolls over to a fresh metadata
@@ -1659,6 +1687,9 @@ def run_recording(args):
         logging.warning("Interrupted; shutting down.")
     finally:
         CONSOLE.restore()
+        stop_visualization(
+            visualization_process, "Stopping the episode viewer ..."
+        )
         # Flush buffered episode metadata; without this the dataset is only
         # readable if the interpreter happens to run __del__ on exit.
         dataset.finalize()

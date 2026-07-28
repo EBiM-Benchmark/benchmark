@@ -11,8 +11,8 @@ import numpy as np
 import pytest
 import yaml
 
-TASK3_ROOT = Path(__file__).resolve().parents[1]
-COMMON_DIR = TASK3_ROOT / "scripts" / "common"
+TASK3_ROOT = Path(__file__).resolve().parents[2]
+COMMON_DIR = Path(__file__).resolve().parents[1] / "common"
 sys.path.insert(0, str(COMMON_DIR))
 
 

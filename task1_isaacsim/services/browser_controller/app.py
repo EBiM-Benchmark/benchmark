@@ -16,6 +16,7 @@ from collections import deque
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import CompressedImage, Image, JointState
+from std_msgs.msg import String
 
 try:
     from geometry_msgs.msg import WrenchStamped
@@ -558,6 +559,20 @@ class BrowserControllerBridge:
         self._activity_window_s = max(float(activity_window_s), 0.05)
         self._control_mode = DEFAULT_CONTROL_MODE
 
+        # ── Mobile-base drive (foot-pedal token stream) ──────────────────
+        # Hold-to-drive base commands are relayed to the teleop bridges over
+        # /pedal/state as std_msgs/String tokens ("FWD"/"BACK"/"A"/"B"/…).
+        # A token is republished at ~10 Hz while its heartbeat stays fresh;
+        # on release we emit one explicit "STOP" so the bridges zero the base
+        # twist immediately instead of waiting for their 1s pedal timeout.
+        self._base_drive_pub = self._node.create_publisher(String, "/pedal/state", 10)
+        self._base_drive_token = None
+        self._base_drive_heartbeat = 0.0
+        self._base_drive_period = 0.1  # ~10 Hz republish while held
+        self._base_drive_timeout_s = 0.5  # heartbeat age before auto-stop
+        self._base_drive_next_publish_at = time.monotonic()
+        self._base_drive_stop_pending = False
+
         for group in JOINT_GROUPS:
             command_topic = group["command_topic"]
             state_topic = group["state_topic"]
@@ -902,6 +917,22 @@ class BrowserControllerBridge:
             self._control_mode = mode
         config = CONTROL_MODES[mode]
         return True, f"Switched from {CONTROL_MODES[old_mode]['label']} to {config['label']}"
+
+    def set_base_drive(self, token):
+        """Set the active mobile-base drive token (None clears/stops).
+
+        Each call refreshes the heartbeat; the publish loop keeps emitting the
+        token while the heartbeat is fresh. Clearing arms a one-shot "STOP".
+        """
+        with self._lock:
+            if token is None:
+                if self._base_drive_token is not None:
+                    self._base_drive_stop_pending = True
+                self._base_drive_token = None
+            else:
+                self._base_drive_token = token
+                self._base_drive_heartbeat = time.monotonic()
+                self._base_drive_stop_pending = False
 
     def get_topic_overview(self):
         topic_overview = self._get_topic_overview()
@@ -1801,6 +1832,7 @@ class BrowserControllerBridge:
 
     def process(self):
         self._apply_pending_updates()
+        self._publish_base_drive()
 
         with self._lock:
             mode_config = CONTROL_MODES.get(self._control_mode, CONTROL_MODES[DEFAULT_CONTROL_MODE])
@@ -1875,6 +1907,31 @@ class BrowserControllerBridge:
             msg.name = names
             msg.position = target_positions
             self._publishers[topic].publish(msg)
+
+    def _publish_base_drive(self):
+        """Relay the held mobile-base token to /pedal/state (~10 Hz).
+
+        Runs inside the main process loop (no extra thread). Publishes the
+        active token while its heartbeat stays fresh; when a release clears the
+        token it emits a single "STOP" so the bridges zero the base twist at
+        once. Once stale/cleared it goes quiet and lets the bridge timeout hold.
+        """
+        now = time.monotonic()
+        with self._lock:
+            token = self._base_drive_token
+            heartbeat = self._base_drive_heartbeat
+            stop_pending = self._base_drive_stop_pending
+            self._base_drive_stop_pending = False
+
+        if stop_pending:
+            self._base_drive_pub.publish(String(data="STOP"))
+
+        if token is None or now - heartbeat > self._base_drive_timeout_s:
+            return
+        if now < self._base_drive_next_publish_at:
+            return
+        self._base_drive_next_publish_at = now + self._base_drive_period
+        self._base_drive_pub.publish(String(data=token))
 
 
 def parse_args():
