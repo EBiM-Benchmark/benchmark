@@ -1,3 +1,4 @@
+assets/ikea_exact/ikea_scale_texture.png
 assets/robot/accessories_fr3_duo_mount_v0_3_visual_fr3_duo_cover.obj
 assets/robot/accessories_fr3_duo_mount_v0_3_visual_fr3_duo_mount.obj
 assets/robot/accessories_franka_head_v0_2_visual_franka_head.obj

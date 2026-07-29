@@ -56,9 +56,10 @@ task1_isaacsim/cable_world/assets/table_board_fixture/Assets/board_segment_upper
 
 # Task 3 MuJoCo large visual assets — not tracked in git; download separately.
 # Listed one by one on purpose: a glob over *.obj/*.png would also swallow the
-# small collision STLs and textures that ARE tracked. These 20 files are every
-# scene-referenced asset above the 2 MB pre-commit limit (~169 MB raw).
-# See task3_mujoco/README.md and task3_mujoco/scripts/download_large_assets.sh
+# small collision STLs, source USD/GLB, and textures that ARE tracked. These 21
+# files are every scene-referenced asset above the 2 MB pre-commit limit (~173 MB
+# raw). See task3_mujoco/README.md and task3_mujoco/scripts/download_large_assets.sh
+task3_mujoco/assets/ikea_exact/ikea_scale_texture.png
 task3_mujoco/assets/robot/accessories_fr3_duo_mount_v0_3_visual_fr3_duo_cover.obj
 task3_mujoco/assets/robot/accessories_fr3_duo_mount_v0_3_visual_fr3_duo_mount.obj
 task3_mujoco/assets/robot/accessories_franka_head_v0_2_visual_franka_head.obj

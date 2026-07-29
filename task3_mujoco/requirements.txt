@@ -1,7 +1,5 @@
-numpy
-mujoco
-glfw
-pynput
-python-xlib
-trimesh
-scipy
+mujoco>=3.2
+glfw>=2.7
+numpy>=1.24
+pynput>=1.7
+opencv-python>=4.8

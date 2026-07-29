@@ -2,11 +2,24 @@
 
 ## Overview
 
-This folder contains the MuJoCo implementation of Task 3: the mobile dual-FR3
-robot with Robotiq 2F-85 grippers scooping coffee beans with a segmented-mesh
-spoon in the assisted-living room scene. It is the MuJoCo counterpart to the
-Isaac Sim runtime in [`task3_isaacsim/`](../task3_isaacsim/README.md), and runs
-natively — no Docker, no GPU container, no ROS.
+This folder contains the MuJoCo implementation of Task 3: a mobile dual-FR3
+robot with Robotiq 2F-85 grippers, a bowl of coffee beans, a spoon, a plate, a
+cup, and an IKEA scale station. It is the MuJoCo counterpart to the Isaac Sim
+runtime in [`task3_isaacsim/`](../task3_isaacsim/README.md), and runs natively —
+no Docker, no GPU container, no ROS.
+
+It supports:
+
+- mobile-base, spine, left-arm, and right-arm teleoperation;
+- Cartesian arm control through damped least-squares inverse kinematics and
+  position actuators;
+- optional direct joint-position control;
+- contact-force-limited gripper closing;
+- selectable world-, base-, or viewer-camera-relative motion frames;
+- 100-bean and 300-bean scenes;
+- optional RGB windows for the head and wrist cameras;
+- a force-sensing scale platform with auto-tare;
+- configurable initial robot and object poses.
 
 Current capability status is tracked in [STATUS.md](../STATUS.md). Official
 scoring follows the rules published on the
@@ -15,34 +28,53 @@ anything in this repository is a development facilitator.
 
 ## Provenance
 
-Ported from the upstream `Mujoco_Genisis_Model` repository, branch
-`updated_scene_100_beans` (`09e2f89`, "updated MuJoCo scene with moved table and
-IKEA assets"). The simulation code, scene XML, and assets are upstream work,
-carried over unmodified apart from the two integration-specific changes noted
-under [Differences from upstream](#differences-from-upstream). Because this
-directory tracks an external repository, it is excluded from this repo's Ruff
-lint/format hooks and from the license-header hook — see
+Ported from the upstream `Mujoco_Genisis_Model` repository, branch `main`
+(`09e2f89`, "updated MuJoCo scene with moved table and IKEA assets"). The
+simulation code, scene XML, and assets are upstream work, carried over unmodified
+apart from the changes listed under
+[Differences from upstream](#differences-from-upstream). Because this directory
+tracks an external repository, it is excluded from this repo's Ruff lint/format
+hooks and from the license-header hook — see
 [`.pre-commit-config.yaml`](../.pre-commit-config.yaml) and
 [`pyproject.toml`](../pyproject.toml).
 
-## Prerequisites
+## Package contents
 
-- Python 3.10+
-- No GPU required; MuJoCo's software renderer is sufficient, though a GPU helps
-  considerably with the 300-bean scene.
-- On Linux, `pynput` needs an X11 session (`python-xlib` is pulled in by
-  `requirements.txt`).
-
-```bash
-python -m pip install -r task3_mujoco/requirements.txt
+```text
+task3_mujoco/
+├── assets/             meshes and textures
+├── config.json         runtime configuration
+├── requirements.txt    Python dependencies
+├── robot.xml           robot model
+├── run.sh              default launcher
+├── scene_100.xml       scene containing 100 coffee beans
+├── scene_300.xml       scene containing 300 coffee beans
+├── scripts/            large-asset download helper and its manifest
+└── teleop.py           simulation and teleoperation program
 ```
 
-`requirements_teleop.txt` is a lighter subset for teleoperation only; it omits
-`trimesh`/`scipy`, which some validation scripts need.
+## Prerequisites
+
+- Linux desktop with a working graphical display (the viewer is interactive;
+  there is no headless mode)
+- Python 3.10 or newer
+- MuJoCo-compatible OpenGL/GLFW graphics drivers
+- No GPU required, though the 300-bean scene benefits from one
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python3 -m pip install --upgrade pip
+python3 -m pip install -r task3_mujoco/requirements.txt
+```
+
+`glfw` is required because `teleop.py` imports it at module scope.
+`opencv-python` is needed only for the optional camera windows, but it is
+installed by the command above.
 
 ## Step 1 — Fetch the large assets (required)
 
-Twenty visual meshes and textures (~169 MB raw, ~37 MB zipped) exceed this
+Twenty-one visual meshes and textures (~173 MB raw, ~41 MB zipped) exceed this
 repository's 2 MB per-file limit and are **not tracked in git**. They are hosted
 on OneDrive, following the same flow as
 [`task1_isaacsim`](../task1_isaacsim/README.md). The scenes will not compile
@@ -74,310 +106,213 @@ Either way, confirm what is present without downloading:
 task3_mujoco/scripts/download_large_assets.sh --check
 ```
 
-The script verifies the archive before unpacking, so a OneDrive HTML page
-returned in place of the zip is reported rather than silently extracted.
-
 The authoritative file list is
 [`scripts/large_assets.txt`](scripts/large_assets.txt); both the download script
-and the launcher's preflight check read it, so they cannot drift apart. The
-collision meshes, the spoon, the beans, and every scene XML **are** tracked in
-git — only large visual geometry and two large textures are external.
+and `teleop.py`'s preflight check read it, so they cannot drift apart. The script
+validates the archive before unpacking, so a OneDrive HTML page returned in place
+of the zip is reported rather than silently extracted.
 
 ## Step 2 — Run
 
 ```bash
 cd task3_mujoco
-./run_simulation.sh --beans 100
+./run.sh
 ```
 
-For the required 300-bean scene:
+The launcher executes `python3 teleop.py --config config.json`, forwarding any
+extra arguments. Keep the main MuJoCo window focused while using the keyboard.
 
-```bash
-./run_simulation.sh --beans 300
+## Keyboard controls
+
+### Select the controlled part
+
+| Key | Controlled part |
+|---|---|
+| `7` | Mobile base and spine |
+| `8` | Left arm and left gripper |
+| `9` | Right arm and right gripper |
+
+### Base and spine mode (`7`)
+
+| Keys | Motion |
+|---|---|
+| `W` / `S` or `Up` / `Down` | Move forward / backward |
+| `A` / `D` or `Left` / `Right` | Move left / right |
+| `Q` / `E` or `Home` / `End` | Yaw left / right |
+| `U` / `J` or `Page Up` / `Page Down` | Move the spine up / down |
+
+### Arm translation mode (`8` or `9`)
+
+Translation mode is active by default when an arm is selected.
+
+| Keys | Motion in the configured end-effector frame |
+|---|---|
+| `W` / `S` or `Up` / `Down` | Forward / backward (`+X` / `-X`) |
+| `A` / `D` or `Left` / `Right` | Left / right (`+Y` / `-Y`) |
+| `U` / `J` or `Page Up` / `Page Down` | Up / down (`+Z` / `-Z`) |
+
+### Arm rotation mode
+
+Press `R` to toggle the selected arm between translation and rotation modes.
+
+| Keys | Rotation |
+|---|---|
+| `U` / `J` or `Page Up` / `Page Down` | Positive / negative roll about frame `X` |
+| `W` / `S` or `Up` / `Down` | Positive / negative pitch about frame `Y` |
+| `A` / `D` or `Left` / `Right` | Positive / negative yaw about frame `Z` |
+
+### Gripper and utility controls
+
+| Key | Action |
+|---|---|
+| `G` | Close the selected gripper until the force threshold is reached |
+| `V` or `Space` | Open the selected gripper |
+| `P` | Print measured state, targets, commands, and gripper forces |
+| `L` | Reload `joint_position_targets` from `config.json` in direct-joint mode |
+| `Esc` | Exit and close the viewer and camera windows |
+
+In `direct_joint_position` mode the arm is driven toward the targets in
+`joint_position_targets`; Cartesian keyboard motion and the `R` toggle are unused.
+
+This matches [`task1_mujoco`](../task1_mujoco/README.md)'s keyboard contract —
+same `7`/`8`/`9` selection, arrow cluster, `Home`/`End`, `PageUp`/`PageDown`,
+`R`, `G`, `V`/`Space` — so operators can move between the two tasks without
+relearning the mapping.
+
+## Configuration
+
+Everything is driven by [`config.json`](config.json); most sections are read at
+startup, so restart after editing.
+
+### Bean count
+
+```json
+"scene": { "bean_count": 100 }
 ```
 
-`run_simulation.py` defaults to 300 beans and robot teleoperation. The retained
-`--gripper-collision primitives` spelling is only a compatibility alias; both
-current scene variants include `robot_task3_small_model_mesh.xml` and use the
-exact small-model contact geometry. Unknown arguments are forwarded to the
-selected controller. `--dry-run` prints the command without running it.
+`100` loads `scene_100.xml`, `300` loads `scene_300.xml`. The 300-bean scene is
+substantially slower because of the bean-bean and bean-object contact count.
 
-## Controls
+### Motion frames
 
-- `7`: base and spine
-- `8`: left arm
-- `9`: right arm
-- `G`: close the selected gripper to the fixed `0.735 rad` target
-- `V` or `Space`: open the selected gripper
-- `R`: toggle arm translation/rotation mode
-- `N`: show or hide collision geometry
-- `B`: print contacts
-
-Arm translation uses the robot-base frame by default, while arm rotation uses
-the lowest-point TCP frame. Wheel and caster collision/friction are disabled;
-the base is moved through the virtual planar joints.
-
-### Vertical arm control
-
-The default arm translation frame is the robot base frame:
-
-- `U` or `PageUp`: move the selected gripper upward in world Z.
-- `J` or `PageDown`: move the selected gripper downward in world Z.
-- `W/S` and `A/D`: horizontal motion relative to the robot base.
-
-At the initial spoon pose the TCP local +Z axis points downward, so under
-TCP-frame translation `U`/`PageUp` would move the gripper *down*. Use
-`--arm-frame tcp` only when tool-local translation is intentionally required.
-
-## Scene variants
-
-| Scene XML | Beans | Robot include | Reached by |
-|---|---:|---|---|
-| `final_scene_100_beans_mesh.xml` | 100 | `robot_task3_small_model_mesh.xml` | `--beans 100` |
-| `final_scene_300_beans_mesh.xml` | 300 | `robot_task3_small_model_mesh.xml` | `--beans 300` (default) |
-| `final_scene_{100,300}_beans_primitives.xml` | 100/300 | `robot_task3_small_model_mesh.xml` | `--gripper-collision primitives` alias |
-| `final_scene_*_spoon_mocap_runtime.xml` | 100/300 | `robot_task3_small_model_mesh.xml` | `--control spoon` |
-| `final_scene.xml`, `final_scene_{100,300}_beans.xml` | — | `robot.xml` (legacy) | not reachable from the launcher |
-
-The `robot.xml` scenes are the superseded pre-transfer robot, kept for reference
-and for `generate_bean_scenes.py`. See [Known issues](#known-issues) for the
-validator consequence.
-
-## Exact transferred spoon and gripper model
-
-### Spoon
-
-- Original visual OBJ: `dynamic_spoon2_centered.obj`
-- Fourteen original handle collision mesh sections:
-  `spoon_stem_mesh_00.obj` … `spoon_stem_mesh_13.obj`
-- Original small-model neck box and two bowl ellipsoids
-- Spoon contact: `condim=6`, friction `1.0 0.02 0.002`
-
-### Both Robotiq grippers
-
-- Original visual meshes
-- Original collision STL meshes on all nine physical links for environment
-  contact
-- A second copy of each original fingertip collision STL for the dedicated
-  spoon contact
-- Grasp contact: `condim=6`, friction `2.5 0.10 0.03`, margin `0.00025`
-- Joint dynamics: `armature=0.01`, `damping=1.0`, `frictionloss=0.1`
-- Mimic constraints: `solref="0.006 1"`, `solimp="0.995 0.9999 0.0001 0.5 2"`
-- Position actuator: `kp=500`, `kv=30`, force range `-100 100`
-- Fixed closing command: `0.735 rad`
-
-The spoon is not welded to the gripper.
-
-## MuJoCo physical parameters
-
-The task scenes use the small model's settings:
-
-```xml
-<option
-    timestep="0.001"
-    gravity="0 0 -9.81"
-    integrator="implicitfast"
-    solver="Newton"
-    iterations="100"
-    ls_iterations="20"
-    cone="elliptic"
-    impratio="10">
-  <flag contact="enable"/>
-</option>
+```json
+"motion_frames": { "base": "base", "end_effector": "base" }
 ```
 
-Default contact parameters are:
+Both accept `"world"` (fixed MuJoCo world axes), `"base"` (current mobile-base
+orientation), or `"camera"`. `"camera"` means the **main interactive viewer
+camera**, not `head_cam` or the wrist cameras — changing the viewer angle changes
+the command directions. `motion_frames.base` affects planar base translation
+only; base yaw and spine keep their normal directions.
 
-```xml
-solref="0.008 1"
-solimp="0.96 0.995 0.001 0.5 2"
+### Camera windows
+
+```json
+"camera_views": {
+  "enabled": false,
+  "width": 640, "height": 480, "render_hz": 20.0,
+  "head_cam": true, "left_wrist_cam": true, "right_wrist_cam": true
+}
 ```
 
-The FR3 joints remain position-controlled, but the unsafe ultra-stiff servos
-were replaced by moderate joint-dependent gains and FR3-like torque limits.
-Gravity/bias compensation is applied every simulation step:
+Set `enabled` to `true` for separate OpenCV windows per selected camera. Each
+camera toggles independently. Images come from `mujoco.Renderer`; they are not
+values in `data.sensordata`.
 
-| Joint | kp | kv | Force/torque limit |
-|---|---:|---:|---:|
-| 1–2 | 6000 | 180 | ±87 |
-| 3–4 | 5000 | 160 | ±87 |
-| 5 | 1800 | 70 | ±12 |
-| 6 | 1400 | 60 | ±12 |
-| 7 | 1000 | 50 | ±12 |
+**Performance:** every enabled view adds offscreen rendering and image transfer.
+Cost scales with camera count, resolution, `render_hz`, and the 300-bean scene.
+Keep `enabled` false unless you need it.
 
-The controller integrates IK velocity into `q_ref`, but immediately freezes and
-resets `q_ref` to measured joint positions when the selected arm contacts a
-static room wall. The collision latch remains active until the motion key is
-released and contact has cleared, preventing repeated controller wind-up.
+### Scale sensor
 
-## Workspace alignment
-
-The table and Task-3 objects were repositioned so that, after normal settling,
-the spoon and gripper reproduce the working small-model geometry. There is no
-initial gripper–table penetration.
-
-## Collision filtering
-
-- Dedicated fingertip STL grasp meshes contact the spoon collision model only.
-- Ordinary Robotiq STL collision meshes contact the table, bowl, plate, beans,
-  floor, walls, doors, and furniture.
-- This prevents duplicate fingertip–spoon contacts while retaining full
-  environment collision.
-- Wheel and caster geoms use `contype=0`, `conaffinity=0`, and zero friction.
-
-## Dynamic spine control
-
-The vertical spine remains a slide joint with a position actuator, but it is no
-longer moved by directly overwriting `qpos` and `qvel`. The controller only
-updates the actuator target at the requested speed (default `0.18 m/s`) and
-applies bias/gravity compensation. MuJoCo therefore integrates a real spine
-velocity and acceleration. The arm flanges move dynamically, the stiff flange
-welds transmit force to the free gripper bodies, and fingertip friction can lift
-a grasped spoon during spine motion.
-
-Spine actuator settings:
-
-```xml
-<position name="franka_spine_vertical_joint"
-          kp="12000" kv="800"
-          forcerange="-10000 10000"
-          forcelimited="true"/>
+```json
+"scale_sensor": { "auto_tare": true, "tare_force_n": 0.0 }
 ```
 
-No runtime spine `qpos`/`qvel` teleportation and no per-step gripper projection
-are used. The gripper free bodies are projected to the flanges only once during
-initialization; normal motion is transmitted through the physical equality
-welds.
+A force sensor on the welded scale platform. The controller exposes
+`scale_weight_force_n` and `scale_weight_kg` after subtracting the tare. With
+`auto_tare` true, the platform and empty knock-box weight is measured at startup
+and subtracted — note that an object already resting on the scale at startup is
+included in that tare value, so start with the platform clear.
 
-## Static-wall collision guard
+### Initial poses
 
-Room walls are identified by the fixed `collision_wall_mat` geoms. If the
-selected arm or its attached gripper contacts one of these walls, the
-controller:
+`initial_robot` sets the base pose, spine height, and per-arm joint positions;
+`initial_objects` sets bowl, plate, spoon, and cup poses. Positions are metres,
+joint angles radians, quaternions MuJoCo `[w, x, y, z]` order. Arm and spine
+values are clipped to the hard ranges in `robot.xml`. With
+`initial_objects.move_beans_with_bowl` true, beans keep their pose relative to
+the bowl when the bowl is moved.
 
-1. stops integrating the IK-derived `qdot` into `q_ref`;
-2. resets `q_ref` to the measured seven joint positions;
-3. holds those positions with gravity compensation;
-4. latches the block until the user releases the movement key and the contact
-   clears.
+After changing object poses, check that nothing initially intersects the table,
+plate, bowl, robot, or another object — interpenetration produces large contact
+forces and unstable motion.
 
-This prevents the position target from accumulating behind an immovable wall and
-avoids the large opposing actuator/contact forces that caused
-`Nan, Inf or huge value in QACC` warnings.
+## Verification status
 
-## Curved scoop collision model
+Both scenes compile and instantiate on MuJoCo 3.11.0 / Python 3.14.6:
 
-The 14 segmented stem meshes and the existing neck box are unchanged. Only the
-two coarse scoop ellipsoids are replaced by 139 fitted boxes (110 surface, 24
-rim, 5 leading-edge). Every fitted scoop box retains the proven working spoon
-contact configuration:
+| Scene | Bodies | Geoms | Meshes | Textures | Cameras |
+|---|---:|---:|---:|---:|---:|
+| `scene_100.xml` | 223 | 884 | 247 | 20 | 4 |
+| `scene_300.xml` | 423 | 1284 | 247 | 20 | 4 |
 
-```xml
-contype="1" conaffinity="16" condim="6"
-friction="1.0 0.02 0.002" margin="0"
-solref="0.008 1"
-solimp="0.96 0.995 0.001 0.5 2"
-priority="0"
-```
+Cameras present: `overview`, `head_cam`, `left_wrist_cam`, `right_wrist_cam`.
 
-This prevents the ordinary low-friction gripper collision meshes from contacting
-the scoop while preserving scoop contact with the dedicated fingertip grasp
-meshes, table, beans, bowl, plate, and other environment objects.
+> [!IMPORTANT]
+> Upstream `main` ships **no automated tests or validation scripts**, and
+> `teleop.py` requires an interactive display, so there is no headless check that
+> exercises the controller. Verification so far covers model compilation, config
+> loading, and the asset flow only. Teleoperation, force-limited grasping, and a
+> full four-stage run still need a maintainer at a display — [STATUS.md](../STATUS.md)
+> reflects that.
 
-## Two-part spoon collision hierarchy
+## Troubleshooting
 
-The spoon collision model is split into two rigid child bodies:
+**Keyboard commands not detected.** Click the main MuJoCo viewer so it has focus.
+The program tries `pynput` for press/release tracking and falls back to GLFW
+polling.
 
-- `spoon_handle_neck_part`: the 14 stem meshes and neck box.
-- `spoon_scoop_part`: the 139 fitted curved scoop boxes.
+**`ModuleNotFoundError: No module named 'glfw'`.** Install from
+`requirements.txt`; `teleop.py` imports `glfw` at module scope.
 
-Both child bodies have no joint, so they are exactly rigid relative to the
-parent spoon.
+**`Error opening file 'assets/...obj'`.** The large assets are missing — run
+`scripts/download_large_assets.sh` (see Step 1). The preflight check normally
+catches this first with a clearer message.
 
-## Lowest-point TCP rotation
+**Camera windows make it slow.** Set `camera_views.enabled` to `false`, or
+enable fewer cameras and reduce resolution / `render_hz`.
 
-Arm rotations use a dedicated TCP at the midpoint of the lowest surfaces of the
-two closed fingertip collision meshes. In the gripper-base frame this point is
-approximately:
-
-```text
-[0.0, -0.000375, 0.163052783] m
-```
-
-The equivalent point in the FR3 flange frame is encoded in
-`robot_task3_small_model_mesh.xml` for both arms. The arm Jacobian is evaluated
-at the explicit `*_arm_control_tcp_pivot` site, not at the flange. When rotation
-mode is entered (`R`), the current pivot position is stored and proportional
-position feedback prevents numerical drift while angular commands are applied.
-The visible TCP marker is in MuJoCo site group 4.
-
-## Validation
-
-The scripts below are headless structural and physics regressions. Run them from
-this directory after fetching the large assets:
-
-```bash
-cd task3_mujoco
-python validate_exact_small_model_transfer.py
-python validate_grasp_lift.py
-python validate_gripper_table_contact.py
-python validate_all_scene_contacts.py
-python validate_dual_gripper_attachment.py
-python validate_motion_speed.py
-python validate_safe_position_control.py
-python validate_wall_collision_guard.py
-python validate_dynamic_spine_lift.py
-python validate_curved_scoop.py
-python validate_two_part_spoon.py
-python validate_lowest_tcp_rotation.py
-python validate_mode_switch_fix.py
-python validate_vertical_key_mapping.py
-python validate_nonaccumulating_targets.py
-```
-
-At the time of this port, 14 of the 15 pass on MuJoCo 3.11.0 / Python 3.14.6;
-`validate_safe_position_control.py` fails for a pre-existing upstream reason
-documented under [Known issues](#known-issues).
-
-The table-supported dynamic regression closes to `0.735 rad`, obtains four
-six-dimensional contacts on each fingertip, and lifts the spoon approximately
-`0.262 m` with approximately `1.77 mm` relative motion.
-
-The 300-bean scene is computationally expensive because the exact 1 ms timestep
-and high-accuracy contact solver are intentionally retained.
-
-## Known issues
-
-- `validate_safe_position_control.py` fails on the legacy `robot.xml` scenes
-  (`final_scene.xml`, `final_scene_100_beans.xml`, `final_scene_300_beans.xml`),
-  which have no position actuators. The validator globs every `final_scene*.xml`
-  rather than only the four scenes the launcher can reach. This reproduces
-  identically on the upstream branch at `09e2f89` and was **not** introduced by
-  this port. The scenes participants actually run are unaffected.
-- Teleoperation, grasping, and a full four-stage run have not yet been verified
-  by an EBiM maintainer on this branch; [STATUS.md](../STATUS.md) reflects that.
+**The 300-bean scene is very slow.** Expected — contact count rises sharply.
+Develop against 100 beans and switch to 300 for the required experiment.
 
 ## Differences from upstream
 
-Only three changes were made to upstream files; everything else is
-byte-identical to `09e2f89`.
+Everything else is byte-identical to `main` at `09e2f89`.
 
-1. **`run_simulation.py`** gained a `check_large_assets()` preflight that fails
-   with an actionable message when the externally-hosted assets are absent.
-   Without it MuJoCo aborts model compilation with a bare
-   `Error opening file 'assets/robot/...obj'`. The check is skipped under
-   `--dry-run`.
-2. **Fourteen unreferenced texture files were dropped** (~5.9 MB): source-format
-   `.jpg`/`.jpeg`/`.exr` duplicates of `.png` textures that no scene XML loads,
-   plus `3d66Model-19059402-files-024.{jpg,png}`, which nothing references.
-   Verified by parsing every `<mesh>` and `<texture>` element across all scene
-   XML; all 109 referenced assets resolve.
-3. **`teleop_keyboard.py`'s on-screen `HELP` text was corrected** (text only, no
-   behaviour change). It described arm translation as "always TCP-local", but
-   `--arm-frame` defaults to `base` — the very confusion the upstream README
-   warns about, where `U`/`PageUp` moves the gripper *down* under the TCP frame.
-   The help now describes the base-frame default, notes what `--arm-frame tcp`
-   changes, and states that rotation is TCP-local regardless.
+1. **`requirements.txt` gained `glfw>=2.7`.** `teleop.py` imports `glfw` at
+   module scope (line 32, unconditional), so following upstream's documented
+   setup produced a `ModuleNotFoundError` on a clean environment. Upstream's own
+   README says glfw "is listed explicitly", but it was absent from the file.
+2. **`teleop.py` gained a `check_large_assets()` preflight** that fails with an
+   actionable message when the externally-hosted assets are absent, instead of
+   MuJoCo's bare `Error opening file '...obj'`.
+3. **Redundant assets dropped** (~64 MB): `assets/usd_sources/robot_room(1).usd`
+   (53 MB, referenced by no scene; the repo already ships
+   [`assets/robot_room.usd`](../assets/robot_room.usd)),
+   `assets/ikea_exact/ikea_scale.glb` (4.5 MB, byte-identical to
+   [`assets/ikea_scale.glb`](../assets/ikea_scale.glb)), and 12 unreferenced
+   `.jpg`/`.jpeg` source copies of `.png` textures that no scene loads. Verified
+   by parsing every `<mesh>` and `<texture>` element; all 264 referenced assets
+   resolve. Upstream retains them if they are ever needed.
+4. **`__pycache__/teleop.cpython-313.pyc` dropped** — a committed build artifact.
 
 New files added by this integration: `scripts/download_large_assets.sh` and
 `scripts/large_assets.txt`.
+
+### Known upstream issue, not fixed here
+
+Upstream's README documents the scale sensor in a section that is truncated
+mid-sentence (it begins `o_tare=true\`, the platform and empty knock-box…`). The
+feature itself is real and configured under `scale_sensor`; this README documents
+it properly above, but the upstream file still carries the broken text.

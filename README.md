@@ -101,13 +101,14 @@ no-hardware browser control, GELLO/pedal commands, and current limitations.
 ## Task 3 — Assisted Living & Feeding (MuJoCo)
 
 [`task3_mujoco/`](task3_mujoco/README.md) contains the MuJoCo implementation of
-Task 3: the mobile dual-FR3 with Robotiq 2F-85 grippers scooping coffee beans
-with a segmented-mesh spoon, in 100- and 300-bean scene variants. It runs
-natively — no Docker, no GPU container, no ROS — and ships a headless
-validation suite covering grasp/lift, spine dynamics, and the wall-collision
-guard.
+Task 3: the mobile dual-FR3 with Robotiq 2F-85 grippers, a bowl of coffee beans,
+a spoon, a plate, a cup, and an IKEA scale station, in 100- and 300-bean scene
+variants. It runs natively — no Docker, no GPU container, no ROS — and is driven
+entirely by [`task3_mujoco/config.json`](task3_mujoco/config.json): motion
+frames, initial robot and object poses, contact-force gripper limits, the scale
+sensor, and optional head/wrist camera windows.
 
-Twenty visual meshes and textures exceed the repository's 2 MB per-file limit
+Twenty-one visual meshes and textures exceed the repository's 2 MB per-file limit
 and are hosted on OneDrive, the same flow Task 1 uses, so fetching them is a
 required first step (see the task README for the manual fallback if OneDrive
 refuses the direct download):
@@ -115,11 +116,13 @@ refuses the direct download):
 ```bash
 python -m pip install -r task3_mujoco/requirements.txt
 task3_mujoco/scripts/download_large_assets.sh
-cd task3_mujoco && ./run_simulation.sh --beans 100
+cd task3_mujoco && ./run.sh
 ```
 
-See [`task3_mujoco/README.md`](task3_mujoco/README.md) for controls, scene
-variants, the physics parameters, provenance, and known issues.
+Keyboard control matches [`task1_mujoco/`](task1_mujoco/README.md) — same
+`7`/`8`/`9` selection, arrow cluster, `R`, `G`, `V`/`Space`. See
+[`task3_mujoco/README.md`](task3_mujoco/README.md) for the full control tables,
+configuration reference, provenance, and verification status.
 
 ## Repository Layout
 

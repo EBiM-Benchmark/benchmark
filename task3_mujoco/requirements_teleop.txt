@@ -1,5 +1,0 @@
-numpy
-mujoco
-glfw
-pynput
-python-xlib

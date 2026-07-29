@@ -1,0 +1,340 @@
+{
+  "scene": {
+    "bean_count": 100,
+    "arm_control_mode": "cartesian_velocity_position_servo",
+    "timestep_s": 0.001,
+    "render_hz": 60.0
+  },
+  "motion_frames": {
+    "base": "base",
+    "end_effector": "base"
+  },
+  "velocities": {
+    "base_linear_m_s": 0.75,
+    "base_angular_rad_s": 1.00,
+    "end_effector_linear_m_s": 0.75,
+    "end_effector_angular_rad_s": 0.7853981633974483,
+    "spine_m_s": 0.35
+  },
+  "limits": {
+    "arm_joint_velocity_rad_s": [
+      3.0,
+      3.0,
+      3.0,
+      3.0,
+      3.0,
+      3.0,
+      3.0
+    ],
+    "arm_joint_torque_nm": [
+      87.0,
+      87.0,
+      87.0,
+      87.0,
+      12.0,
+      12.0,
+      12.0
+    ],
+    "base_force_n": 20000.0,
+    "base_yaw_torque_nm": 20000.0,
+    "spine_force_n": 10000.0,
+    "spine_acceleration_m_s2": 5.0,
+    "spine_deceleration_m_s2": 5.0
+  },
+  "controller": {
+    "ik_damping": 0.03,
+    "position_actuator_kp": [
+      6000.0,
+      6000.0,
+      5000.0,
+      5000.0,
+      1800.0,
+      1400.0,
+      1000.0
+    ],
+    "position_actuator_kv": [
+      180.0,
+      180.0,
+      160.0,
+      160.0,
+      70.0,
+      60.0,
+      50.0
+    ],
+    "position_tracking_gain": 4.0,
+    "gripper_close_rate_rad_s": 1.0,
+    "gripper_fixed_close_target_rad": 0.735,
+    "horizontal_world_z_lock_enabled": true,
+    "horizontal_world_z_lock_gain": 30.0,
+    "horizontal_world_z_lock_max_speed_m_s": 0.2,
+    "arm_target_lookahead_s": 0.03,
+    "arm_max_target_lead_rad": 0.2,
+    "spine_position_kp": 1000000.0,
+    "spine_position_kv": 3000.0,
+    "gripper_contact_force_threshold_n": 24.0,
+    "gripper_contact_hold_increment_rad": 0.005,
+    "gripper_contact_confirmation_steps": 5,
+    "gripper_force_filter_alpha": 0.25
+  },
+  "initial_robot": {
+    "base_position_world_m": [
+      -0.8310855164,
+      -1.2734728738,
+      0.35
+    ],
+    "base_orientation_wxyz": [
+      0.7071068,
+      0.0,
+      0.0,
+      0.7071068
+    ],
+    "spine_position_m": 0.67101102,
+    "left_arm_joint_position_rad": [
+      1.208,
+      -0.152,
+      0.591,
+      -2.447,
+      1.099,
+      3.07,
+      -0.573
+    ],
+    "right_arm_joint_position_rad": [
+      -0.36951305500840786,
+      0.42595500821455445,
+      -0.17617752150292285,
+      -1.3551565608736291,
+      -0.8537811837683685,
+      1.9529957509105405,
+      1.0695779371342626
+    ]
+  },
+  "joint_position_targets": {
+    "left_rad": [
+      1.208,
+      -0.152,
+      0.591,
+      -2.447,
+      1.099,
+      3.07,
+      -0.573
+    ],
+    "right_rad": [
+      -0.36951305500840786,
+      0.42595500821455445,
+      -0.17617752150292285,
+      -1.3551565608736291,
+      -0.8537811837683685,
+      1.9529957509105405,
+      1.0695779371342626
+    ]
+  },
+  "initial_objects": {
+    "bowl": {
+      "position_world_m": [
+        -1.8029549999999999,
+        0.24949299999999996,
+        1.1066520587544877
+      ],
+      "orientation_wxyz": [
+        1,
+        0,
+        0,
+        0
+      ]
+    },
+    "plate": {
+      "position_world_m": [
+        -1.811859546644734,
+        0.08861149868085949,
+        1.1008346929590358
+      ],
+      "orientation_wxyz": [
+        0.9960825443267822,
+        0,
+        0,
+        -0.0884283035993576
+      ]
+    },
+    "spoon": {
+      "position_world_m": [
+        -1.844333621245215,
+        0.07029811915225692,
+        1.1192679478445493
+      ],
+      "orientation_wxyz": [
+        0.6504741311073303,
+        -0.03700820729136467,
+        0.03176004812121391,
+        -0.7579611539840698
+      ]
+    },
+    "cup": {
+      "position_world_m": [
+        -1.6885141508335746,
+        -0.0015362068632567283,
+        1.1048677463831766
+      ],
+      "orientation_wxyz": [
+        1,
+        0,
+        0,
+        0
+      ]
+    },
+    "move_beans_with_bowl": true,
+    "simple_tray": {
+      "position_world_m": [
+        -1.7847937955962019,
+        0.13139126816253333,
+        1.1195411503455925
+      ],
+      "orientation_wxyz": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    }
+  },
+  "contact": {
+    "cup_friction": [
+      3.0,
+      0.1,
+      0.01
+    ],
+    "cup_contact_priority": 3
+  },
+  "camera_views": {
+    "enabled": false,
+    "width": 640,
+    "height": 480,
+    "render_hz": 20.0,
+    "head_cam": true,
+    "left_wrist_cam": true,
+    "right_wrist_cam": true
+  },
+  "usd_room_alignment": {
+    "description": "Translation from robot_room(1).usd coordinates to the baked scene_v2 MuJoCo room coordinates.",
+    "translation_m": [
+      3.647045,
+      1.749493,
+      0.352412
+    ],
+    "rotation_wxyz": [
+      1.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": 1.0
+  },
+  "head_visual": {
+    "enabled": true,
+    "anchor_label": "A",
+    "offset_world_m": [
+      0.0,
+      0.0,
+      0.17631773779695825
+    ],
+    "orientation_wxyz": [
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ],
+    "description": "The updated room USD places /root/head at A_edit. Change anchor_label to A, B, C, D, E, F, G, H, or I. offset_world_m is added in the MuJoCo world frame.",
+    "mesh_long_axis_m": 0.2,
+    "source_usd_authored_scale_warning": "head.usd authors Armature scale 0.1, which makes the rendered head about 3.4 mm. The packaged visual mesh is enlarged to a 0.20 m long axis so it is visible."
+  },
+  "scale_sensor": {
+    "enabled": true,
+    "filter_alpha": 0.2,
+    "gravity_m_s2": 9.81,
+    "auto_tare": true,
+    "tare_force_n": 0.0,
+    "description": "Force sensor on the welded scale platform. The controller exposes scale_weight_force_n and scale_weight_kg after subtracting tare."
+  },
+  "ikea_station": {
+    "source_geometry_warning": "The visual geometry is generated from the supplied ikea_scale.glb and ikea_knock_box.glb assets; fitted primitive collision geometry is used for physics.",
+    "scale_position_world_m": [
+      -1.414709615159054,
+      -0.1708886484612999,
+      1.1064357311469102
+    ],
+    "scale_orientation_wxyz": [
+      0.5,
+      0.5,
+      0.5,
+      0.5
+    ],
+    "knock_box_position_world_m": [
+      -1.445465343751271,
+      -0.1713570228271475,
+      1.1180613601075418
+    ],
+    "knock_box_orientation_wxyz": [
+      0.0,
+      0.0,
+      0.7071067811865476,
+      0.7071067811865476
+    ]
+  },
+  "task_table_relocation": {
+    "translation_world_m": [
+      -1.15,
+      0.0,
+      0.0
+    ],
+    "left_wall_inner_face_x_m": -2.06847,
+    "table_left_edge_x_m": -2.018467,
+    "wall_clearance_m": 0.050003,
+    "description": "The complete task table and every object initially resting on it were moved toward the left wall by the same world-frame translation."
+  },
+  "usd_lighting": {
+    "ceiling_visible": false,
+    "fixture_count": 8,
+    "fixture_positions_world_m": [
+      [
+        -2.74977,
+        -3.77479,
+        3.3
+      ],
+      [
+        1.24673,
+        -3.77479,
+        3.3
+      ],
+      [
+        5.25613,
+        -3.77479,
+        3.3
+      ],
+      [
+        9.25993,
+        -3.77479,
+        3.3
+      ],
+      [
+        -2.74977,
+        -0.590894,
+        3.3
+      ],
+      [
+        1.24673,
+        -0.590894,
+        3.3
+      ],
+      [
+        5.25613,
+        -0.590894,
+        3.3
+      ],
+      [
+        9.25993,
+        -0.590894,
+        3.3
+      ]
+    ],
+    "description": "MuJoCo ceiling lights use the positions of eight ceiling fixtures from the converted robot-room USD layout. The ceiling geometry has alpha 0."
+  }
+}
