@@ -42,19 +42,40 @@ python -m pip install -r task3_mujoco/requirements.txt
 
 ## Step 1 — Fetch the large assets (required)
 
-Twenty visual meshes and textures (~169 MB raw) exceed this repository's 2 MB
-per-file limit and are **not tracked in git**. The scenes will not compile
+Twenty visual meshes and textures (~169 MB raw, ~37 MB zipped) exceed this
+repository's 2 MB per-file limit and are **not tracked in git**. They are hosted
+on OneDrive, following the same flow as
+[`task1_isaacsim`](../task1_isaacsim/README.md). The scenes will not compile
 without them. Fetch them once after cloning:
 
 ```bash
 task3_mujoco/scripts/download_large_assets.sh
 ```
 
-Check what is present without downloading:
+If the direct download fails (OneDrive usually needs a manual click — its share
+links render a JavaScript viewer page, so `curl` gets a 403 or that HTML page
+instead of the zip), open the share link printed by the script in a browser,
+download the zip, and unpack it into `task3_mujoco/` yourself — it already has
+the correct internal layout:
+
+```bash
+unzip -o ~/Downloads/task3_mujoco_large_assets.zip -d task3_mujoco/
+```
+
+Or pass an override:
+
+```bash
+LARGE_ASSETS_URL="https://…" task3_mujoco/scripts/download_large_assets.sh
+```
+
+Either way, confirm what is present without downloading:
 
 ```bash
 task3_mujoco/scripts/download_large_assets.sh --check
 ```
+
+The script verifies the archive before unpacking, so a OneDrive HTML page
+returned in place of the zip is reported rather than silently extracted.
 
 The authoritative file list is
 [`scripts/large_assets.txt`](scripts/large_assets.txt); both the download script

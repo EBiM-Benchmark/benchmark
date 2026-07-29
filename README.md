@@ -108,7 +108,9 @@ validation suite covering grasp/lift, spine dynamics, and the wall-collision
 guard.
 
 Twenty visual meshes and textures exceed the repository's 2 MB per-file limit
-and are hosted externally, so fetching them is a required first step:
+and are hosted on OneDrive, the same flow Task 1 uses, so fetching them is a
+required first step (see the task README for the manual fallback if OneDrive
+refuses the direct download):
 
 ```bash
 python -m pip install -r task3_mujoco/requirements.txt

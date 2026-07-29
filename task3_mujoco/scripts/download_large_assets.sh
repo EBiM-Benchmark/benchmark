@@ -4,8 +4,8 @@
 #
 # Download the large Task 3 MuJoCo visual assets that are NOT stored in git.
 # Every scene-referenced asset above the repository's 2 MB limit lives here
-# (~169 MB raw, ~37 MB zipped). They are hosted as a single zip that unpacks
-# into task3_mujoco/ with the correct relative layout:
+# (~169 MB raw, ~37 MB zipped). They are hosted on OneDrive as a single zip
+# that unpacks into task3_mujoco/ with the correct relative layout:
 #
 #   assets/robot/<visual meshes>.obj
 #   assets/scene_v2/<room meshes>.obj
@@ -22,8 +22,12 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TASK3_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-# Share link for the large-asset zip (override with LARGE_ASSETS_URL).
-DEFAULT_URL="__ASSET_ZIP_URL__"
+# OneDrive share link for the large-asset zip (override with LARGE_ASSETS_URL).
+# Same caveat as task1_isaacsim: OneDrive serves its JavaScript viewer page to
+# non-browser clients, so this curl can return 403 even though the link opens
+# fine in a browser. That is expected — fall back to the manual download
+# documented in ../README.md, or pass LARGE_ASSETS_URL.
+DEFAULT_URL="https://1drv.ms/u/c/392ac0752d520bef/IQAwzSbp67qjTbxTc0InA3RFAayQJ7ylctn0G35UtsDAp2c?e=l0WlIn"
 URL="${LARGE_ASSETS_URL:-${DEFAULT_URL}}"
 
 # The file list is kept in one place only. run_simulation.py's preflight guard
@@ -80,8 +84,39 @@ fi
 tmp_zip="$(mktemp -t task3_assets.XXXXXX)"
 trap 'rm -f "${tmp_zip}"' EXIT
 
-echo "Downloading large Task 3 assets..."
-curl -fL --retry 3 -o "${tmp_zip}" "${URL}"
+manual_fallback() {
+  cat >&2 <<EOF
+
+Automatic download failed. OneDrive share links often cannot be fetched by
+curl: the link renders a JavaScript viewer page in a browser, and non-browser
+clients get 403 or that HTML page instead of the zip.
+
+Fetch it manually instead — open this link in a browser, download the zip, then
+unpack it into task3_mujoco/ (it already has the right internal layout):
+
+  ${URL}
+
+  unzip -o ~/Downloads/task3_mujoco_large_assets.zip -d "${TASK3_ROOT}"
+
+Then confirm with:
+  task3_mujoco/scripts/download_large_assets.sh --check
+
+Or point the script at a direct-download URL:
+  LARGE_ASSETS_URL="https://…" task3_mujoco/scripts/download_large_assets.sh
+EOF
+  exit 1
+}
+
+echo "Downloading large Task 3 assets from OneDrive..."
+# OneDrive share links usually need to be fetched with redirects followed.
+curl -fL --retry 3 -o "${tmp_zip}" "${URL}" || manual_fallback
+
+# A OneDrive viewer page returns HTTP 200 with HTML, so a successful curl is
+# not proof we got the zip. Verify before unpacking.
+if ! unzip -tqq "${tmp_zip}" >/dev/null 2>&1; then
+  echo "Downloaded file is not a valid zip (likely a OneDrive HTML page)." >&2
+  manual_fallback
+fi
 
 echo "Unpacking into ${TASK3_ROOT}..."
 unzip -o -q "${tmp_zip}" -d "${TASK3_ROOT}"
