@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Copyright (c) 2026 The EBiM Benchmark Contributors
+# SPDX-License-Identifier: Apache-2.0
+
 """Configurable MuJoCo teleoperation for the Mobile FR3 Duo coffee scene.
 
 Two arm-control modes are supported, both using arm position actuators:

@@ -32,11 +32,22 @@ Ported from the upstream `Mujoco_Genisis_Model` repository, branch `main`
 (`09e2f89`, "updated MuJoCo scene with moved table and IKEA assets"). The
 simulation code, scene XML, and assets are upstream work, carried over unmodified
 apart from the changes listed under
-[Differences from upstream](#differences-from-upstream). Because this directory
-tracks an external repository, it is excluded from this repo's Ruff lint/format
-hooks and from the license-header hook — see
-[`.pre-commit-config.yaml`](../.pre-commit-config.yaml) and
-[`pyproject.toml`](../pyproject.toml).
+[Differences from upstream](#differences-from-upstream).
+
+**Licensing.** The upstream repository carries no LICENSE file of its own. This
+code was contributed to the EBiM Benchmark under the **Apache License, Version
+2.0** with the author's agreement, so it is covered by this repository's
+[LICENSE](../LICENSE) like any other original work here. The terms are recorded
+in [NOTICE](../NOTICE), the author is listed in
+[CONTRIBUTORS.md](../CONTRIBUTORS.md), and `teleop.py` carries the standard EBiM
+SPDX header.
+
+Because the tuned control code in `teleop.py` tracks an external repository, this
+directory is excluded from **Ruff** only (via `extend-exclude` in
+[`pyproject.toml`](../pyproject.toml)) — reformatting to line-length 79 would
+churn it and make upstream syncs conflict-prone. Every other hook, including the
+license-header and file-safety hooks, applies normally; see
+[`.pre-commit-config.yaml`](../.pre-commit-config.yaml).
 
 ## Package contents
 
