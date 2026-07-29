@@ -27,7 +27,7 @@ TASK3_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 # non-browser clients, so this curl can return 403 even though the link opens
 # fine in a browser. That is expected — fall back to the manual download
 # documented in ../README.md, or pass LARGE_ASSETS_URL.
-DEFAULT_URL="https://1drv.ms/u/c/392ac0752d520bef/IQAwzSbp67qjTbxTc0InA3RFAayQJ7ylctn0G35UtsDAp2c?e=l0WlIn"
+DEFAULT_URL="https://1drv.ms/u/c/392ac0752d520bef/IQAwzSbp67qjTbxTc0InA3RFAayQJ7ylctn0G35UtsDAp2c?e=4ANjfe"
 URL="${LARGE_ASSETS_URL:-${DEFAULT_URL}}"
 
 # The file list is kept in one place only. run_simulation.py's preflight guard
