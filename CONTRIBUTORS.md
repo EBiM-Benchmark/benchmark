@@ -12,6 +12,7 @@ project scaffolding and the shared development history remain from upstream.
 The people who built the current benchmark — task environments, evaluation,
 simulation, assets, and tooling. Listed alphabetically.
 
+* [Ahmed Shokry](https://github.com/ahmhafez)
 * [Herman Prawiro](https://github.com/hermanprawiro)
 * [Ju Dong](https://github.com/Ju6276)
 * [@rui325666](https://github.com/rui325666)
