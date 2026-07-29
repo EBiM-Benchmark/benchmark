@@ -1,0 +1,28 @@
+Two-part spoon validation
+
+Structure across 10 XML variants:
+- dynamic_spoon2: parent free body, total mass/inertia, whole visual mesh
+- spoon_handle_neck_part: 14 existing stem mesh geoms + 1 existing neck geom
+- spoon_scoop_part: 139 fitted curved scoop geoms
+- no joint/freejoint in either child body; exact rigid parent-child attachment
+- corrected scoop contact settings retained on all 139 geoms
+
+Dynamic table-supported benchmark:
+- gripper target: 0.735000 rad
+- measured loaded position: 0.720782 rad
+- initial contacts: 4 left / 4 right
+- contact dimension: 6
+- friction vector: [2.5, 2.5, 0.1, 0.03, 0.03]
+- final contacts: 4 left / 4 right
+- spoon lift: 0.261742 m
+- gripper lift: 0.261424 m
+- relative error: 0.001771581 m
+- result: PASS
+
+Other regressions:
+- lower gripper/table collision: PASS
+- wheel/caster active collision geoms: 0
+- dual rigid gripper attachment during spine motion: PASS
+- full-scene structural collision audit (100/300 beans, mesh/primitives): PASS
+
+The complete visual 100-bean room exceeded the local 100-second XML compilation limit, so dynamic validation used the included benchmark with identical spoon, gripper, table, actuator, solver and contact definitions.

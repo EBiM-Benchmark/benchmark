@@ -1,0 +1,41 @@
+NON-ACCUMULATING TARGET CONTROL VALIDATION
+==========================================
+
+Controller changes
+------------------
+1. FR3 arms remain position controlled.
+2. IK qdot is converted to a bounded target relative to measured q:
+       q_ref = q_measured + qdot * 0.030 s
+3. The spine remains dynamically position actuated.
+4. Spine target is relative to measured height:
+       z_ref = z_measured + command * 0.18 m/s * 0.100 s
+5. Wall-clock loop duration is not integrated into the spine target.
+6. Releasing the spine key resets z_ref to the measured height.
+
+Validation
+----------
+Repeated command target drift:
+  arm:   0.000e+00 rad after 100 repeated calls without stepping
+  spine: 0.000e+00 m after variable wall-clock dt commands
+  spine bounded lead: 0.018000 m
+
+Dynamic spine grasp/lift:
+  spine displacement: 0.289825 m
+  gripper lift:       0.288225 m
+  spoon lift:         0.288123 m
+  relative error:     0.000608 m
+  result: PASS
+
+Safe arm grasp/lift at runtime defaults:
+  spoon lift:         0.223456 m
+  gripper lift:       0.232791 m
+  relative error:     0.005743 m
+  contacts:           4 left / 5 right, condim 6
+  result: PASS
+
+Wall collision anti-windup:
+  q_ref tracking error after collision: 8e-6 rad
+  maximum qacc: 6.165e2
+  result: PASS
+
+Key 7 mode switch regression: PASS

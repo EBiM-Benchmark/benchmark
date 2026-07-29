@@ -1,0 +1,24 @@
+{
+  "modified_xml_files": [
+    "benchmark_task3_mesh.xml",
+    "benchmark_task3_mesh_table.xml",
+    "final_scene_100_beans_mesh.xml",
+    "final_scene_100_beans_mesh_spoon_mocap_runtime.xml",
+    "final_scene_100_beans_primitives.xml",
+    "final_scene_100_beans_primitives_spoon_mocap_runtime.xml",
+    "final_scene_300_beans_mesh.xml",
+    "final_scene_300_beans_mesh_spoon_mocap_runtime.xml",
+    "final_scene_300_beans_primitives.xml",
+    "final_scene_300_beans_primitives_spoon_mocap_runtime.xml"
+  ],
+  "scoop_geom_count": 139,
+  "surface_boxes": 110,
+  "rim_boxes": 24,
+  "leading_edge_boxes": 5,
+  "stem_meshes_preserved": 14,
+  "neck_preserved": true,
+  "removed_old_scoop_geoms": [
+    "spoon_collision_bowl_rear",
+    "spoon_collision_bowl_front"
+  ]
+}

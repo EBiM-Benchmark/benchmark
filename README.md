@@ -8,7 +8,7 @@
 |---|---|---|---|
 | Task 1 — Cable Routing & Plugging | Isaac Sim, MuJoCo | [`task1_isaacsim/`](task1_isaacsim/), [`task1_mujoco/`](task1_mujoco/) | see [STATUS.md](STATUS.md) |
 | Task 2 — Deformable Material Handling (Thermal Pad Placement) | Isaac Sim (Genesis committed) | [`task2_isaacsim/`](task2_isaacsim/), [`assets/task2_objects/`](assets/task2_objects/), [`scripts/evaluation/task2/`](scripts/evaluation/task2/) | see [STATUS.md](STATUS.md) |
-| Task 3 — Assisted Living & Feeding | Isaac Sim (MuJoCo committed) | [`task3_isaacsim/`](task3_isaacsim/), [`scripts/evaluation/task3/`](scripts/evaluation/task3/) | see [STATUS.md](STATUS.md) |
+| Task 3 — Assisted Living & Feeding | Isaac Sim, MuJoCo | [`task3_isaacsim/`](task3_isaacsim/), [`task3_mujoco/`](task3_mujoco/), [`scripts/evaluation/task3/`](scripts/evaluation/task3/) | see [STATUS.md](STATUS.md) |
 
 Full rules and official scoring are on the competition page: https://ebim-benchmark.github.io/competition.html#tasks . The evaluation code in this repository is a development facilitator; official scoring follows the rules published there.
 
@@ -98,6 +98,27 @@ bash task3_isaacsim/scripts/run_isaacsim_teleop.sh --gripper robotiq
 See [`task3_isaacsim/README.md`](task3_isaacsim/README.md) for Docker setup,
 no-hardware browser control, GELLO/pedal commands, and current limitations.
 
+## Task 3 — Assisted Living & Feeding (MuJoCo)
+
+[`task3_mujoco/`](task3_mujoco/README.md) contains the MuJoCo implementation of
+Task 3: the mobile dual-FR3 with Robotiq 2F-85 grippers scooping coffee beans
+with a segmented-mesh spoon, in 100- and 300-bean scene variants. It runs
+natively — no Docker, no GPU container, no ROS — and ships a headless
+validation suite covering grasp/lift, spine dynamics, and the wall-collision
+guard.
+
+Twenty visual meshes and textures exceed the repository's 2 MB per-file limit
+and are hosted externally, so fetching them is a required first step:
+
+```bash
+python -m pip install -r task3_mujoco/requirements.txt
+task3_mujoco/scripts/download_large_assets.sh
+cd task3_mujoco && ./run_simulation.sh --beans 100
+```
+
+See [`task3_mujoco/README.md`](task3_mujoco/README.md) for controls, scene
+variants, the physics parameters, provenance, and known issues.
+
 ## Repository Layout
 
 ```text
@@ -106,6 +127,7 @@ benchmark/
 ├── task1_mujoco/                # Task 1: cable-management teleoperation + eval (MuJoCo)
 ├── task2_isaacsim/              # Task 2: thermal-pad teleoperation (Isaac Sim 5.1.0 / PhysX)
 ├── task3_isaacsim/              # Task 3: assisted-living teleoperation (Isaac Sim 5.1.0)
+├── task3_mujoco/                # Task 3: assisted-living bean scooping (MuJoCo, native)
 ├── assets/                      # USD assets and generated scene files
 │   └── tabletop_task_scene_DEMO # Scene with Commandable via ROS mobile_Fr3_duo
 ├── docker/                      # Docker Compose runtimes for Isaac Sim and Isaac Lab
@@ -696,7 +718,7 @@ Run them across the repository before pushing:
 pre-commit run --all-files
 ```
 
-CI runs the same command on every pull request (`.github/workflows/pre-commit.yaml`), and `pre-commit` is the required status check on `main`, so a pull request cannot merge while it is red. The hooks cover Ruff (lint and format), codespell, license headers, and a set of file checks. Their configuration lives in `.pre-commit-config.yaml`, with Ruff's rules in `pyproject.toml`; several directories are excluded, listed under `exclude` at the end of `.pre-commit-config.yaml`. Not all of those exclusions are cosmetic. Three of them — `.vscode/`, `scripts/newton_examples/`, and `task1_isaacsim/` — hold files carrying third-party copyright headers (Isaac Lab's in `.vscode/tools/setup_vscode.py`, the Newton Developers' in the other two), and the exclusion is the only thing stopping the license-header hook from stamping an EBiM copyright on top of someone else's. To narrow the list, add a per-hook `exclude:` to `insert-license` covering those paths first; [LICENSES/README.md](LICENSES/README.md) covers the Isaac Lab case in detail.
+CI runs the same command on every pull request (`.github/workflows/pre-commit.yaml`), and `pre-commit` is the required status check on `main`, so a pull request cannot merge while it is red. The hooks cover Ruff (lint and format), codespell, license headers, and a set of file checks. Their configuration lives in `.pre-commit-config.yaml`, with Ruff's rules in `pyproject.toml`; several directories are excluded, listed under `exclude` at the end of `.pre-commit-config.yaml`. Not all of those exclusions are cosmetic. Three of them — `.vscode/`, `scripts/newton_examples/`, and `task1_isaacsim/` — hold files carrying third-party copyright headers (Isaac Lab's in `.vscode/tools/setup_vscode.py`, the Newton Developers' in the other two), and the exclusion is the only thing stopping the license-header hook from stamping an EBiM copyright on top of someone else's. To narrow the list, add a per-hook `exclude:` to `insert-license` covering those paths first; [LICENSES/README.md](LICENSES/README.md) covers the Isaac Lab case in detail. `task3_mujoco/` follows that narrower pattern already: it is ported from an upstream repository it stays in sync with, so it is excluded per-hook from `insert-license` and from Ruff (via `extend-exclude` in `pyproject.toml`), while the file-safety hooks — including the 2 MB `check-added-large-files` guard — still apply to it.
 
 `pyproject.toml` here holds tool configuration only — this repository is not a pip-installable package, so there is no `pip install -e .` step.
 

@@ -50,6 +50,13 @@ repos:
     hooks:
       - id: insert-license
         files: \.(py|ya?ml)$
+        # task3_mujoco/ is ported from the upstream Mujoco_Genisis_Model repo
+        # and stays in sync with it. Stamping an EBiM header on those files
+        # would both assert authorship we did not originate and conflict on
+        # every upstream sync. Provenance is recorded in task3_mujoco/README.md
+        # instead. Excluded here (not in the global `exclude` below) so the
+        # file-safety hooks still cover the directory.
+        exclude: ^task3_mujoco/
         args:
           # - --remove-header    # Remove existing license headers. Useful when updating license.
           - --license-filepath
@@ -74,4 +81,9 @@ repos:
 # paths (tested: the hook then reports Skipped).
 # LICENSES/README.md covers the Isaac Lab case in detail; the Newton-headered
 # files are Apache-2.0, same as this repo's root LICENSE.
-exclude: ^(scripts/deprecated/|scripts/manual_tests/|scripts/newton_examples/|assets/|DEMO/|docker/|.vscode/|.github/|task1_isaacsim/|task1_mujoco/)
+# task3_mujoco/assets/ is excluded for the same reason as the root assets/:
+# it is mesh and texture data, not source. Wavefront .obj is ASCII, so without
+# this the whitespace hooks rewrite 30 mesh files on every run. Only the assets
+# subtree is excluded — task3_mujoco's Python, XML, and shell files stay covered
+# by the file-safety hooks (see the per-hook excludes above for Ruff/license).
+exclude: ^(scripts/deprecated/|scripts/manual_tests/|scripts/newton_examples/|assets/|DEMO/|docker/|.vscode/|.github/|task1_isaacsim/|task1_mujoco/|task3_mujoco/assets/)

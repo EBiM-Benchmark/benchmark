@@ -1,0 +1,49 @@
+CURVED SCOOP VALIDATION
+=======================
+
+Source package:
+  mobile_fr3_coffee_scene_world_vertical_fixed
+
+Geometry transfer:
+  Stem: 14 original segmented stem meshes preserved unchanged
+  Neck: existing spoon_collision_neck preserved unchanged
+  Old scoop removed: 2 coarse ellipsoids
+  New scoop: 139 fitted boxes from final_scene_100_beans(1).xml
+    - 110 curved surface boxes
+    - 24 side-rim boxes
+    - 5 ultrathin leading-edge boxes
+
+Files updated:
+  benchmark_task3_mesh.xml
+  benchmark_task3_mesh_table.xml
+  final_scene_100_beans_mesh.xml
+  final_scene_100_beans_mesh_spoon_mocap_runtime.xml
+  final_scene_100_beans_primitives.xml
+  final_scene_100_beans_primitives_spoon_mocap_runtime.xml
+  final_scene_300_beans_mesh.xml
+  final_scene_300_beans_mesh_spoon_mocap_runtime.xml
+  final_scene_300_beans_primitives.xml
+  final_scene_300_beans_primitives_spoon_mocap_runtime.xml
+
+Structural validation:
+  All 10 XML variants contain 14 stem meshes, 1 unchanged neck geom,
+  139 curved scoop geoms, and no old bowl ellipsoids. PASS
+
+MuJoCo benchmark compilation:
+  benchmark_task3_mesh.xml: compiled and stepped. PASS
+  benchmark_task3_mesh_table.xml: compiled and stepped. PASS
+
+Table-supported grasp/lift regression:
+  command=0.735000 rad
+  measured_q=0.720781 rad
+  contacts=4 left / 4 right
+  contact dimension=6
+  spoon lift=0.261734 m
+  gripper lift=0.261424 m
+  relative error=0.001798441 m
+  PASS
+
+Full detailed 100-bean scene:
+  Compilation exceeded the local execution-time limit because of the large
+  room/mesh scene. It was structurally validated but not dynamically stepped
+  in this environment.

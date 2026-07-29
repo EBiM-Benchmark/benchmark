@@ -1,0 +1,42 @@
+BOUNDED ARM TARGETS AND STABLE SPINE HOLD
+=========================================
+
+Arm target validation
+---------------------
+Repeated-command target drift: 0.000e+00 rad
+Maximum target lead in tested command: 0.005373 rad
+Equation reconstruction error: 1.043e-16 rad
+Configured per-joint maximum lead: 0.040 rad
+
+Spine target validation
+-----------------------
+Held-key target drift with variable loop dt: 0.000e+00 m
+Configured measured-position lead: 0.018000 m
+Release-to-peak travel during dynamic braking: 0.013596 m
+Peak-to-held rollback: 0.000012179 m (0.012179 mm)
+Held physical-reference error: 4.445e-08 m
+Maximum |qacc|: 1.085e+01
+Result: PASS
+
+Dynamic spine spoon lift
+------------------------
+Spine displacement: 0.296940 m
+Gripper lift: 0.296731 m
+Spoon lift: 0.296662 m
+Relative spoon/gripper error: 0.000452 m
+Maximum |qacc|: 1.466e+01
+Result: PASS
+
+Arm spoon lift
+--------------
+Spoon lift: 0.249001 m
+Gripper lift: 0.249118 m
+Relative motion: 0.004741 m
+Contacts: 4 left / 4 right, condim=6
+Result: PASS
+
+Other regressions
+-----------------
+Static-wall anti-windup: PASS
+Key-7 base mode switch: PASS
+Lowest-point TCP rotation: PASS

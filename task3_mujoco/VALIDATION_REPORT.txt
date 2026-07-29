@@ -1,0 +1,68 @@
+EXACT SMALL-MODEL TRANSFER: PASS
+solver: timestep=0.001, implicitfast, Newton, 100/20 iterations, elliptic cone, impratio=10
+spoon: original visual mesh + 14 original handle mesh collision sections + neck/bowl collision parts
+grippers: four original fingertip STL grasp geoms; 18 original STL environment geoms
+gripper joints: armature=0.01, damping=1.0, frictionloss=0.1
+mimic constraints: solref=0.006 1, solimp=0.995 0.9999 0.0001 0.5 2
+actuators: kp=500, kv=30, force +/-100 N, fixed command=0.735 rad
+[right gripper] fixed preload reached: target=0.735 rad; filtered normal force left/right=0.00/0.00 N; spoon contacts=0/0, dim=[], friction=none, by_geom={}
+timestep=0.0010 s
+command=0.735000 rad, measured_q=0.720778 rad
+initial contacts left/right=4/4, dimensions=[6], friction=[2.5  2.5  0.1  0.03 0.03], by_geom={'right_grasp_left_main': 4, 'right_grasp_right_main': 4}
+final contacts left/right=4/4
+spoon_lift=0.261743 m, gripper_lift=0.261424 m
+relative_error=0.001769776 m
+TABLE-SUPPORTED RUNTIME GRASP/LIFT: PASS
+original STL environment collision geoms: 18 / 18, all_mesh=True
+active wheel/caster collision geoms: 0
+initial table contacts: []
+first table contact: (233, 'right_actual_right_tip_environment_collision', -1.73020554417036e-06)
+right gripper table-contact geoms: ['right_actual_left_tip_environment_collision', 'right_actual_right_tip_environment_collision']
+LOWER GRIPPER/TABLE CONTACT: PASS
+final_scene_100_beans_mesh.xml
+  bowl: 17 collision geoms compatible
+  coffee beans: 100 collision geoms compatible
+  floor: 1 collision geoms compatible
+  plate: 17 collision geoms compatible
+  spoon: 17 collision geoms compatible
+  tables/furniture: 50 collision geoms compatible
+  walls/doors: 69 collision geoms compatible
+  segmented mesh spoon, original fingertip STL grasp, solver and preload: PASS
+final_scene_300_beans_mesh.xml
+  bowl: 17 collision geoms compatible
+  coffee beans: 300 collision geoms compatible
+  floor: 1 collision geoms compatible
+  plate: 17 collision geoms compatible
+  spoon: 17 collision geoms compatible
+  tables/furniture: 50 collision geoms compatible
+  walls/doors: 69 collision geoms compatible
+  segmented mesh spoon, original fingertip STL grasp, solver and preload: PASS
+final_scene_100_beans_primitives.xml
+  bowl: 17 collision geoms compatible
+  coffee beans: 100 collision geoms compatible
+  floor: 1 collision geoms compatible
+  plate: 17 collision geoms compatible
+  spoon: 17 collision geoms compatible
+  tables/furniture: 50 collision geoms compatible
+  walls/doors: 69 collision geoms compatible
+  segmented mesh spoon, original fingertip STL grasp, solver and preload: PASS
+final_scene_300_beans_primitives.xml
+  bowl: 17 collision geoms compatible
+  coffee beans: 300 collision geoms compatible
+  floor: 1 collision geoms compatible
+  plate: 17 collision geoms compatible
+  spoon: 17 collision geoms compatible
+  tables/furniture: 50 collision geoms compatible
+  walls/doors: 69 collision geoms compatible
+  segmented mesh spoon, original fingertip STL grasp, solver and preload: PASS
+COLLISION AUDIT: PASS
+PASS
+wheel/caster active collision geoms: 0
+maximum flange position error during spine motion: 0.000000000 mm
+maximum flange orientation error: 0.000000000 deg
+both grippers: original Robotiq collision STL meshes for environment and grasp contact; kp=500, kv=30, fixed target=0.735 rad
+timestep=0.0010 s
+base command: nominal 2.0 m/s x 2.0 wall-time scale = 4.0 m/s
+displacement over 100 steps: 0.400020 m (expected 0.400000 m)
+final planar velocity: 4.001837 m/s
+MOTION SPEED: PASS

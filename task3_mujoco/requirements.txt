@@ -1,0 +1,7 @@
+numpy
+mujoco
+glfw
+pynput
+python-xlib
+trimesh
+scipy
