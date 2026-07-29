@@ -145,12 +145,16 @@ Base mode
   Home / End or Q / E         : rotate base left / right
   Page Up / Down or U / J      : dynamically move the vertical spine up / down
 
-Arm mode (always TCP-local; camera orientation has no effect)
-  Translation mode:
-    Arrow Up / Down or W / S    : move along local +X / -X
-    Arrow Left / Right or A / D : move along local -Y / +Y
-    Page Up / Down or U / J     : move along local +Z / -Z
-  R toggles rotation mode:
+Arm mode (translation frame follows --arm-frame, default "base";
+          rotation is always about the current TCP-local axes)
+  Translation mode (default --arm-frame base; camera orientation is ignored):
+    Arrow Up / Down or W / S    : move forward / back in the robot-base frame
+    Arrow Left / Right or A / D : move right / left in the robot-base frame
+    Page Up / Down or U / J     : move up / down in world Z
+    With --arm-frame tcp these become the tool-local +X/-X, -Y/+Y, +Z/-Z axes.
+    Note that at the initial spoon pose the TCP local +Z points downward, so
+    under "tcp" Page Up / U moves the gripper DOWN. Prefer the default "base".
+  R toggles rotation mode (always TCP-local, regardless of --arm-frame):
     Arrow Up / Down or W / S    : pitch about local +Y / -Y
     Arrow Left / Right or A / D : yaw about local +Z / -Z
     Page Up / Down or U / J     : roll about local +X / -X

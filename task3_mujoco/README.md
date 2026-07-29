@@ -338,8 +338,8 @@ and high-accuracy contact solver are intentionally retained.
 
 ## Differences from upstream
 
-Only two changes were made to upstream files; everything else is byte-identical
-to `09e2f89`.
+Only three changes were made to upstream files; everything else is
+byte-identical to `09e2f89`.
 
 1. **`run_simulation.py`** gained a `check_large_assets()` preflight that fails
    with an actionable message when the externally-hosted assets are absent.
@@ -351,6 +351,12 @@ to `09e2f89`.
    plus `3d66Model-19059402-files-024.{jpg,png}`, which nothing references.
    Verified by parsing every `<mesh>` and `<texture>` element across all scene
    XML; all 109 referenced assets resolve.
+3. **`teleop_keyboard.py`'s on-screen `HELP` text was corrected** (text only, no
+   behaviour change). It described arm translation as "always TCP-local", but
+   `--arm-frame` defaults to `base` — the very confusion the upstream README
+   warns about, where `U`/`PageUp` moves the gripper *down* under the TCP frame.
+   The help now describes the base-frame default, notes what `--arm-frame tcp`
+   changes, and states that rotation is TCP-local regardless.
 
 New files added by this integration: `scripts/download_large_assets.sh` and
 `scripts/large_assets.txt`.
