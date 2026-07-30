@@ -135,6 +135,28 @@ def parse_semantic_label_map(payload: str) -> dict[str, int]:
     return label_to_id
 
 
+def hints_from_label_payload(payload: str) -> dict[int, str] | None:
+    """Build a ``{raw_id: label_name}`` map from a semantic-labels payload.
+
+    Inverse of :func:`parse_semantic_label_map`, for payloads published by
+    the *segmentation* annotator, whose IDs are the raw mask pixel values.
+    Isaac Sim assigns those IDs per session, so a live payload must win over
+    the static ``SEMANTIC_RAW_ID_NAME_HINTS`` fallback. Returns ``None`` when
+    the payload cannot be parsed (caller keeps its fallback).
+    """
+    try:
+        label_to_id = parse_semantic_label_map(payload)
+    except ValueError:
+        return None
+    hints: dict[int, str] = {}
+    for name, raw_id in label_to_id.items():
+        # parse_semantic_label_map is first-win on names; keep the same
+        # policy per ID.
+        if raw_id not in hints:
+            hints[raw_id] = name
+    return hints
+
+
 def count_pixels_for_hint_label(
     label_array: np.ndarray, label_name: str, semantic_hints: dict[int, str]
 ) -> int:

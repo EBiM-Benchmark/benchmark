@@ -22,6 +22,9 @@ APP_DEFAULTS: dict[str, Any] = {
     "semantic_segmentation_topic": "/isaac/eval_camera/semantic_segmentation",
     "semantic_labels_topic": "/isaac/eval_camera/semantic_labels",
     "bbox_2d_tight_topic": "/isaac/eval_camera/bbox_2d_tight",
+    # The bbox annotator's own id->label map (class IDs differ from the
+    # raw mask IDs carried by semantic_labels_topic).
+    "bbox_labels_topic": "/isaac/eval_camera/bbox_2d_tight_labels",
     "camera_info_topic": "/isaac/eval_camera/camera_info",
     "thermalpad_label": "thermalpad",
     "liner_label": "liner",
@@ -32,10 +35,13 @@ APP_DEFAULTS: dict[str, Any] = {
     "bbox_json_top_per_class_only": False,
 }
 
-# Raw int32 semantic-mask pixel value -> class name, for the current
-# task2 scene. It is only used to resolve the both-pads-visible case via
-# pixel ratios; an incorrect mapping silently breaks the
-# both_liner_dominant / both_thermalpad_dominant / sideways decision.
+# FALLBACK raw int32 semantic-mask pixel value -> class name. Isaac Sim
+# assigns the mask IDs per session (verified: they permute between runs),
+# so the live semantic_labels payload is authoritative and this map is
+# only used when that payload is unavailable. It only resolves the
+# both-pads-visible case via pixel ratios; an incorrect mapping silently
+# breaks the both_liner_dominant / both_thermalpad_dominant / sideways
+# decision.
 SEMANTIC_RAW_ID_NAME_HINTS: dict[int, str] = {
     1: "unlabeled",
     2: "board",
@@ -115,6 +121,11 @@ def _build_arg_parser(defaults: dict[str, Any]) -> argparse.ArgumentParser:
         default=str(defaults["bbox_2d_tight_topic"]),
     )
     parser.add_argument(
+        "--bbox-labels-topic",
+        type=str,
+        default=str(defaults["bbox_labels_topic"]),
+    )
+    parser.add_argument(
         "--camera-info-topic",
         type=str,
         default=str(defaults["camera_info_topic"]),
@@ -171,6 +182,7 @@ def load_runtime_config(args=None) -> dict[str, Any]:
         "semantic_segmentation_topic": parsed.semantic_segmentation_topic,
         "semantic_labels_topic": parsed.semantic_labels_topic,
         "bbox_2d_tight_topic": parsed.bbox_2d_tight_topic,
+        "bbox_labels_topic": parsed.bbox_labels_topic,
         "camera_info_topic": parsed.camera_info_topic,
         "evaluate_service_name": parsed.evaluate_service_name,
         "output_dir": parsed.output_dir,

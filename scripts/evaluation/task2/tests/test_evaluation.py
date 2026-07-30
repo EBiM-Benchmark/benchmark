@@ -20,7 +20,10 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from config import SEMANTIC_RAW_ID_NAME_HINTS  # noqa: E402
-from evaluation import evaluate_thermalpad_target_iou  # noqa: E402
+from evaluation import (  # noqa: E402
+    evaluate_thermalpad_target_iou,
+    hints_from_label_payload,
+)
 
 # semantic_labels topic mapping (starts at 0, no 'unlabeled') --
 # distinct from the raw int32 mask scheme in SEMANTIC_RAW_ID_NAME_HINTS,
@@ -207,6 +210,45 @@ def test_no_target_bbox():
     )
 
 
+def test_hints_from_label_payload():
+    # Segmentation-annotator payload: raw mask IDs with reserved 0/1 and a
+    # session-specific class order (as captured live from Isaac Sim 5.1).
+    payload = json.dumps(
+        {
+            "0": {"class": "BACKGROUND"},
+            "1": {"class": "UNLABELLED"},
+            "2": {"class": "target"},
+            "3": {"class": "thermalpad"},
+            "4": {"class": "liner"},
+            "5": {"class": "board"},
+            "time_stamp": {"sec": 53, "nanosec": 866669476},
+        }
+    )
+    hints = hints_from_label_payload(payload)
+    expect(
+        "hints seg scheme",
+        hints
+        == {
+            0: "background",
+            1: "unlabelled",
+            2: "target",
+            3: "thermalpad",
+            4: "liner",
+            5: "board",
+        },
+    )
+    # Duplicate names keep the first ID (mirrors parse_semantic_label_map).
+    dup = json.dumps({"2": {"class": "liner"}, "4": {"class": "liner"}})
+    expect(
+        "hints dup first-win", hints_from_label_payload(dup) == {2: "liner"}
+    )
+    expect("hints bad json", hints_from_label_payload("not json") is None)
+    expect(
+        "hints no classes",
+        hints_from_label_payload(json.dumps({"time_stamp": {}})) is None,
+    )
+
+
 def main():
     tests = [
         test_liner_only,
@@ -217,6 +259,7 @@ def main():
         test_neither_pad_present,
         test_no_target_label,
         test_no_target_bbox,
+        test_hints_from_label_payload,
     ]
     for t in tests:
         t()

@@ -7,8 +7,12 @@
 image_topic: /isaac/eval_camera/image_raw
 depth_topic: /isaac/eval_camera/depth
 semantic_segmentation_topic: /isaac/eval_camera/semantic_segmentation
+# semantic_labels: the segmentation annotator's id->label map (raw mask
+# pixel IDs); bbox_labels: the bbox annotator's map (bbox class IDs).
+# The two ID schemes differ — do not point them at the same topic.
 semantic_labels_topic: /isaac/eval_camera/semantic_labels
 bbox_2d_tight_topic: /isaac/eval_camera/bbox_2d_tight
+bbox_labels_topic: /isaac/eval_camera/bbox_2d_tight_labels
 camera_info_topic: /isaac/eval_camera/camera_info
 
 evaluate_service_name: /isaac/eval_camera/evaluate

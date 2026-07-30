@@ -110,6 +110,9 @@ PAD_POINTS_TOPIC = _TOPICS["ground_truth"]["pad_points"]
 SCENE_RESET_TOPIC = _TOPICS["ground_truth"]["scene_reset"]
 SCENE_RESET_REQUEST_TOPIC = _TOPICS["ground_truth"]["scene_reset_request"]
 EVAL_BBOX_TOPIC = _TOPICS["cameras"]["eval"]["bbox_2d_tight"]
+# Two distinct id->label maps: bbox_labels resolves bbox_2d_tight class_ids,
+# semantic_labels resolves the raw mask pixel values (per-session IDs).
+EVAL_BBOX_LABELS_TOPIC = _TOPICS["cameras"]["eval"]["bbox_labels"]
 EVAL_LABELS_TOPIC = _TOPICS["cameras"]["eval"]["semantic_labels"]
 EVAL_SEGMENTATION_TOPIC = _TOPICS["cameras"]["eval"]["semantic_segmentation"]
 
@@ -252,6 +255,7 @@ class Task2RecorderNode(Node):
         self.pad_points_raw = None
         self.reset_events = []
         self.eval_bbox = None
+        self.eval_bbox_labels = None
         self.eval_labels = None
         self.eval_segmentation = None
         self.message_counts = {}
@@ -307,6 +311,12 @@ class Task2RecorderNode(Node):
                 Detection2DArray,
                 EVAL_BBOX_TOPIC,
                 self._on_eval_bbox,
+                qos_depth,
+            )
+            self.create_subscription(
+                String,
+                EVAL_BBOX_LABELS_TOPIC,
+                self._on_eval_bbox_labels,
                 qos_depth,
             )
             self.create_subscription(
@@ -403,6 +413,11 @@ class Task2RecorderNode(Node):
             self.eval_bbox = msg
             self._count("eval_bbox")
 
+    def _on_eval_bbox_labels(self, msg):
+        with self.lock:
+            self.eval_bbox_labels = msg
+            self._count("eval_bbox_labels")
+
     def _on_eval_labels(self, msg):
         with self.lock:
             self.eval_labels = msg
@@ -442,7 +457,12 @@ class Task2RecorderNode(Node):
 
     def eval_snapshot(self) -> tuple:
         with self.lock:
-            return self.eval_bbox, self.eval_labels, self.eval_segmentation
+            return (
+                self.eval_bbox,
+                self.eval_bbox_labels,
+                self.eval_labels,
+                self.eval_segmentation,
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -641,6 +661,7 @@ def load_eval_modules(eval_dir: Path):
         return {
             "evaluate": evaluation.evaluate_thermalpad_target_iou,
             "to_label_array": image_utils.ros_image_to_label_array,
+            "hints_from_payload": evaluation.hints_from_label_payload,
             "hints": SEMANTIC_RAW_ID_NAME_HINTS,
         }
     except Exception as exc:  # noqa: BLE001 - suggestion is best-effort
@@ -653,7 +674,11 @@ def load_eval_modules(eval_dir: Path):
 def suggest_success(eval_modules, node: Task2RecorderNode):
     if eval_modules is None:
         return None
-    bbox, labels, segmentation = node.eval_snapshot()
+    bbox, bbox_labels, seg_labels, segmentation = node.eval_snapshot()
+    # bbox class_ids resolve through the bbox annotator's own label map;
+    # fall back to the legacy shared topic when the scene predates the
+    # split (racy, but no worse than before).
+    labels = bbox_labels if bbox_labels is not None else seg_labels
     if bbox is None or labels is None:
         return None
     label_array = None
@@ -662,6 +687,13 @@ def suggest_success(eval_modules, node: Task2RecorderNode):
             label_array = eval_modules["to_label_array"](segmentation)
         except Exception:  # noqa: BLE001
             label_array = None
+    # The raw mask IDs are assigned per session; derive them from the live
+    # segmentation label map and only fall back to the static hints.
+    hints = None
+    if seg_labels is not None:
+        hints = eval_modules["hints_from_payload"](seg_labels.data)
+    if hints is None:
+        hints = eval_modules["hints"]
     try:
         return eval_modules["evaluate"](
             bbox,
@@ -669,7 +701,7 @@ def suggest_success(eval_modules, node: Task2RecorderNode):
             thermalpad_label="thermalpad",
             liner_label="liner",
             target_label="target",
-            semantic_hints=eval_modules["hints"],
+            semantic_hints=hints,
             label_array=label_array,
         )
     except Exception as exc:  # noqa: BLE001

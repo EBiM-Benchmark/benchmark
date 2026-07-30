@@ -87,27 +87,30 @@ by which pad surface is visible:
 | ✗ | ✗ | `neither_pad_present` | `False` |
 | — | — (no target) | `no_target_label` / `no_target_bbox` | `False` |
 
-**Both pads visible** — count pixels in the raw int32 semantic mask using
-`SEMANTIC_RAW_ID_NAME_HINTS` and compare:
+**Both pads visible** — count pixels in the raw int32 semantic mask using the
+live raw-ID map (below) and compare:
 - `liner_ratio > 0.9` → `both_liner_dominant` (correct)
 - `thermalpad_ratio > 0.9` → `both_thermalpad_dominant` (wrong)
 - otherwise → `sideways` (wrong, IoU = 0)
 
-### Semantic raw-ID map
+### Two label topics, two ID schemes
 
-The raw semantic-segmentation image is single-channel int32 where each pixel is a class ID. That ID scheme differs from the `semantic_labels` topic (which starts at 0 and omits `unlabeled`), so a fixed hint map is used. For the **current** task2 scene (set in `config.py`):
+Isaac Sim's `ROS2CameraHelper` publishes each annotator's **own** `idToLabels`
+map. The two schemes differ by construction and must stay on separate topics
+(the bridge's shared default used to interleave both maps on one topic):
 
-```python
-SEMANTIC_RAW_ID_NAME_HINTS = {
-    1: "unlabeled",
-    2: "board",
-    3: "thermalpad",
-    4: "target",
-    5: "liner",
-}
-```
+- `bbox_2d_tight_labels` — the bbox annotator's map. Labeled classes counted
+  from 0 (e.g. `{0: liner, 1: thermalpad, 2: board, 3: target}`). Resolves the
+  numeric `class_id` strings in `bbox_2d_tight` detections.
+- `semantic_labels` — the segmentation annotator's map. IDs are the raw mask
+  pixel values, with `0=BACKGROUND` / `1=UNLABELLED` reserved and scene
+  classes from 2. **The class order is assigned per session** (verified: it
+  permutes between runs), so this map is parsed live
+  (`hints_from_label_payload` in `evaluation.py`) to resolve mask pixels.
 
-If you change the scene's semantic labeling, update this map — it only affects the both-pads-visible tie-break, and a wrong map silently flips that decision.
+`SEMANTIC_RAW_ID_NAME_HINTS` in `config.py` is only a **fallback** for when no
+`semantic_labels` payload has been received. It only affects the
+both-pads-visible tie-break, and a wrong map silently flips that decision.
 
 ## Output artifacts
 
@@ -129,11 +132,17 @@ Published by the scene's ROS2 bridge graph:
 - `image_raw`
 - `depth`
 - `semantic_segmentation`
-- `semantic_labels`
+- `semantic_labels` (segmentation annotator's raw-mask ID map)
 - `bbox_2d_tight`
+- `bbox_2d_tight_labels` (bbox annotator's class-ID map)
 - `camera_info`
 
-If `ros2 topic list` shows the labels topic as `semantic_segmentation_labels`, rather than `semantic_labels`, override it in `config.yaml` or via CLI args to `main.py`.
+If the scene predates the labels-topic split, `bbox_2d_tight_labels` is
+absent and the service falls back to resolving bbox class IDs via
+`semantic_labels` — that topic then interleaves both annotators' maps, so
+evaluations are unreliable (pre-split behavior). Run scene and service from
+the same checkout. Topic names can be overridden in `config.yaml` or via CLI
+args to `main.py`.
 
 ## Unit Tests
 

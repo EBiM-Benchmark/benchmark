@@ -33,7 +33,10 @@ except Exception:  # pragma: no cover - depends on runtime image
 
 import image_utils
 from config import SEMANTIC_RAW_ID_NAME_HINTS, coerce_bool
-from evaluation import evaluate_thermalpad_target_iou
+from evaluation import (
+    evaluate_thermalpad_target_iou,
+    hints_from_label_payload,
+)
 
 
 def _stamp_to_string(msg) -> str:
@@ -58,6 +61,7 @@ class _Snapshot:
     depth: Any = None
     semantic: Any = None
     labels: Any = None
+    bbox_labels: Any = None
     bbox: Any = None
     camera_info: Any = None
 
@@ -91,6 +95,7 @@ class EvalCameraCaptureService(Node):
         self._latest_depth = None
         self._latest_semantic_segmentation = None
         self._latest_semantic_labels = None
+        self._latest_bbox_labels = None
         self._latest_bbox_2d_tight = None
         self._latest_camera_info = None
 
@@ -122,6 +127,14 @@ class EvalCameraCaptureService(Node):
             String,
             str(config["semantic_labels_topic"]),
             self._on_semantic_labels,
+            qos_profile_sensor_data,
+        )
+        # The bbox annotator's own id->label map; its ID scheme differs
+        # from the raw mask IDs carried by semantic_labels.
+        self.create_subscription(
+            String,
+            str(config["bbox_labels_topic"]),
+            self._on_bbox_labels,
             qos_profile_sensor_data,
         )
         if Detection2DArray is not None:
@@ -179,6 +192,10 @@ class EvalCameraCaptureService(Node):
         with self._lock:
             self._latest_semantic_labels = msg
 
+    def _on_bbox_labels(self, msg):
+        with self._lock:
+            self._latest_bbox_labels = msg
+
     def _on_bbox_2d_tight(self, msg):
         with self._lock:
             self._latest_bbox_2d_tight = msg
@@ -193,6 +210,7 @@ class EvalCameraCaptureService(Node):
                 depth=self._latest_depth,
                 semantic=self._latest_semantic_segmentation,
                 labels=self._latest_semantic_labels,
+                bbox_labels=self._latest_bbox_labels,
                 bbox=self._latest_bbox_2d_tight,
                 camera_info=self._latest_camera_info,
             )
@@ -215,12 +233,20 @@ class EvalCameraCaptureService(Node):
             label_array = self._save_semantic(
                 out, ts, snap.semantic, saved, missing
             )
-            self._save_labels(out, ts, snap.labels, saved, missing)
+            self._save_labels(
+                out, ts, "semantic_labels", snap.labels, saved, missing
+            )
+            self._save_labels(
+                out, ts, "bbox_labels", snap.bbox_labels, saved, missing
+            )
             # Modality snapshots above are written regardless; only
-            # evaluation requires both.
-            if snap.labels is None or snap.bbox is None:
+            # evaluation requires a label map and the bbox stream.
+            if (
+                snap.labels is None and snap.bbox_labels is None
+            ) or snap.bbox is None:
                 raise ValueError(
-                    "Evaluation requires semantic_labels and bbox_2d_tight"
+                    "Evaluation requires bbox_2d_tight and a label map "
+                    "(bbox_2d_tight_labels or semantic_labels)"
                 )
             eval_result = self._save_eval(out, ts, snap, label_array, saved)
             self._save_bbox_artifacts(out, ts, snap.bbox, rgb_bgr, saved)
@@ -298,26 +324,39 @@ class EvalCameraCaptureService(Node):
 
     @staticmethod
     def _save_labels(
-        out, ts, labels_msg, saved: list[Path], missing: list[str]
+        out, ts, name: str, labels_msg, saved: list[Path], missing: list[str]
     ) -> None:
         if labels_msg is None:
-            missing.append("semantic_labels")
+            missing.append(name)
             return
-        labels_path = _artifact_path(out, "semantic_labels", ts, "txt")
+        labels_path = _artifact_path(out, name, ts, "txt")
         labels_path.write_text(labels_msg.data, encoding="utf-8")
         saved.append(labels_path)
 
     def _save_eval(
         self, out, ts, snap: _Snapshot, label_array, saved: list[Path]
     ) -> dict[str, Any]:
+        # bbox class_ids resolve through the bbox annotator's own label
+        # map; fall back to the legacy shared topic when the scene
+        # predates the split (racy, but no worse than before).
+        bbox_label_map = (
+            snap.bbox_labels if snap.bbox_labels is not None else snap.labels
+        )
+        # The raw mask IDs are assigned per session; derive them from the
+        # live segmentation label map, static hints as fallback.
+        hints = None
+        if snap.labels is not None:
+            hints = hints_from_label_payload(snap.labels.data)
+        if hints is None:
+            hints = SEMANTIC_RAW_ID_NAME_HINTS
         try:
             eval_result = evaluate_thermalpad_target_iou(
                 snap.bbox,
-                snap.labels.data,
+                bbox_label_map.data,
                 thermalpad_label=self._thermalpad_label,
                 liner_label=self._liner_label,
                 target_label=self._target_label,
-                semantic_hints=SEMANTIC_RAW_ID_NAME_HINTS,
+                semantic_hints=hints,
                 label_array=label_array,
                 current_frame_stamp=_stamp_to_string(snap.semantic)
                 if snap.semantic is not None

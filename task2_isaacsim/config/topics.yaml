@@ -109,9 +109,16 @@ cameras:
       shape: [480, 848, 3]
   # Static room camera published by the room scene (recorder key
   # "eval_camera"); the extra streams feed --suggest-success.
+  # semantic_labels / bbox_labels carry each annotator's OWN id->name map
+  # and the ID schemes differ (mask IDs reserve 0=background/1=unlabelled
+  # and are assigned per session; bbox class IDs count labeled classes from
+  # 0). They must stay on separate topics: bbox_labels resolves
+  # bbox_2d_tight class_ids, semantic_labels resolves the raw mask pixel
+  # values of semantic_segmentation.
   eval:
     namespace: /isaac/eval_camera
     shape: [720, 1280, 3]
     bbox_2d_tight: /isaac/eval_camera/bbox_2d_tight
+    bbox_labels: /isaac/eval_camera/bbox_2d_tight_labels
     semantic_labels: /isaac/eval_camera/semantic_labels
     semantic_segmentation: /isaac/eval_camera/semantic_segmentation
