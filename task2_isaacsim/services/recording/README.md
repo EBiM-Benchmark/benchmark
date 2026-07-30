@@ -59,5 +59,5 @@ are refused.
 
 Topic names come from the shared contract
 [../../config/topics.yaml](../../config/topics.yaml). Recording quickstart:
-[../../README.md](../../README.md#demonstration-recording-imitation-learning);
+[../../README.md](../../README.md#demonstration-recording-lerobot-dataset);
 full pipeline reference: [../../PIPELINE_REF.md](../../PIPELINE_REF.md).

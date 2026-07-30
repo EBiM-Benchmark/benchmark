@@ -41,13 +41,18 @@ benchmark/
 |-- task1_isaacsim/             # Task 1: mobile FR3 Duo teleoperation (Isaac Lab + Newton)
 |-- task1_mujoco/               # Task 1: cable-management teleoperation + eval (MuJoCo)
 |-- task2_isaacsim/             # Task 2: thermal-pad teleoperation (Isaac Sim 5.1.0 / PhysX)
+|-- task3_isaacsim/             # Task 3: assisted-living teleoperation (Isaac Sim 5.1.0)
 |-- assets/                     # USD assets and generated scenes
 |-- docker/                     # Dockerfile, compose stack, runtime env
 |-- docs/                       # Developer docs and images
+|-- newton/                     # Newton physics engine submodule
 |-- scripts/
 |   |-- common/                 # Shared path and robot-control helpers
+|   |-- deprecated/             # Outdated scene generators, kept for reference
+|   |-- evaluation/             # Task 2 scorer and Task 3 grading helpers
 |   |-- manual_tests/           # Small asset validation scenes
-|   |-- scenes/                 # Isaac Lab scene and robot demos
+|   |-- newton_examples/        # Standalone Newton quick-launch examples
+|   |-- scenes/                 # Shared robot-room stage builder
 |   `-- tools/                  # USD composition and inspection utilities
 `-- third_party/
     `-- franka_description/     # Robot description assets
@@ -346,9 +351,9 @@ Run the examples:
 
 ```bash
 source .venv/bin/activate
-python scripts/newton_examples/example_mpm_moving_funnel.py --viewer gl
-python scripts/newton_examples/example_mpm_table_container.py --viewer gl
-python scripts/newton_examples/example_rigid_table_bowl_beans.py --viewer gl
+python scripts/newton_examples/mpm_moving_funnel.py --viewer gl
+python scripts/newton_examples/mpm_table_container.py --viewer gl
+python scripts/newton_examples/rigid_table_bowl_beans.py --viewer gl
 ```
 
 The tabletop examples resolve USD assets from `assets/` by default. Use
