@@ -350,6 +350,7 @@ RIGHT_GRIPPER_DRIVER = "right_right_finger_joint"
 PEDAL_STATE_TOPIC = "/pedal/state"
 BASE_RELATIVE_POSE_TOPIC = "/isaac/base_pose_relative"
 BASE_COMMAND_TOPIC = "/isaac/base_command"
+_BASE_DRIVE_TOKENS = frozenset({"FWD", "BACK", "A", "B", "A+C", "B+C", "STOP"})
 CAMERA_TOPICS = {
     "left_camera": (
         "/isaac/left_wrist_camera/image_compressed",
@@ -1656,7 +1657,7 @@ class IsaacLabRosBridge(Node):
 
     def _on_pedal_state(self, msg: String):
         state = msg.data.strip().upper().replace(" ", "")
-        self._latest_pedal_state = state or "NONE"
+        self._latest_pedal_state = state if state in _BASE_DRIVE_TOKENS else "NONE"
         self._latest_pedal_time_sec = self.get_clock().now().nanoseconds * 1e-9
 
     def pedal_base_twist(
@@ -1674,6 +1675,8 @@ class IsaacLabRosBridge(Node):
         state = self._latest_pedal_state
         # Keyboard and browser controls emit FWD/BACK; the physical pedal
         # continues to use the strafe/yaw tokens below.
+        if state in {"NONE", "STOP"}:
+            return 0.0, 0.0, 0.0
         if state == "FWD":
             return linear_speed_mps, 0.0, 0.0
         if state == "BACK":
@@ -1682,9 +1685,9 @@ class IsaacLabRosBridge(Node):
             return 0.0, linear_speed_mps, 0.0
         if state == "B":
             return 0.0, -linear_speed_mps, 0.0
-        if state in {"A+C", "C+A"}:
+        if state == "A+C":
             return 0.0, 0.0, angular_speed_radps
-        if state in {"B+C", "C+B"}:
+        if state == "B+C":
             return 0.0, 0.0, -angular_speed_radps
         return 0.0, 0.0, 0.0
 
@@ -1783,10 +1786,7 @@ class IsaacLabRosBridge(Node):
         self._base_pose_publisher.publish(pose_msg)
 
         command_msg = String()
-        command_msg.data = {
-            "C+A": "A+C",
-            "C+B": "B+C",
-        }.get(self._latest_pedal_state, self._latest_pedal_state)
+        command_msg.data = self._latest_pedal_state
         self._base_command_publisher.publish(command_msg)
 
         linear_velocity = np.zeros(3, dtype=np.float64)

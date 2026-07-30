@@ -21,6 +21,7 @@ TOPICS=(
     /isaac/data_contract/action
     /isaac/data_contract/timestamp
     /isaac/data_contract/step_count
+    /isaac/data_contract/metadata
 )
 
 echo "Recording synchronized Task 1 data to: ${OUTPUT_DIR}"

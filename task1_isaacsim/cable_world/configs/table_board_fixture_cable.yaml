@@ -15,7 +15,7 @@ board:
   load_visual_shapes: true
   hide_collision_shapes: false
   visual_shapes_as_colliders: false
-  friction: 3.0
+  friction: 1.0
   require_collision: false
   require_convex_collision: false
   support_plane:
@@ -70,11 +70,11 @@ shape:
   kd: 12
   mu: 3.0
 cable:
-  friction: 3.0
+  friction: 1.0
   stretch_stiffness: 80000.0
-  stretch_damping: 5
-  bend_stiffness: 0.02
-  bend_damping: 50
+  stretch_damping: 0.05
+  bend_stiffness: 0.2
+  bend_damping: 0.5
   dahl_friction:
     enabled: false
     eps_max: 0.5
