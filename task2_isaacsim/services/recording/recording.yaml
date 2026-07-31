@@ -52,6 +52,10 @@ rgb_vcodec: null           # null -> libsvtav1; "auto"/"h264_nvenc"/... use the 
 # Success labelling at episode save.
 suggest_success: true
 prompt_success: true
+# Pad-vs-target IoU must exceed this for auto-suggested success. 0.0
+# accepts any overlap; raise it once you have enough recorded episodes to
+# calibrate against. The raw IoU is stored either way.
+success_min_iou: 0.0
 
 # Episode limits.
 max_episode_time_s: 300.0

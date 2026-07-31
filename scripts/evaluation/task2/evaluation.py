@@ -171,7 +171,7 @@ def count_pixels_for_hint_label(
 # --------------------------------------------------------------------------- #
 def evaluate_thermalpad_target_iou(
     bbox_msg,
-    semantic_labels_payload: str,
+    bbox_labels_payload: str,
     *,
     thermalpad_label: str,
     liner_label: str,
@@ -180,21 +180,40 @@ def evaluate_thermalpad_target_iou(
     label_array: np.ndarray | None = None,
     current_frame_stamp: str = "",
     bbox_frame_stamp: str = "",
+    target_bbox_msg=None,
+    target_labels_payload: str | None = None,
 ) -> dict[str, Any]:
     """Compute bbox IoU between the active pad (liner/thermalpad) and target.
 
-    ``label_array`` is the parsed int32 semantic mask, required only to resolve
-    the case where both liner and thermalpad bboxes are present.
+    ``bbox_labels_payload`` is the *tight* annotator's id->label map; it
+    resolves the liner/thermalpad class IDs in ``bbox_msg``.
+
+    ``target_bbox_msg`` / ``target_labels_payload`` are the *loose*
+    annotator's detections and map. Tight bboxes are occlusion-aware and
+    drop a fully occluded object, and a correctly placed pad occludes the
+    target exactly (identical 0.12 x 0.02 footprints), so the target is
+    resolved through the loose stream. Both default to ``None``, in which
+    case the tight stream is used for the target too — the behaviour of a
+    scene built before the loose helper existed.
+
+    ``label_array`` is the parsed int32 semantic mask, required only to
+    resolve the case where both liner and thermalpad bboxes are present.
     """
     if bbox_msg is None:
         raise ValueError(
             "BBox message is required for bbox-based IoU evaluation"
         )
 
-    label_to_id = parse_semantic_label_map(semantic_labels_payload)
+    label_to_id = parse_semantic_label_map(bbox_labels_payload)
     thermalpad_id = label_to_id.get(thermalpad_label)
     liner_id = label_to_id.get(liner_label)
-    target_id = label_to_id.get(target_label)
+    if target_bbox_msg is not None and target_labels_payload is not None:
+        target_msg = target_bbox_msg
+        target_label_to_id = parse_semantic_label_map(target_labels_payload)
+    else:
+        target_msg = bbox_msg
+        target_label_to_id = label_to_id
+    target_id = target_label_to_id.get(target_label)
 
     base: dict[str, Any] = {
         "thermalpad_label": thermalpad_label,
@@ -240,7 +259,7 @@ def evaluate_thermalpad_target_iou(
     if target_id is None:
         return _zero_result("no_target_label")
     target_bbox = select_best_bbox_for_label(
-        bbox_msg, target_label, int(target_id)
+        target_msg, target_label, int(target_id)
     )
     if target_bbox is None:
         return _zero_result("no_target_bbox")

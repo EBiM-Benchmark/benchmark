@@ -22,9 +22,13 @@ APP_DEFAULTS: dict[str, Any] = {
     "semantic_segmentation_topic": "/isaac/eval_camera/semantic_segmentation",
     "semantic_labels_topic": "/isaac/eval_camera/semantic_labels",
     "bbox_2d_tight_topic": "/isaac/eval_camera/bbox_2d_tight",
-    # The bbox annotator's own id->label map (class IDs differ from the
-    # raw mask IDs carried by semantic_labels_topic).
-    "bbox_labels_topic": "/isaac/eval_camera/bbox_2d_tight_labels",
+    # Each annotator publishes its OWN id->label map with its own ID
+    # scheme; see task2_isaacsim/config/topics.yaml. The target resolves
+    # through the loose stream because tight bboxes drop fully occluded
+    # objects and a correct placement occludes the target exactly.
+    "bbox_tight_labels_topic": "/isaac/eval_camera/bbox_2d_tight_labels",
+    "bbox_2d_loose_topic": "/isaac/eval_camera/bbox_2d_loose",
+    "bbox_loose_labels_topic": "/isaac/eval_camera/bbox_2d_loose_labels",
     "camera_info_topic": "/isaac/eval_camera/camera_info",
     "thermalpad_label": "thermalpad",
     "liner_label": "liner",
@@ -121,9 +125,19 @@ def _build_arg_parser(defaults: dict[str, Any]) -> argparse.ArgumentParser:
         default=str(defaults["bbox_2d_tight_topic"]),
     )
     parser.add_argument(
-        "--bbox-labels-topic",
+        "--bbox-tight-labels-topic",
         type=str,
-        default=str(defaults["bbox_labels_topic"]),
+        default=str(defaults["bbox_tight_labels_topic"]),
+    )
+    parser.add_argument(
+        "--bbox-2d-loose-topic",
+        type=str,
+        default=str(defaults["bbox_2d_loose_topic"]),
+    )
+    parser.add_argument(
+        "--bbox-loose-labels-topic",
+        type=str,
+        default=str(defaults["bbox_loose_labels_topic"]),
     )
     parser.add_argument(
         "--camera-info-topic",
@@ -182,7 +196,9 @@ def load_runtime_config(args=None) -> dict[str, Any]:
         "semantic_segmentation_topic": parsed.semantic_segmentation_topic,
         "semantic_labels_topic": parsed.semantic_labels_topic,
         "bbox_2d_tight_topic": parsed.bbox_2d_tight_topic,
-        "bbox_labels_topic": parsed.bbox_labels_topic,
+        "bbox_tight_labels_topic": parsed.bbox_tight_labels_topic,
+        "bbox_2d_loose_topic": parsed.bbox_2d_loose_topic,
+        "bbox_loose_labels_topic": parsed.bbox_loose_labels_topic,
         "camera_info_topic": parsed.camera_info_topic,
         "evaluate_service_name": parsed.evaluate_service_name,
         "output_dir": parsed.output_dir,

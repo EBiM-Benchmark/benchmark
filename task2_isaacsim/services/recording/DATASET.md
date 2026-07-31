@@ -155,7 +155,7 @@ LeRobot tooling ignores this directory.
 |---|---|
 | `episode_index`, `frames`, `task` | Mirror of the LeRobot metadata |
 | `success` | Operator-confirmed success flag (chosen at save time) |
-| `success_suggestion` | Automatic hint: `iou_thermalpad_vs_target_current`, `is_orientation_correct`, `orientation_case` |
+| `success_suggestion` | Automatic hint: `iou_thermalpad_vs_target_current`, `is_orientation_correct`, `orientation_case`, `min_iou` (threshold used) |
 | `dropped_stale_frames` | Frames skipped because a camera/state message was stale |
 | `encoder_dropped_frames` | Streaming-encoder drops (`null` when streaming encoding is off) |
 | `fps_sim` | Recording rate in sim time (30) |

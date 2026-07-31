@@ -244,6 +244,13 @@ def _setup_single_camera_graph(
             publish_bbox,
             "bbox_2d_tight_labels",
         ),
+        (
+            "Bbox2dLoosePublish",
+            "bbox_2d_loose",
+            "bbox_2d_loose",
+            publish_bbox,
+            "bbox_2d_loose_labels",
+        ),
     ]
     for name, helper_type, topic, enabled, labels_topic in helper_streams:
         if not enabled:

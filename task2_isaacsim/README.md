@@ -202,6 +202,17 @@ stream details are documented in the
    (`--enable-scene-cameras` to turn them on without the full `--record`
    bundle, `--scene-cameras-config` to point at your own file).
 
+   The `eval_camera` (namespace `/isaac/eval_camera`) publishes `image_raw`
+   / `depth` / `camera_info` plus three annotator streams, each with its
+   own incompatible ID scheme on its own topic: `semantic_segmentation` +
+   `semantic_labels`, `bbox_2d_tight` + `bbox_2d_tight_labels`, and
+   `bbox_2d_loose` + `bbox_2d_loose_labels`. Tight bboxes are cropped to
+   visible pixels and dropped when fully occluded; loose bboxes are
+   published regardless of occlusion — see [Task 2 evaluation](../scripts/evaluation/task2/README.md#three-label-topics-three-id-schemes)
+   for the full write-up (including why the target resolves through the
+   loose stream). These feed both the recorder's `--suggest-success` IoU
+   suggestion and the Task 2 evaluation service.
+
 2. **Teleop helper stack** as needed (keyboard/GELLO/browser — see
    Quickstart).
 
@@ -227,8 +238,14 @@ stream details are documented in the
    `run_recorder.sh record -- --resume` (or `-- --resume_version N`).
 
    Recording defaults (repo name, fps, cameras, episode limits, …) live in
-   [services/recording/recording.yaml](services/recording/recording.yaml).
-   To override, put parameters after `--` when using helper script:
+   [services/recording/recording.yaml](services/recording/recording.yaml),
+   including `success_min_iou` (default `0.0`, `--success-min-iou`): the
+   minimum pad-vs-target IoU for the recorder's auto-suggested success
+   label, which requires `is_orientation_correct` and
+   `iou_thermalpad_vs_target_current > success_min_iou`. It only gates
+   that suggestion — it has no effect on the Task 2 evaluation service's
+   score, and the raw IoU is stored in the `task2_extras/` sidecar either
+   way. To override, put parameters after `--` when using helper script:
 
    ```bash
    task2_isaacsim/scripts/run_recorder.sh record -- --fps 20 --record-depth

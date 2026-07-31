@@ -93,20 +93,47 @@ live raw-ID map (below) and compare:
 - `thermalpad_ratio > 0.9` → `both_thermalpad_dominant` (wrong)
 - otherwise → `sideways` (wrong, IoU = 0)
 
-### Two label topics, two ID schemes
+### Three label topics, three ID schemes
 
 Isaac Sim's `ROS2CameraHelper` publishes each annotator's **own** `idToLabels`
-map. The two schemes differ by construction and must stay on separate topics
-(the bridge's shared default used to interleave both maps on one topic):
+map, on its own topic. The three schemes differ by construction and are
+mutually incompatible — resolving one stream's IDs through another's map
+silently picks the wrong class (the bridge's shared default used to
+interleave two of them on one topic before this was split out):
 
-- `bbox_2d_tight_labels` — the bbox annotator's map. Labeled classes counted
-  from 0 (e.g. `{0: liner, 1: thermalpad, 2: board, 3: target}`). Resolves the
-  numeric `class_id` strings in `bbox_2d_tight` detections.
 - `semantic_labels` — the segmentation annotator's map. IDs are the raw mask
   pixel values, with `0=BACKGROUND` / `1=UNLABELLED` reserved and scene
   classes from 2. **The class order is assigned per session** (verified: it
   permutes between runs), so this map is parsed live
   (`hints_from_label_payload` in `evaluation.py`) to resolve mask pixels.
+- `bbox_2d_tight_labels` — the tight-bbox annotator's map. Classes counted
+  from 0 over the classes **visible in the frame** (e.g.
+  `{0: liner, 1: thermalpad, 2: board, 3: target}`; a fully occluded class
+  is simply absent). Resolves the numeric `class_id` strings in
+  `bbox_2d_tight` detections.
+- `bbox_2d_loose_labels` — the loose-bbox annotator's map. Classes counted
+  from 0 over **all** labelled classes, regardless of visibility. Resolves
+  `class_id` strings in `bbox_2d_loose` detections.
+
+Tight bboxes are cropped to an object's visible pixels and dropped entirely
+once it's fully occluded; loose bboxes are published regardless of occlusion.
+Quoting the [authoritative source](https://forums.developer.nvidia.com/t/occluded-objects-bounding-boxes/222506):
+"Loose will always be annotated, regardless of occlusions. Tight should
+always be cropped, or removed if fully occluded."
+
+That distinction is why the target is resolved through the loose stream: a **correctly placed pad occludes the target completely** — under
+the tight stream alone, that scored `no_target_label`, IoU 0.0, on every
+correct placement. Therefore the evaluation service takes the
+**target** from `bbox_2d_loose` / `bbox_2d_loose_labels`, while the **pad**,
+its **orientation**, and its own bbox still come from the tight stream —
+"which pad face is visible" is exactly the occlusion-derived signal that
+distinguishes a correctly placed pad (liner up) from an inverted one, so it
+must stay occlusion-aware.
+
+A scene predating the loose helper publishes no `bbox_2d_loose` /
+`bbox_2d_loose_labels` topics; the service then falls back to resolving the
+target through the tight stream too, restoring the old occlusion-degenerate
+behaviour above. Scene and service must come from the same checkout.
 
 `SEMANTIC_RAW_ID_NAME_HINTS` in `config.py` is only a **fallback** for when no
 `semantic_labels` payload has been received. It only affects the
@@ -119,11 +146,15 @@ Per `evaluate` call, written to `/output/evaluate/` (timestamped):
 - `eval_camera_rgb_<ts>.jpg`
 - `eval_camera_depth_<ts>.npy` / `.png`
 - `eval_camera_semantic_segmentation_<ts>.npy` (raw int32) / `.png` (colorized)
-- `eval_camera_semantic_labels_<ts>.txt`
+- `eval_camera_semantic_labels_<ts>.txt` (segmentation annotator's raw-mask ID map)
+- `eval_camera_bbox_tight_labels_<ts>.txt` (tight annotator's class-ID map)
+- `eval_camera_bbox_loose_labels_<ts>.txt` (loose annotator's class-ID map)
 - `eval_camera_iou_<ts>.json` — primary result (`iou_thermalpad_vs_target_current`,
   `is_orientation_correct`, `orientation_case`, areas, `pad_bbox`, `target_bbox`, …)
 - `eval_camera_bbox2d_tight_<ts>.json`
 - `eval_camera_rgb_bbox2d_tight_<ts>.jpg` (bbox overlay)
+- `eval_camera_bbox2d_loose_<ts>.json` / `eval_camera_rgb_bbox2d_loose_<ts>.jpg`
+  (bbox overlay) — written only when the scene publishes `bbox_2d_loose`
 
 ## ROS2 Topics
 
@@ -134,15 +165,21 @@ Published by the scene's ROS2 bridge graph:
 - `semantic_segmentation`
 - `semantic_labels` (segmentation annotator's raw-mask ID map)
 - `bbox_2d_tight`
-- `bbox_2d_tight_labels` (bbox annotator's class-ID map)
+- `bbox_2d_tight_labels` (tight-bbox annotator's class-ID map)
+- `bbox_2d_loose` (loose-bbox annotator's detections, published regardless
+  of occlusion; feeds the target bbox)
+- `bbox_2d_loose_labels` (loose-bbox annotator's class-ID map)
 - `camera_info`
 
-If the scene predates the labels-topic split, `bbox_2d_tight_labels` is
-absent and the service falls back to resolving bbox class IDs via
-`semantic_labels` — that topic then interleaves both annotators' maps, so
-evaluations are unreliable (pre-split behavior). Run scene and service from
-the same checkout. Topic names can be overridden in `config.yaml` or via CLI
-args to `main.py`.
+If the scene predates the loose-bbox helper, `bbox_2d_loose` /
+`bbox_2d_loose_labels` are absent and the service falls back to resolving
+the target through the tight stream too, restoring the old
+occlusion-degenerate behavior (see above). If it predates the
+labels-topic split, `bbox_2d_tight_labels` is absent and the service falls
+back to resolving bbox class IDs via `semantic_labels` — that topic then
+interleaves both annotators' maps, so evaluations are unreliable (pre-split
+behavior). Run scene and service from the same checkout. Topic names can be
+overridden in `config.yaml` or via CLI args to `main.py`.
 
 ## Unit Tests
 

@@ -931,6 +931,10 @@ def setup_deformable_camera(
                     "Bbox2dTightPublish",
                     "isaacsim.ros2.bridge.ROS2CameraHelper",
                 ),
+                (
+                    "Bbox2dLoosePublish",
+                    "isaacsim.ros2.bridge.ROS2CameraHelper",
+                ),
             ],
             keys.CONNECT: [
                 ("OnPlaybackTick.outputs:tick", "RunOnce.inputs:execIn"),
@@ -980,6 +984,18 @@ def setup_deformable_camera(
                 (
                     "Context.outputs:context",
                     "Bbox2dTightPublish.inputs:context",
+                ),
+                (
+                    "RenderProduct.outputs:execOut",
+                    "Bbox2dLoosePublish.inputs:execIn",
+                ),
+                (
+                    "RenderProduct.outputs:renderProductPath",
+                    "Bbox2dLoosePublish.inputs:renderProductPath",
+                ),
+                (
+                    "Context.outputs:context",
+                    "Bbox2dLoosePublish.inputs:context",
                 ),
             ],
             keys.SET_VALUES: [
@@ -1035,6 +1051,24 @@ def setup_deformable_camera(
                 (
                     "Bbox2dTightPublish.inputs:semanticLabelsTopicName",
                     "bbox_2d_tight_labels",
+                ),
+                # Publisher: 2D Bounding Box Loose. Loose bboxes are
+                # published regardless of occlusion; tight ones are cropped
+                # to visible pixels and dropped when fully occluded. The
+                # evaluator takes the target from here because a correct
+                # pad placement occludes the target decal exactly.
+                ("Bbox2dLoosePublish.inputs:topicName", "bbox_2d_loose"),
+                ("Bbox2dLoosePublish.inputs:type", "bbox_2d_loose"),
+                ("Bbox2dLoosePublish.inputs:resetSimulationTimeOnStop", True),
+                ("Bbox2dLoosePublish.inputs:frameId", ROS_TOPIC_FRAMEID),
+                (
+                    "Bbox2dLoosePublish.inputs:nodeNamespace",
+                    ROS_TOPIC_NAMESPACE,
+                ),
+                ("Bbox2dLoosePublish.inputs:enableSemanticLabels", True),
+                (
+                    "Bbox2dLoosePublish.inputs:semanticLabelsTopicName",
+                    "bbox_2d_loose_labels",
                 ),
             ],
         },
