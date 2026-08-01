@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import random
 import sys
 from pathlib import Path
 from typing import Any
@@ -273,15 +272,9 @@ def run_stage2(app: Any, stage: Any, frames: int) -> dict[str, Any]:
 
     bean_paths = sorted_bean_paths(stage)[:5]
     head_feed_pose = stage2_feed_pose(stage)
-    spoon_start = Point3D(
-        head_feed_pose.x, head_feed_pose.y - 0.20, head_feed_pose.z
+    spoon_start, insertion_pose, retract_pose = stage2_spoon_poses(
+        head_feed_pose
     )
-    insertion_pose = Point3D(
-        head_feed_pose.x,
-        head_feed_pose.y - 0.10,
-        head_feed_pose.z,
-    )
-    retract_pose = spoon_start
     set_stage2_perspective_view(app, spoon_start, insertion_pose)
     spoon_path = resolve_prim_path(stage, "spoon2")
     spoon_rigid_body_paths = find_rigid_body_paths_under(stage, spoon_path)
@@ -350,8 +343,8 @@ def run_stage2(app: Any, stage: Any, frames: int) -> dict[str, Any]:
     result["required_hold_seconds"] = 3.0
     result["smooth_motion"] = smooth
     result["initial_head_offset_m"] = 0.20
-    result["insertion_distance_m"] = 0.10
-    result["closest_head_offset_m"] = 0.10
+    result["insertion_distance_m"] = 0.12
+    result["closest_head_offset_m"] = 0.08
     result["spoon_z_rotation_deg"] = 90.0
     result["spoon_rigid_body_count"] = len(spoon_rigid_body_paths)
     result["spoon_root_is_rigid"] = spoon_path in spoon_rigid_body_paths
@@ -364,6 +357,16 @@ def run_stage3(app: Any, stage: Any, frames: int) -> dict[str, Any]:
     import omni.timeline
 
     bean_paths = sorted_bean_paths(stage)
+    bowl_path = resolve_prim_path(stage, "bowl2")
+    bowl_min, bowl_max = scene.prim_world_bounds(stage, bowl_path)
+    bowl_bounds = Bounds3D(
+        x_min=bowl_min[0],
+        y_min=bowl_min[1],
+        z_min=bowl_min[2],
+        x_max=bowl_max[0],
+        y_max=bowl_max[1],
+        z_max=bowl_max[2],
+    )
     knock_path = resolve_prim_path(stage, "ikea_knock_box")
     bound_min, bound_max = scene.prim_world_bounds(stage, knock_path)
     knock_bounds = Bounds3D(
@@ -375,12 +378,14 @@ def run_stage3(app: Any, stage: Any, frames: int) -> dict[str, Any]:
         z_max=bound_max[2],
     )
     recovery_region = recovery_region_from_bounds(knock_bounds)
-    random.seed(3)
-    spawn_points = scene.bean_spawn_positions_in_bounds(
-        len(bean_paths), (bound_min, bound_max)
+    original_layout = [
+        get_prim_position(stage, bean_path) for bean_path in bean_paths
+    ]
+    translated_layout = translate_points_between_containers(
+        original_layout, bowl_bounds, knock_bounds
     )
-    for bean_path, point in zip(bean_paths, spawn_points):
-        set_prim_position(stage, bean_path, Point3D(*point))
+    for bean_path, point in zip(bean_paths, translated_layout):
+        set_prim_position(stage, bean_path, point)
     timeline = omni.timeline.get_timeline_interface()
     timeline.play()
     step_app(app, max(frames, 180))
@@ -648,6 +653,42 @@ def spoon_bean_position(spoon_position: Point3D, index: int) -> Point3D:
 def stage2_feed_pose(stage: Any) -> Point3D:
     head = get_prim_position(stage, resolve_prim_path(stage, "head"))
     return Point3D(head.x, head.y, head.z + 0.17)
+
+
+def stage2_spoon_poses(
+    head_feed_pose: Point3D,
+) -> tuple[Point3D, Point3D, Point3D]:
+    spoon_start = Point3D(
+        head_feed_pose.x,
+        head_feed_pose.y - 0.20,
+        head_feed_pose.z,
+    )
+    insertion_pose = Point3D(
+        head_feed_pose.x,
+        head_feed_pose.y - 0.08,
+        head_feed_pose.z,
+    )
+    return spoon_start, insertion_pose, spoon_start
+
+
+def translate_points_between_containers(
+    points: list[Point3D],
+    source_bounds: Bounds3D,
+    target_bounds: Bounds3D,
+) -> list[Point3D]:
+    translation = Point3D(
+        target_bounds.center.x - source_bounds.center.x,
+        target_bounds.center.y - source_bounds.center.y,
+        target_bounds.z_min - source_bounds.z_min,
+    )
+    return [
+        Point3D(
+            point.x + translation.x,
+            point.y + translation.y,
+            point.z + translation.z,
+        )
+        for point in points
+    ]
 
 
 def set_stage2_perspective_view(
