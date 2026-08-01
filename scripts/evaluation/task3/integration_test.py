@@ -29,10 +29,8 @@ for import_path in (TASK3_DIR, SCENES_DIR, COMMON_DIR):
 from grading import (  # noqa: E402
     DEFAULT_STAGE1_OBJECTS,
     DEFAULT_UTENSIL_OBJECTS,
-    TASK3_BEAN_RECOVERY_REGION,
-    TASK3_BEAN_SPAWN_POSITION,
-    TASK3_SINK_REGION,
     Bounds2D,
+    Bounds3D,
     FeedHoldState,
     Point3D,
     bean_recovery_score,
@@ -40,8 +38,10 @@ from grading import (  # noqa: E402
     count_points_in_sphere,
     feed_score,
     movement_is_smooth,
+    recovery_region_from_bounds,
     score_stage1_table_setup,
     score_stage4_cleanup,
+    sink_region_from_bounds,
     update_feed_hold,
 )
 from path_utils import asset_path  # noqa: E402
@@ -364,14 +364,20 @@ def run_stage3(app: Any, stage: Any, frames: int) -> dict[str, Any]:
     import omni.timeline
 
     bean_paths = sorted_bean_paths(stage)
+    knock_path = resolve_prim_path(stage, "ikea_knock_box")
+    bound_min, bound_max = scene.prim_world_bounds(stage, knock_path)
+    knock_bounds = Bounds3D(
+        x_min=bound_min[0],
+        y_min=bound_min[1],
+        z_min=bound_min[2],
+        x_max=bound_max[0],
+        y_max=bound_max[1],
+        z_max=bound_max[2],
+    )
+    recovery_region = recovery_region_from_bounds(knock_bounds)
     random.seed(3)
-    spawn_points = scene.bean_spawn_positions(
-        len(bean_paths),
-        (
-            TASK3_BEAN_SPAWN_POSITION.x,
-            TASK3_BEAN_SPAWN_POSITION.y,
-            TASK3_BEAN_SPAWN_POSITION.z,
-        ),
+    spawn_points = scene.bean_spawn_positions_in_bounds(
+        len(bean_paths), (bound_min, bound_max)
     )
     for bean_path, point in zip(bean_paths, spawn_points):
         set_prim_position(stage, bean_path, Point3D(*point))
@@ -383,7 +389,7 @@ def run_stage3(app: Any, stage: Any, frames: int) -> dict[str, Any]:
     positions = [
         get_prim_position(stage, bean_path) for bean_path in bean_paths
     ]
-    beans_inside = count_points_in_sphere(positions)
+    beans_inside = count_points_in_sphere(positions, recovery_region)
     score = bean_recovery_score(beans_inside, len(bean_paths))
     result = stage_result("stage3", score, 4, score >= 3)
     result["beans_inside_sphere"] = beans_inside
@@ -391,17 +397,31 @@ def run_stage3(app: Any, stage: Any, frames: int) -> dict[str, Any]:
     result["beans_inside_sphere_percent"] = percentage(
         beans_inside, len(bean_paths)
     )
-    result["sphere_center"] = point_to_list(TASK3_BEAN_RECOVERY_REGION.center)
-    result["sphere_radius"] = TASK3_BEAN_RECOVERY_REGION.radius
+    result["sphere_center"] = point_to_list(recovery_region.center)
+    result["sphere_radius"] = recovery_region.radius
     return result
 
 
 def run_stage4(app: Any, stage: Any, frames: int) -> dict[str, Any]:
-    sink = TASK3_SINK_REGION.bounds
+    import scene_robot_room_keyboard as scene
+
+    sink_path = resolve_prim_path(stage, "sink_boundary")
+    bound_min, bound_max = scene.prim_world_bounds(stage, sink_path)
+    sink_region = sink_region_from_bounds(
+        Bounds3D(
+            x_min=bound_min[0],
+            y_min=bound_min[1],
+            z_min=bound_min[2],
+            x_max=bound_max[0],
+            y_max=bound_max[1],
+            z_max=bound_max[2],
+        )
+    )
+    sink = sink_region.bounds
     sink_center = Point3D(
         0.5 * (sink.x_min + sink.x_max),
         0.5 * (sink.y_min + sink.y_max),
-        TASK3_SINK_REGION.tabletop_z + 0.05,
+        sink_region.tabletop_z + 0.05,
     )
     object_paths = {
         name: resolve_prim_path(stage, name)
@@ -440,7 +460,7 @@ def run_stage4(app: Any, stage: Any, frames: int) -> dict[str, Any]:
         name: get_named_prim_position(stage, name).z
         for name in DEFAULT_UTENSIL_OBJECTS
     }
-    score = score_stage4_cleanup(bounds, z_values)
+    score = score_stage4_cleanup(bounds, z_values, sink_region)
     result = stage_result(
         "stage4", score.score, score.max_score, score.score == 5
     )
@@ -457,7 +477,7 @@ def run_stage4(app: Any, stage: Any, frames: int) -> dict[str, Any]:
         "x_max": sink.x_max,
         "y_min": sink.y_min,
         "y_max": sink.y_max,
-        "tabletop_z": TASK3_SINK_REGION.tabletop_z,
+        "tabletop_z": sink_region.tabletop_z,
     }
     return result
 
