@@ -140,3 +140,10 @@ def add_common_bridge_args(parser: argparse.ArgumentParser) -> None:
         "and their script node crashes plain Isaac Sim.",
     )
     parser.add_argument("--headless", action="store_true")
+    parser.add_argument(
+        "--livestream",
+        action="store_true",
+        help="Enable Isaac Sim WebRTC livestream (implies headless Kit). "
+        "Advertise PUBLIC_IP for remote EC2 clients "
+        "(TCP 49100 + UDP 47998).",
+    )
