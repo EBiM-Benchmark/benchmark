@@ -20,3 +20,6 @@ assets/robot_room.usd filter=lfs diff=lfs merge=lfs -text
 # task1_mujoco: extensionless in-image launcher script (CRLF breaks its shebang)
 task1_mujoco/robotiq_duo_full_scene_minimal_core/release/ebim text eol=lf
 task1_mujoco/**/*.sh text eol=lf
+
+# Task 1 Isaac Sim board fixture USDs are binary USDC; never EOL-convert them.
+task1_isaacsim/**/*.usd -text

@@ -1,0 +1,58 @@
+# Copyright (c) 2026 The EBiM Benchmark Contributors
+# SPDX-License-Identifier: Apache-2.0
+#
+# Default settings for the Task 2 LeRobot demonstration recorder
+# (services/recording/record_task2.py). Keys mirror the recorder's CLI
+# flags; precedence is: argparse defaults < this file < explicit CLI flags
+# (so RECORDER_ARGS / `run_recorder.sh record -- ...` always win).
+#
+# Point the recorder at a different file with --config (or RECORDER_CONFIG
+# when launching through docker compose / scripts/run_recorder.sh).
+# resume/resume_version are per-invocation and must stay on the CLI.
+
+# Dataset identity: repo_id becomes <hub_namespace>/<repo_name>_vN, written
+# to <output_dir>/<repo_name>_vN/.
+# The output_dir is relative to task2_isaacsim/.
+repo_name: task2_thermalpad
+hub_namespace: ebim
+single_task: Pick up the thermal pad and place it on the target RAM board.
+output_dir: dataset/
+robot_id: fr3duo_mobile_task2
+
+# Sampling (paced on /isaac/clock simulation time).
+fps: 30
+cameras: head,wrist_left,wrist_right,eval_camera
+record_depth: false
+depth_every: 6          # store depth every N frames (6 = 5 Hz at 30 fps)
+
+# ROS interface.
+qos_depth: 10           # queue depth for non-image subscriptions
+stream_timeout_s: 15.0  # wait this long (s) for topics before warning
+
+# LeRobot image writer (0 processes -> threads inside the recorder).
+# Only used by the classic PNG + batch-encode path (streaming off).
+image_writer_processes: 0
+image_writer_threads: 4
+
+# Streaming video encoding (opt-in). Encodes camera frames on the fly in
+# per-camera encoder threads instead of PNG dump + batch encode at save;
+# episode save becomes near-instant. A full encoder queue DROPS frames
+# (video/state desync — the recorder warns and asks before saving such an
+# episode), so the queue is sized well above lerobot's default of 30.
+# fragmented_mp4 writes the in-progress temp videos as fragmented MP4, so
+# a crashed recording leaves playable files for salvage;
+# it only matters with streaming on. rgb_vcodec must stay consistent for
+# the lifetime of a dataset (the recorder refuses mismatched resumes).
+streaming_encoding: false
+encoder_queue_maxsize: 90  # frames per camera (~3 s at 30 fps; ~2.8 MB each at 720p)
+encoder_threads: null      # null -> lerobot default
+fragmented_mp4: true
+rgb_vcodec: null           # null -> libsvtav1; "auto"/"h264_nvenc"/... use the GPU encoder
+
+# Success labelling at episode save.
+suggest_success: true
+prompt_success: true
+
+# Episode limits.
+max_episode_time_s: 300.0
+max_episodes: 200

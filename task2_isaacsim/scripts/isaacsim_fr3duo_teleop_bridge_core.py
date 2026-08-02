@@ -23,9 +23,13 @@ from pathlib import Path
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 # Reuse the Task 1 shared constants (joint names, gripper coupling, defaults).
 sys.path.insert(0, str(_REPO_ROOT / "task1_isaacsim" / "scripts"))
+# Make the local recording package importable regardless of the entry point.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import numpy as np  # noqa: E402
 import rclpy  # noqa: E402
+import yaml  # noqa: E402
+from geometry_msgs.msg import PoseStamped, Twist  # noqa: E402
 from isaac_bridge_constants import (  # noqa: E402
     LEFT_GRIPPER_COUPLED_JOINT_MULTIPLIERS,
     LEFT_GRIPPER_DRIVER_JOINT,
@@ -34,9 +38,12 @@ from isaac_bridge_constants import (  # noqa: E402
     RIGHT_GRIPPER_DRIVER_JOINT,
     RIGHT_JOINTS,
 )
+from nav_msgs.msg import Odometry  # noqa: E402
 from rclpy.node import Node  # noqa: E402
+from rosgraph_msgs.msg import Clock  # noqa: E402
 from sensor_msgs.msg import JointState  # noqa: E402
 from std_msgs.msg import String  # noqa: E402
+from topics import TOPICS_YAML, load_topics  # noqa: E402
 
 import omni.usd  # noqa: E402
 from isaacsim.core.prims import SingleArticulation  # noqa: E402
@@ -50,13 +57,25 @@ from isaacsim.robot_motion.motion_generation.lula.motion_policies import (  # no
 )
 from pxr import Gf, UsdGeom, UsdLux, UsdPhysics  # noqa: E402
 
-try:
-    import yaml
-except Exception:  # pragma: no cover - PyYAML ships with Isaac Sim
-    yaml = None
+# All topic names come from the shared contract (config/topics.yaml);
+# load_topics() fails hard if the file or a required key is missing.
+_TOPICS = load_topics()
 
-
-PEDAL_STATE_TOPIC = "/pedal/state"
+PEDAL_STATE_TOPIC = _TOPICS["teleop"]["pedal_state"]
+# Recording streams (published only with --publish-recording-topics): the
+# post-arbitration joint position targets, base odometry/applied twist, and
+# link8 end-effector poses consumed by
+# task2_isaacsim/services/recording/record_task2.py.
+CLOCK_TOPIC = _TOPICS["clock"]
+APPLIED_COMMANDS_TOPIC = _TOPICS["recording"]["applied_joint_commands"]
+FULL_STATES_TOPIC = _TOPICS["recording"]["joint_states_full"]
+ODOM_TOPIC = _TOPICS["recording"]["odom"]
+CMD_VEL_APPLIED_TOPIC = _TOPICS["recording"]["cmd_vel_applied"]
+EE_POSE_TOPICS = dict(_TOPICS["recording"]["ee_pose"])
+EE_POSE_PRIM_NAMES = {
+    "left": "left_fr3v2_link8",
+    "right": "right_fr3v2_link8",
+}
 WHEEL_RADIUS_M = 0.05
 MAX_WHEEL_SPEED_RADPS = 18.0
 STOP_EPS = 1.0e-4
@@ -90,6 +109,13 @@ LULA_ASSETS_DIR = (
 )
 LULA_URDF_PATH = LULA_ASSETS_DIR / "mobile_fr3_duo_v0_2_lula.urdf"
 RMPFLOW_MAX_SUBSTEP_SIZE = 0.0034
+# Per-axis half-extents (m) of the keyboard teleop target box around each
+# arm's ready-pose TCP position (robot-root frame). FR3 reach is ~0.855 m,
+# so held keys cannot wind the RMPflow target far outside the workspace.
+# Targets are stored in the root frame while the spine physically raises
+# the arm base, so the upper z bound gets the spine travel on top.
+ARM_TARGET_EXTENTS_M = np.array([0.7, 0.7, 0.7])
+ARM_TARGET_SPINE_ALLOWANCE_M = np.array([0.0, 0.0, 0.85])
 
 ARM_TELEOP_CONFIGS = {
     "left": {
@@ -181,59 +207,43 @@ def _load_joint_groups(
     left_names = list(LEFT_JOINTS)
     right_names = list(RIGHT_JOINTS)
 
-    if contract_path.exists() and yaml is not None:
-        with contract_path.open("r", encoding="utf-8") as f:
-            contract = yaml.safe_load(f) or {}
-        state = contract.get("state_structure", {})
-        arms = state.get("arms", {})
+    if contract_path.is_file():
+        contract = (
+            yaml.safe_load(contract_path.read_text(encoding="utf-8")) or {}
+        )
+        arms = contract.get("state_structure", {}).get("arms", {})
         left_names = list(
             arms.get("left", {}).get("joint_names") or left_names
         )
         right_names = list(
             arms.get("right", {}).get("joint_names") or right_names
         )
+    else:
+        print(
+            f"Warning: joint contract not found at {contract_path}; "
+            "using built-in joint names.",
+            file=sys.stderr,
+        )
 
+    requested_names = {
+        "left_arm": left_names,
+        "right_arm": right_names,
+        "left_gripper": [LEFT_GRIPPER_DRIVER_JOINT],
+        "right_gripper": [RIGHT_GRIPPER_DRIVER_JOINT],
+    }
+    group_topics = _TOPICS["bridge"]["joint_groups"]
     return [
         JointGroup(
-            label="left_arm",
-            state_topic="/isaac/left_joint_states",
+            label=label,
+            state_topic=group_topics[label]["state"],
             command_topics=_command_topics(
-                "/isaac/left_joint_commands",
-                "/isaac/browser/left_joint_commands",
+                group_topics[label]["command"],
+                group_topics[label]["browser_command"],
                 include_browser_commands,
             ),
-            requested_names=left_names,
-        ),
-        JointGroup(
-            label="right_arm",
-            state_topic="/isaac/right_joint_states",
-            command_topics=_command_topics(
-                "/isaac/right_joint_commands",
-                "/isaac/browser/right_joint_commands",
-                include_browser_commands,
-            ),
-            requested_names=right_names,
-        ),
-        JointGroup(
-            label="left_gripper",
-            state_topic="/isaac/left_robotiq_joint_states",
-            command_topics=_command_topics(
-                "/isaac/left_robotiq_joint_commands",
-                "/isaac/browser/left_robotiq_joint_commands",
-                include_browser_commands,
-            ),
-            requested_names=[LEFT_GRIPPER_DRIVER_JOINT],
-        ),
-        JointGroup(
-            label="right_gripper",
-            state_topic="/isaac/right_robotiq_joint_states",
-            command_topics=_command_topics(
-                "/isaac/right_robotiq_joint_commands",
-                "/isaac/browser/right_robotiq_joint_commands",
-                include_browser_commands,
-            ),
-            requested_names=[RIGHT_GRIPPER_DRIVER_JOINT],
-        ),
+            requested_names=names,
+        )
+        for label, names in requested_names.items()
     ]
 
 
@@ -485,6 +495,17 @@ def _wrap_to_pi(angle: float) -> float:
     return math.atan2(math.sin(angle), math.cos(angle))
 
 
+def _physx_continuous_target(current: float, delta: float) -> float:
+    """Keep the nearest equivalent target inside PhysX's continuous range."""
+    target = current + delta
+    period = 2.0 * math.pi
+    while target >= period:
+        target -= period
+    while target <= -period:
+        target += period
+    return target
+
+
 def _steering_alignment_scale(error: float) -> float:
     scale = (STEERING_ZERO_SPEED_ERROR_RAD - error) / (
         STEERING_ZERO_SPEED_ERROR_RAD - STEERING_FULL_SPEED_ERROR_RAD
@@ -534,7 +555,12 @@ def _compute_drive_targets(
         use_flipped = abs(flipped_delta) < abs(direct_delta)
         steering_delta = flipped_delta if use_flipped else direct_delta
 
-        steering_targets[module_index] = current_angle + steering_delta
+        # PhysX only accepts reduced-coordinate drive targets in [-2π, 2π].
+        # Preserve the nearest representation instead of jumping between the
+        # equivalent +π and -π targets at the wrap boundary.
+        steering_targets[module_index] = _physx_continuous_target(
+            current_angle, steering_delta
+        )
         wheel_speed = (speed_mps / WHEEL_RADIUS_M) * _steering_alignment_scale(
             abs(steering_delta)
         )
@@ -715,6 +741,12 @@ class SpineKeyboardController:
                 joint_indices=np.array([self.joint_index]),
             )
         )
+
+    def reset_target(self) -> None:
+        """Re-read the live joint position as the target (after world reset,
+        so the spine does not snap back to a stale height)."""
+        current = float(self.robot.get_joint_positions()[self.joint_index])
+        self.target = max(self.min_m, min(self.max_m, current))
 
 
 class DualArmKeyboardTeleop:
@@ -940,6 +972,10 @@ class DualArmKeyboardTeleop:
             position = np.array(position, dtype=float)
             position[2] += spine
             arm["home_position"] = position
+            arm["target_min"] = position - ARM_TARGET_EXTENTS_M
+            arm["target_max"] = (
+                position + ARM_TARGET_EXTENTS_M + ARM_TARGET_SPINE_ALLOWANCE_M
+            )
             # Store the orientation as a quaternion: an euler round-trip
             # is lossy near the flange's pitch singularity (the left arm's
             # ready pose sits close to one, which sent RMPflow sideways).
@@ -974,8 +1010,10 @@ class DualArmKeyboardTeleop:
             for arm in self._arms.values():
                 direction = arm["linear_map"].get(key)
                 if direction is not None:
-                    arm["target_position"] = (
-                        arm["target_position"] + direction * linear_step
+                    arm["target_position"] = np.clip(
+                        arm["target_position"] + direction * linear_step,
+                        arm["target_min"],
+                        arm["target_max"],
                     )
                 axis = arm["angular_map"].get(key)
                 if axis is not None:
@@ -1079,6 +1117,18 @@ class DualArmKeyboardTeleop:
             )
         self._apply_gripper_targets(controller)
 
+    def reset_targets(self) -> None:
+        """Re-initialize both arm targets from FK of the live joint state
+        and reopen the grippers (for scene resets between episodes)."""
+        for arm in self._arms.values():
+            arm["gripper_open"] = True
+            rmpflow = arm["rmpflow"]
+            # Drop the internal rollout state so the policy does not glide
+            # back from the pre-reset pose.
+            if hasattr(rmpflow, "reset"):
+                rmpflow.reset()
+        self._init_home_targets()
+
 
 class IsaacSimRosBridge(Node):
     def __init__(
@@ -1086,14 +1136,52 @@ class IsaacSimRosBridge(Node):
         groups: list[JointGroup],
         *,
         node_name: str = "isaacsim_fr3duo_teleop_bridge",
+        publish_recording_topics: bool = False,
     ):
         super().__init__(node_name)
         self.groups = groups
         self.latest_commands: dict[str, dict[str, float]] = {
             group.label: {} for group in groups
         }
+        self._latest_command_time_sec: dict[str, float | None] = {
+            group.label: None for group in groups
+        }
+        self._command_stale: dict[str, bool] = {
+            group.label: False for group in groups
+        }
         self._latest_pedal_state = "NONE"
         self._latest_pedal_time_sec = None
+        # Applied base twist of the current loop iteration (body frame),
+        # stored by run_teleop_loop so it can be republished for recording.
+        self.last_base_twist = (0.0, 0.0, 0.0)
+        self._recording_enabled = bool(publish_recording_topics)
+        self._ee_prims = None  # lazily resolved link8 prims, {side: UsdPrim}
+        if self._recording_enabled:
+            # The clock topic is published from the main loop's
+            # world.current_time (physics time, rebases to 0 on scene
+            # resets). The OmniGraph IsaacReadSimulationTime route was
+            # abandoned: its monotonic time-sample lookups produce jumping
+            # values after a world.stop()/reset() ("onStop: Cleared time
+            # samples"). The topic is /isaac/clock rather than /clock
+            # because the robot USD's embedded ROS_JointStates graph leaks
+            # a ros2_publish_clock publisher (instantiated during stage
+            # build, before _deactivate_embedded_graphs runs) that keeps
+            # emitting 0.0 on /clock every tick.
+            self._clock_pub = self.create_publisher(Clock, CLOCK_TOPIC, 10)
+            self._applied_commands_pub = self.create_publisher(
+                JointState, APPLIED_COMMANDS_TOPIC, 10
+            )
+            self._full_states_pub = self.create_publisher(
+                JointState, FULL_STATES_TOPIC, 10
+            )
+            self._odom_pub = self.create_publisher(Odometry, ODOM_TOPIC, 10)
+            self._cmd_vel_applied_pub = self.create_publisher(
+                Twist, CMD_VEL_APPLIED_TOPIC, 10
+            )
+            self._ee_pose_pubs = {
+                side: self.create_publisher(PoseStamped, topic, 10)
+                for side, topic in EE_POSE_TOPICS.items()
+            }
         self._state_publishers = {
             group.label: self.create_publisher(
                 JointState, group.state_topic, 10
@@ -1118,8 +1206,14 @@ class IsaacSimRosBridge(Node):
             self._on_pedal_state,
             10,
         )
+        # Log the loaded contract once; the command topics are duplicated in
+        # the task1 helper services, so this is the quickest drift check.
+        command_topics = [t for g in groups for t in g.command_topics]
+        state_topics = [g.state_topic for g in groups]
         self.get_logger().info(
-            "Isaac Sim ROS bridge listening on /isaac command topics"
+            f"Topic contract ({TOPICS_YAML}): "
+            f"commands={command_topics} states={state_topics} "
+            f"pedal={PEDAL_STATE_TOPIC} recording={self._recording_enabled}"
         )
 
     def _on_joint_command(self, label: str, msg: JointState):
@@ -1129,6 +1223,9 @@ class IsaacSimRosBridge(Node):
                 break
             if math.isfinite(float(msg.position[idx])):
                 command[name] = float(msg.position[idx])
+        self._latest_command_time_sec[label] = (
+            self.get_clock().now().nanoseconds * 1e-9
+        )
 
     def _on_pedal_state(self, msg: String):
         state = msg.data.strip().upper().replace(" ", "")
@@ -1167,14 +1264,49 @@ class IsaacSimRosBridge(Node):
             return 0.0, 0.0, -angular_speed_radps
         return 0.0, 0.0, 0.0
 
+    def _command_group_stale(self, label: str, timeout_sec: float) -> bool:
+        """Watchdog: True when a group's last command is older than timeout.
+
+        Skipping a stale group only stops re-applying its cached targets;
+        the drives hold the last applied position, so a dead publisher
+        (GELLO republisher, browser, position controller) leaves the arms
+        parked instead of stomping later state such as the post-reset
+        ready pose. Negative timeout disables the gate.
+        """
+        if timeout_sec < 0.0:
+            return False
+        received_sec = self._latest_command_time_sec[label]
+        if received_sec is None:
+            return False
+        now_sec = self.get_clock().now().nanoseconds * 1e-9
+        stale = now_sec - received_sec > timeout_sec
+        if stale != self._command_stale[label]:
+            self._command_stale[label] = stale
+            if stale:
+                print(
+                    f"[bridge] {label} command stream stale "
+                    f"(> {timeout_sec:.1f} s); holding last applied "
+                    "targets",
+                    flush=True,
+                )
+            else:
+                print(
+                    f"[bridge] {label} command stream resumed",
+                    flush=True,
+                )
+        return stale
+
     def apply_commands(
         self,
         robot: SingleArticulation,
         group_indices: dict[str, dict[str, int]],
         coupled_indices: dict[str, dict[int, float]],
+        timeout_sec: float = -1.0,
     ):
         targets: dict[int, float] = {}
         for group in self.groups:
+            if self._command_group_stale(group.label, timeout_sec):
+                continue
             resolved = group_indices.get(group.label, {})
             coupled = coupled_indices.get(group.label)
             for requested_name, position in self.latest_commands[
@@ -1228,6 +1360,137 @@ class IsaacSimRosBridge(Node):
             msg.velocity = velocities
             msg.effort = [0.0] * len(names)
             self._state_publishers[group.label].publish(msg)
+
+    def _resolve_ee_prims(self) -> dict:
+        stage = omni.usd.get_context().get_stage()
+        prims = {}
+        wanted = dict(EE_POSE_PRIM_NAMES)
+        for prim in stage.Traverse():
+            for side, prim_name in list(wanted.items()):
+                if prim.GetName() == prim_name and prim.IsA(UsdGeom.Xformable):
+                    prims[side] = prim
+                    del wanted[side]
+            if not wanted:
+                break
+        if wanted:
+            print(
+                "Warning: EE pose publishing disabled for "
+                f"{sorted(wanted)}: prims {sorted(wanted.values())} "
+                "not found on the stage",
+                file=sys.stderr,
+            )
+        return prims
+
+    def publish_clock(self, sim_time: float) -> None:
+        """Publish simulation time on the clock topic (recorders pace on
+        it)."""
+        if not self._recording_enabled:
+            return
+        msg = Clock()
+        msg.clock = rclpy.time.Time(
+            nanoseconds=max(int(sim_time * 1e9), 0)
+        ).to_msg()
+        self._clock_pub.publish(msg)
+
+    def publish_recording_streams(
+        self, robot: SingleArticulation, sim_time: float
+    ) -> None:
+        """Publish the applied joint targets, base odometry, applied base
+        twist, and link8 EE poses (all stamped with simulation time)."""
+        if not self._recording_enabled:
+            return
+        stamp = rclpy.time.Time(
+            nanoseconds=max(int(sim_time * 1e9), 0)
+        ).to_msg()
+
+        # Post-arbitration joint position targets, regardless of source
+        # (ROS commands, keyboard RMPflow, spine keys, gripper toggles).
+        applied = robot.get_articulation_controller().get_applied_action()
+        applied_positions = (
+            applied.joint_positions if applied is not None else None
+        )
+        msg = JointState()
+        msg.header.stamp = stamp
+        msg.name = list(robot.dof_names)
+        if applied_positions is None:
+            msg.position = [math.nan] * len(msg.name)
+        else:
+            msg.position = [
+                float(p) if p is not None else math.nan
+                for p in applied_positions
+            ]
+        self._applied_commands_pub.publish(msg)
+
+        # Full measured joint state (the per-group /isaac/*_joint_states
+        # topics omit the spine and base joints).
+        joint_pos = robot.get_joint_positions()
+        joint_vel = robot.get_joint_velocities()
+        full = JointState()
+        full.header.stamp = stamp
+        full.name = list(robot.dof_names)
+        full.position = [float(p) for p in joint_pos]
+        full.velocity = [float(v) for v in joint_vel]
+        self._full_states_pub.publish(full)
+
+        # Base odometry: world pose + body-frame velocities.
+        root_pos, root_quat = robot.get_world_pose()
+        qw, qx, qy, qz = (float(v) for v in root_quat)
+        yaw = math.atan2(
+            2.0 * (qw * qz + qx * qy), 1.0 - 2.0 * (qy * qy + qz * qz)
+        )
+        lin_world = np.asarray(robot.get_linear_velocity(), dtype=float)
+        ang_world = np.asarray(robot.get_angular_velocity(), dtype=float)
+        cos_yaw, sin_yaw = math.cos(yaw), math.sin(yaw)
+        odom = Odometry()
+        odom.header.stamp = stamp
+        odom.header.frame_id = "world"
+        odom.child_frame_id = "base_link"
+        odom.pose.pose.position.x = float(root_pos[0])
+        odom.pose.pose.position.y = float(root_pos[1])
+        odom.pose.pose.position.z = float(root_pos[2])
+        odom.pose.pose.orientation.w = qw
+        odom.pose.pose.orientation.x = qx
+        odom.pose.pose.orientation.y = qy
+        odom.pose.pose.orientation.z = qz
+        odom.twist.twist.linear.x = (
+            cos_yaw * lin_world[0] + sin_yaw * lin_world[1]
+        )
+        odom.twist.twist.linear.y = (
+            -sin_yaw * lin_world[0] + cos_yaw * lin_world[1]
+        )
+        odom.twist.twist.linear.z = float(lin_world[2])
+        odom.twist.twist.angular.z = float(ang_world[2])
+        self._odom_pub.publish(odom)
+
+        twist = Twist()
+        vx, vy, wz = self.last_base_twist
+        twist.linear.x = float(vx)
+        twist.linear.y = float(vy)
+        twist.angular.z = float(wz)
+        self._cmd_vel_applied_pub.publish(twist)
+
+        # link8 end-effector world poses (matches the data contract's
+        # wrench_frame convention).
+        if self._ee_prims is None:
+            self._ee_prims = self._resolve_ee_prims()
+        if self._ee_prims:
+            xform_cache = UsdGeom.XformCache()
+            for side, prim in self._ee_prims.items():
+                world = xform_cache.GetLocalToWorldTransform(prim)
+                translation = world.ExtractTranslation()
+                rotation = world.ExtractRotationQuat()
+                pose = PoseStamped()
+                pose.header.stamp = stamp
+                pose.header.frame_id = "world"
+                pose.pose.position.x = float(translation[0])
+                pose.pose.position.y = float(translation[1])
+                pose.pose.position.z = float(translation[2])
+                pose.pose.orientation.w = float(rotation.GetReal())
+                imaginary = rotation.GetImaginary()
+                pose.pose.orientation.x = float(imaginary[0])
+                pose.pose.orientation.y = float(imaginary[1])
+                pose.pose.orientation.z = float(imaginary[2])
+                self._ee_pose_pubs[side].publish(pose)
 
 
 def _add_dome_light(stage, prim_path: str = "/World/Light") -> None:
@@ -1390,17 +1653,31 @@ def run_teleop_loop(
     args,
     *,
     force_render: bool = False,
+    tick_callbacks=(),
 ) -> None:
     """Blocking ROS <-> sim loop; owns rclpy and app shutdown.
 
     force_render keeps rendering in headless sessions so render-product
     consumers (e.g. the task2 eval camera OmniGraph) still publish.
+
+    tick_callbacks: objects called as cb.tick(sim_time) once per loop
+    iteration (after world.step); an optional cb.bind(node) runs once before
+    the loop so callbacks can create publishers on the bridge node. Used by
+    the recording helpers in scripts/recording/.
     """
     # The ros2 bridge extension may already have initialized the default
     # context.
     if not rclpy.ok():
         rclpy.init()
-    node = IsaacSimRosBridge(groups)
+    node = IsaacSimRosBridge(
+        groups,
+        publish_recording_topics=getattr(
+            args, "publish_recording_topics", False
+        ),
+    )
+    for callback in tick_callbacks:
+        if hasattr(callback, "bind"):
+            callback.bind(node)
     publish_period = 1.0 / max(args.ros_publish_rate, 1.0)
     next_publish_time = 0.0
     # When rendering, world.step advances one rendering_dt (several physics
@@ -1424,13 +1701,19 @@ def run_teleop_loop(
             # arm and gripper commands (the only groups apply_commands
             # handles); joint states are still published below.
             if not arm_teleop_active:
-                node.apply_commands(robot, group_indices, coupled_indices)
-            if steering_ids and drive_ids:
-                vx, vy, wz = node.pedal_base_twist(
-                    args.pedal_linear_speed,
-                    args.pedal_angular_speed,
-                    args.pedal_timeout,
+                node.apply_commands(
+                    robot,
+                    group_indices,
+                    coupled_indices,
+                    timeout_sec=args.command_timeout,
                 )
+            vx, vy, wz = node.pedal_base_twist(
+                args.pedal_linear_speed,
+                args.pedal_angular_speed,
+                args.pedal_timeout,
+            )
+            node.last_base_twist = (vx, vy, wz)
+            if steering_ids and drive_ids:
                 steering_targets, drive_targets = _compute_drive_targets(
                     robot.get_joint_positions(),
                     steering_ids,
@@ -1458,9 +1741,16 @@ def run_teleop_loop(
             # With render=False each iteration advances a single physics_dt, so
             # headless keeps the fastest possible ROS command/state loop.
             world.step(render=rendering)
+            sim_time = float(world.current_time)
+            # Every iteration, not publish_period-throttled: the recorder
+            # paces its frame sampling on this.
+            node.publish_clock(sim_time)
+            for callback in tick_callbacks:
+                callback.tick(sim_time)
             now = node.get_clock().now().nanoseconds * 1e-9
             if now >= next_publish_time:
                 node.publish_states(robot, group_indices)
+                node.publish_recording_streams(robot, sim_time)
                 next_publish_time = now + publish_period
     finally:
         node.destroy_node()

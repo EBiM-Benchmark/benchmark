@@ -1,0 +1,36 @@
+# Copyright (c) 2026 The EBiM Benchmark Contributors
+# SPDX-License-Identifier: Apache-2.0
+#
+# Scene cameras for scene_barebone.py, built by
+# scripts/recording/scene_cameras.py when --enable-scene-cameras (implied by
+# --record) is set.
+#
+# For each entry the builder creates the Camera prim if it does not exist
+# (applying focal_length / focus_distance / projection), applies the pose
+# from this file, and builds the ROS 2 OmniGraph with the requested streams.
+#
+# contract: <key> validates namespace + resolution against config/topics.yaml
+# cameras.<key>. Additional cameras can be appended here without a contract
+# key: they publish over ROS 2 but the recorder will not record them (the
+# publish_* flags default to false, giving an RGB + camera_info stream).
+version: 1
+cameras:
+  eval_camera:
+    prim_path: /World/eval_camera
+    namespace: /isaac/eval_camera
+    frame_id: eval_camera
+    # The room scene's eval-camera offset from the table top, re-applied to
+    # the barebone default --objects-position (0.8, 0.0, 0.0) at ground
+    # level. Edit together with --objects-position to keep the same framing.
+    translation: [0.837, -0.065, 1.95]
+    rotation_xyz_deg: [0.0, 0.0, 0.0]  # top-down; camera looks along -Z
+    focal_length: 20.0
+    focus_distance: 400.0
+    projection: perspective
+    render_resolution:
+      width: 1280
+      height: 720
+    publish_depth: true
+    publish_semantic: true
+    publish_bbox: true
+    contract: eval

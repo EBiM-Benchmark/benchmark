@@ -15,6 +15,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 _STATIC_DIR = os.path.join(os.path.dirname(__file__), "..", "static")
 
+# Accepted mobile-base drive tokens. "STOP"/null clear the active token.
+_BASE_DRIVE_TOKENS = frozenset({"FWD", "BACK", "A", "B", "A+C", "B+C", "STOP"})
+
 
 class SliderRequestHandler(BaseHTTPRequestHandler):
     bridge = None
@@ -143,6 +146,7 @@ class SliderRequestHandler(BaseHTTPRequestHandler):
             "/api/reset",
             "/api/cameras",
             "/api/control_mode",
+            "/api/base_drive",
         ):
             self._send_json({"error": "not found"}, HTTPStatus.NOT_FOUND)
             return
@@ -184,6 +188,27 @@ class SliderRequestHandler(BaseHTTPRequestHandler):
                     self._send_json({"status": "error", "message": message}, HTTPStatus.BAD_REQUEST)
                     return
                 self._send_json({"status": "ok", "message": message}, HTTPStatus.OK)
+                return
+
+            if self.path == "/api/base_drive":
+                token = payload.get("token")
+                if token is not None and not isinstance(token, str):
+                    self._send_json(
+                        {"status": "error", "message": "token must be a string or null"},
+                        HTTPStatus.BAD_REQUEST,
+                    )
+                    return
+                if token is not None and token not in _BASE_DRIVE_TOKENS:
+                    self._send_json(
+                        {"status": "error", "message": f"invalid token: {token}"},
+                        HTTPStatus.BAD_REQUEST,
+                    )
+                    return
+                if token is None or token == "STOP":
+                    self.bridge.set_base_drive(None)
+                else:
+                    self.bridge.set_base_drive(token)
+                self._send_json({"status": "ok"}, HTTPStatus.OK)
                 return
 
             if self.path == "/api/cameras":

@@ -1,0 +1,136 @@
+# Copyright (c) 2026 The EBiM Benchmark Contributors
+# SPDX-License-Identifier: Apache-2.0
+#
+# Task 2 addendum to the fr3duo_mobile data contract
+# (task1_isaacsim/assets/embodiments/fr3duo_mobile/data_contract.yaml).
+# Datasets recorded by task2_isaacsim/services/recording/record_task2.py follow this
+# layout.
+embodiment_key: fr3duo_mobile_task2
+version: "1.1"
+contract_name: fr3_duo_mobile_task2_data_contract
+contract_version: "1.1.0"
+extends: fr3_duo_mobile_data_contract@1.0.0
+description: >
+  Mobile dual-arm FR3 with vertical spine for Task 2 (deformable thermal-pad
+  placement). Action indices 0..18 are byte-identical to the base contract
+  (19-dim: base twist + 14 arm targets + 2 gripper open-fractions); index 19
+  appends the spine height target, which Task 2 teleoperation actively
+  commands. Contract-strict consumers may truncate to the first 19 dims.
+
+sampling:
+  frequency_hz: 30
+  paced_on: simulation_time  # /isaac/clock; the deformable scene runs sub-realtime
+  deterministic: true
+  jitter_tolerance_percent: 5
+
+action_structure:
+  total_dim: 20
+  base_targets:
+    count: 3
+    order: [vx_m_s, vy_m_s, omega_rad_s]
+    indices: [0, 2]
+  arm_targets:
+    count: 14
+    order: [left_0_6, right_0_6]
+    units: radians
+    semantics: absolute_position_targets_post_arbitration
+    indices: [3, 16]
+  gripper_targets:
+    count: 2
+    order: [left_opening, right_opening]
+    units: normalized_fraction
+    range: [0.0, 1.0]
+    indices: [17, 18]
+  spine_target:
+    count: 1
+    units: meters
+    joint_name: franka_spine_vertical_joint
+    indices: [19, 19]
+    description: "Vertical spine height target (Task 2 extension)"
+
+state_structure:
+  total_dim: 37
+  ee_poses:
+    count: 14
+    order: [left_xyz_quat_xyzw, right_xyz_quat_xyzw]
+    frame: world
+    source_prims: [left_fr3v2_link8, right_fr3v2_link8]
+    indices: [0, 13]
+  arm_positions:
+    count: 14
+    order: [left_0_6, right_0_6]
+    units: radians
+    indices: [14, 27]
+  spine:
+    count: 1
+    units: meters
+    joint_name: franka_spine_vertical_joint
+    indices: [28, 28]
+  gripper:
+    count: 2
+    order: [left_opening, right_opening]
+    normalized_semantics: open_fraction  # 1.0 = fully open
+    indices: [29, 30]
+  base:
+    count: 6
+    order: [x_m, y_m, yaw_rad, vx_m_s, vy_m_s, omega_rad_s]
+    pose_frame: world
+    velocity_frame: body
+    indices: [31, 36]
+
+video:
+  head:
+    resolution: [720, 1280]
+    dtype: uint8
+    layout: HWC
+    color_space: RGB
+  wrist_left:
+    resolution: [480, 848]
+    dtype: uint8
+    layout: HWC
+    color_space: RGB
+  wrist_right:
+    resolution: [480, 848]
+    dtype: uint8
+    layout: HWC
+    color_space: RGB
+  eval_camera:
+    resolution: [720, 1280]
+    dtype: uint8
+    layout: HWC
+    color_space: RGB
+    description: "Fixed third-person view above the task table"
+
+ground_truth_extras:
+  location: "task2_extras/episode_{episode_index:06d}.npz"
+  metadata: "task2_extras/episodes_task2.jsonl"
+  arrays:
+    sim_time: "(T,) float64, simulation time per recorded frame"
+    wall_time_ns: "(T,) int64"
+    object_poses: "(T, N, 7) float32 world [x y z qw qx qy qz]"
+    object_names: "(N,) str"
+    pad_points: "(T_pad, V, 3) float32 deformed pad vertices, world"
+    pad_sim_time: "(T_pad,) float64"
+    depth_<camera>: "(T_d, H, W) float16 meters (optional)"
+    depth_<camera>_frame_index: "(T_d,) int64 recorded-frame index"
+
+episode_metadata:
+  episode_success_field: success
+  episode_success_source: operator_confirmed_with_iou_suggestion
+  scene_reset_events_field: scene_reset_events
+
+data_types:
+  action_vector: float32
+  state_vector: float32
+  timestamps: float64
+
+notes: |
+  - Total action dimensionality: 3 (base) + 14 (arm) + 2 (gripper)
+    + 1 (spine) = 20.
+  - Actions are the post-arbitration applied joint position targets read
+    back from PhysX (/isaac/applied_joint_commands), so keyboard-RMPflow,
+    GELLO/ROS, and spine-hotkey commands are all captured uniformly.
+  - Gripper open-fraction maps the Robotiq driver joint (0.0 rad open,
+    0.8 rad closed) to [0, 1] with 1 = open, matching the base contract.
+  - Sampling is paced on simulation time; wall-clock rates depend on the
+    real-time factor of the deformable scene.

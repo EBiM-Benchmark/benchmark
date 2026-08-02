@@ -1,0 +1,84 @@
+# Copyright (c) 2026 The EBiM Benchmark Contributors
+# SPDX-License-Identifier: Apache-2.0
+services:
+  ros_republisher:
+    image: ros:jazzy-ros-base
+    container_name: task3_ros_republisher
+    network_mode: host
+    ipc: host
+    working_dir: /workspace
+    command: >
+      bash -lc "source /opt/ros/jazzy/setup.bash &&
+      python3 /workspace/scripts/controllers/ros_joint_republisher.py --bridge-prefix ${REPUBLISHER_BRIDGE_PREFIX:-/bridge} --isaac-prefix ${REPUBLISHER_ISAAC_PREFIX:-/isaac} --gripper-open-position ${REPUBLISHER_GRIPPER_OPEN_POSITION:-0.0} --gripper-closed-position ${REPUBLISHER_GRIPPER_CLOSED_POSITION:-0.8} $([ \"${REPUBLISHER_GRIPPER_INVERT:-false}\" = \"true\" ] && echo '--gripper-invert') $([ \"${REPUBLISHER_DISABLE_BROWSER_COMMAND_TOPICS:-false}\" = \"true\" ] && echo '--disable-browser-command-topics')"
+    environment:
+      - ROS_DISTRO=jazzy
+      - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+      - FASTDDS_BUILTIN_TRANSPORTS=UDPv4
+      - PYTHONPATH=/workspace/scripts
+    volumes:
+      - ../task1_isaacsim:/workspace
+    restart: unless-stopped
+    tty: true
+    stdin_open: true
+
+  position_controller:
+    image: ros:jazzy-ros-base
+    container_name: task3_position_controller
+    network_mode: host
+    ipc: host
+    working_dir: /workspace
+    command: >
+      bash -lc "source /opt/ros/jazzy/setup.bash &&
+      python3 /workspace/scripts/controllers/joint_position_controller.py"
+    environment:
+      - ROS_DISTRO=jazzy
+      - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+      - FASTDDS_BUILTIN_TRANSPORTS=UDPv4
+    volumes:
+      - ../task1_isaacsim:/workspace
+    restart: unless-stopped
+    tty: true
+    stdin_open: true
+    profiles: [position]
+
+  teleop_adapters:
+    image: ros:jazzy-ros-base
+    container_name: task3_teleop_adapters
+    network_mode: host
+    ipc: host
+    working_dir: /workspace
+    command: bash /workspace/services/teleop_adapters/start_teleop_adapters.sh
+    environment:
+      - ROS_DISTRO=jazzy
+      - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+      - FASTDDS_BUILTIN_TRANSPORTS=UDPv4
+      - TELEOP_ADAPTERS=${TELEOP_ADAPTERS:-keyboard gello}
+    volumes:
+      - ../task1_isaacsim:/workspace
+    restart: unless-stopped
+    tty: true
+    stdin_open: true
+    profiles: [teleop]
+
+  browser_controller:
+    build:
+      context: ../task1_isaacsim/services/browser_controller
+      dockerfile: Dockerfile
+    container_name: task3_browser_controller
+    network_mode: host
+    ipc: host
+    depends_on: [ros_republisher]
+    working_dir: /workspace
+    command: >
+      bash -lc "source /opt/ros/jazzy/setup.bash &&
+      python3 /workspace/services/browser_controller/app.py --host 0.0.0.0 --port 8090 --publish-rate 60.0"
+    environment:
+      - ROS_DISTRO=jazzy
+      - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+      - FASTDDS_BUILTIN_TRANSPORTS=UDPv4
+      - PYTHONPATH=/workspace/services/browser_controller:/workspace/scripts
+    volumes:
+      - ../task1_isaacsim:/workspace
+    restart: unless-stopped
+    tty: true
+    stdin_open: true

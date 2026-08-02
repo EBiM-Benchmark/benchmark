@@ -8,6 +8,7 @@ Import-safe before SimulationApp is created (no Isaac Sim imports here).
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
 
 
 def add_common_bridge_args(parser: argparse.ArgumentParser) -> None:
@@ -49,6 +50,14 @@ def add_common_bridge_args(parser: argparse.ArgumentParser) -> None:
         "the base command to NONE.",
     )
     parser.add_argument(
+        "--command-timeout",
+        type=float,
+        default=1.0,
+        help="Seconds without a new message on a joint group's command "
+        "topics before its cached command stops being applied (the drives "
+        "hold the last applied target). Negative disables the watchdog.",
+    )
+    parser.add_argument(
         "--spine-keyboard-control",
         action=argparse.BooleanOptionalAction,
         default=True,
@@ -72,7 +81,7 @@ def add_common_bridge_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--spine-keyboard-max",
         type=float,
-        default=0.50,
+        default=0.85,
         help="Maximum franka_spine_vertical_joint target in meters for "
         "keyboard control.",
     )
@@ -111,7 +120,7 @@ def add_common_bridge_args(parser: argparse.ArgumentParser) -> None:
         help="Gripper driver joint position in radians for the closed "
         "state of the keyboard gripper toggle.",
     )
-    parser.add_argument("--physics-hz", type=float, default=240.0)
+    parser.add_argument("--physics-hz", type=float, default=60.0)
     parser.add_argument("--render-hz", type=float, default=60.0)
     parser.add_argument(
         "--configure-base-drives",
@@ -147,3 +156,122 @@ def add_common_bridge_args(parser: argparse.ArgumentParser) -> None:
         "Advertise PUBLIC_IP for remote EC2 clients "
         "(TCP 49100 + UDP 47998).",
     )
+    _add_recording_args(parser)
+
+
+def _add_recording_args(parser: argparse.ArgumentParser) -> None:
+    """Demonstration-recording options (see task2_isaacsim/README.md and
+    services/recording/record_task2.py)."""
+    parser.add_argument(
+        "--record",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Convenience switch: enables --publish-recording-topics, "
+        "--enable-robot-cameras, --enable-scene-cameras, "
+        "--publish-ground-truth, and --scene-reset-hotkey for a "
+        "demonstration-recording session.",
+    )
+    parser.add_argument(
+        "--publish-recording-topics",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Publish the recording streams (applied joint commands, "
+        "odometry, applied base twist, EE poses — names from "
+        "config/topics.yaml), all stamped with simulation time.",
+    )
+    parser.add_argument(
+        "--enable-robot-cameras",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Publish the head + wrist robot cameras and /clock over ROS 2 "
+        "(OmniGraph render products on the Camera prims authored in the "
+        "robot USD).",
+    )
+    parser.add_argument(
+        "--robot-camera-depth",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Also publish a depth topic per robot camera.",
+    )
+    parser.add_argument(
+        "--robot-camera-frame-skip",
+        type=int,
+        default=0,
+        help="Render frames skipped between camera messages (0 publishes "
+        "every render frame; 1 halves the publish rate).",
+    )
+    parser.add_argument(
+        "--camera-sensors-yaml",
+        type=Path,
+        default=Path(__file__).resolve().parents[1]
+        / "assets"
+        / "embodiments"
+        / "fr3duo_mobile_task2"
+        / "camera_sensors.yaml",
+        help="Robot camera_sensors.yaml consumed by the camera publishers.",
+    )
+    parser.add_argument(
+        "--enable-scene-cameras",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Build the scene cameras (e.g. the eval camera) described in "
+        "the scene camera config: create the Camera prim when missing, "
+        "apply the configured pose, and publish over ROS 2.",
+    )
+    parser.add_argument(
+        "--scene-cameras-config",
+        type=Path,
+        default=None,
+        help="Scene camera yaml; defaults to the scene script's "
+        "config/cameras_<scene>.yaml.",
+    )
+    parser.add_argument(
+        "--publish-ground-truth",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Publish task-object world poses (/isaac/task2/object_poses) "
+        "and deformed thermal-pad vertices (/isaac/task2/pad_points).",
+    )
+    parser.add_argument(
+        "--ground-truth-pad-every",
+        type=int,
+        default=6,
+        help="Publish the thermal-pad vertices every N loop iterations "
+        "(6 = 10 Hz at the default 60 Hz render rate; 0 disables).",
+    )
+    parser.add_argument(
+        "--scene-reset-hotkey",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Enable the '5' key in the Isaac Sim window to reset (and "
+        "optionally randomize) the task objects between episodes.",
+    )
+    parser.add_argument(
+        "--randomize-objects",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Randomize the task-object spawn poses on each scene reset "
+        "(the thermal pad and its sticker base move as one group).",
+    )
+    parser.add_argument(
+        "--randomize-xy-cm",
+        type=float,
+        default=2.0,
+        help="Max +/- XY spawn jitter in centimeters for --randomize-objects.",
+    )
+    parser.add_argument(
+        "--randomize-yaw-deg",
+        type=float,
+        default=10.0,
+        help="Max +/- yaw spawn jitter in degrees for --randomize-objects.",
+    )
+
+
+def resolve_recording_flags(args) -> None:
+    """Fold the --record convenience switch into the individual flags."""
+    if getattr(args, "record", False):
+        args.publish_recording_topics = True
+        args.enable_robot_cameras = True
+        args.enable_scene_cameras = True
+        args.publish_ground_truth = True
+        args.scene_reset_hotkey = True
