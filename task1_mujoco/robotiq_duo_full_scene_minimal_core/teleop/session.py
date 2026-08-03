@@ -152,6 +152,13 @@ class TeleopSession:
         """
         self.data.xfrc_applied[:, :] = 0.0
         for arm in self.arms.values():
+            claimed_by_others = set()
+            for other in self.arms.values():
+                if other is arm:
+                    continue
+                if other.grasped_body is not None:
+                    claimed_by_others.add(other.grasped_body)
+                claimed_by_others.update(other.grasped_neighbors or [])
             update_grasp(
                 self.model,
                 self.data,
@@ -160,6 +167,7 @@ class TeleopSession:
                 self.cable_bodies,
                 self.grasp_assist,
                 dt,
+                claimed_by_others=claimed_by_others,
             )
         if self.clip_body is not None:
             apply_clip_guide(self.model, self.data, self.clip_body, self.cable_bodies)

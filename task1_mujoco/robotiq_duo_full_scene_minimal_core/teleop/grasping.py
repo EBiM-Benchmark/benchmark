@@ -104,9 +104,17 @@ def update_grasp(
     cable_bodies: list[int],
     grasp_assist: bool,
     dt: float,
+    claimed_by_others: set[int] = frozenset(),
 ) -> None:
     """Advance the close servo and the grasp-assist state for one arm.
-    Must run after xfrc_applied is cleared and before mj_step."""
+    Must run after xfrc_applied is cleared and before mj_step.
+
+    claimed_by_others: cable bodies another arm's assist spring already
+    owns (its grasped_body + grasped_neighbors). Two independent capped PD
+    springs pulling the same segment toward two different pad slots is a
+    real "cable moves on its own" source when both grippers hold nearby
+    points - excluded here so a fresh grasp always picks unclaimed bodies.
+    """
     if arm.close_ramp:
         both, force, count = pad_cable_contacts(
             model,
@@ -118,7 +126,8 @@ def update_grasp(
         if both and grasp_assist and arm.grasped_body is None:
             # attach the assist at first two-sided contact for responsiveness
             slot = pad_slot_center(data, arm.pad_left, arm.pad_right)
-            picked = nearest_bodies_to_point(data, cable_bodies, slot, count=3)
+            free_bodies = [b for b in cable_bodies if b not in claimed_by_others]
+            picked = nearest_bodies_to_point(data, free_bodies, slot, count=3)
             arm.grasped_body = picked[0] if picked else None
             if arm.grasped_neighbors is None:
                 arm.grasped_neighbors = []
