@@ -974,7 +974,7 @@
       <geom name="round_peg_3_bottom_cap_collision" type="cylinder" pos="0 0 0.0" size="0.0125 0.0008" rgba="1 1 1 0.12" group="3" friction="0.05 0.001 0.0001" condim="3" contype="1" conaffinity="3" margin="0.00005" solref="0.006 1" solimp="0.97 0.995 0.0005" />
       <geom name="round_peg_3_top_cap_collision" type="cylinder" pos="0 0 0.023" size="0.0125 0.0008" rgba="1 1 1 0.12" group="3" friction="0.05 0.001 0.0001" condim="3" contype="1" conaffinity="3" margin="0.00005" solref="0.006 1" solimp="0.97 0.995 0.0005" />
     </body>
-    <body name="cclip_0" pos="-0.0447 0.3066 -0.01">
+    <body name="cclip_0" pos="-0.0447 0.3066 -0.01" quat="0 0 0 1">
       <geom name="cclip_0_visual" type="mesh" mesh="cclip" rgba="1 0.85 0.05 1" group="1" contype="0" conaffinity="0" />
       <!-- C-hook collision: open mouth (-y side) the cable slides into freely;
            retention is a weld equality the demo activates when a segment
@@ -1006,8 +1006,15 @@
              the invisible core early. Pads (contype 2 conaffinity 0) never
              collided with the clip at all. -->
       <geom name="cclip_0_base" type="box" pos="0.0065 0.010 -0.005" size="0.013 0.0114 0.003" rgba="1 0.85 0.05 0.15" group="3" friction="0.25 0.002 0.0002" condim="3" contype="2" conaffinity="4" margin="0.0001" solref="0.004 1" solimp="0.97 0.995 0.0005" />
-      <geom name="cclip_0_backwall" type="box" pos="0.0065 0.004 0.013" size="0.005 0.0033 0.0115" rgba="1 0.85 0.05 0.15" group="3" friction="0.25 0.002 0.0002" condim="3" contype="2" conaffinity="4" margin="0.0001" solref="0.004 1" solimp="0.97 0.995 0.0005" />
+      <geom name="cclip_0_backwall" type="box" pos="0.0065 0.004 0.008" size="0.005 0.0033 0.015" rgba="1 0.85 0.05 0.15" group="3" friction="0.25 0.002 0.0002" condim="3" contype="2" conaffinity="4" margin="0.0001" solref="0.004 1" solimp="0.97 0.995 0.0005" />
       <geom name="cclip_0_hook_top" type="box" pos="0.0065 0.012 0.023" size="0.005 0.01 0.002" rgba="1 0.85 0.05 0.15" group="3" friction="0.15 0.002 0.0002" condim="3" contype="2" conaffinity="4" margin="0.0001" solref="0.004 1" solimp="0.97 0.995 0.0005" />
+      <!-- 2026-08-03: hook_top's far edge (mouth side) has nothing to
+           physically attach to in the mesh - raycast against the visual
+           mesh (mj_ray, geomgroup 1 only) found an uncovered support wall
+           running from the base up to hook_top's underside at the far -y
+           edge, x/y/z ranges confirmed against the actual mesh surface, not
+           guessed. -->
+      <geom name="cclip_0_hook_support" type="box" pos="0.006 0.0205 0.019" size="0.0045 0.002 0.004" rgba="1 0.85 0.05 0.15" group="3" friction="0.25 0.002 0.0002" condim="3" contype="2" conaffinity="4" margin="0.0001" solref="0.004 1" solimp="0.97 0.995 0.0005" />
       <!-- shells removed 2026-07-16: operator hand-tuned these 3 core boxes
            directly against the visible mesh, so the two-layer split (thick
            core for the cable, thin shell for fingers) is no longer needed -

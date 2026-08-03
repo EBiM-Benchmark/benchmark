@@ -192,16 +192,18 @@ CABLE_LINVEL_MAX = 12.0
 # toward the slot centerline (y/z only, never along the slot axis), so the
 # cable slides freely along/through the clip but resists popping out of the
 # open mouth; pulling harder than the cap simply extracts it (slip, no
-# stored-energy catapult). The hook/backwall geometry blocks up and +y.
+# stored-energy catapult). The hook/backwall geometry blocks up and -y
+# (cclip_0 carries a 180deg-about-Z body quat, so these world-frame-relative
+# thresholds are mirrored in x/y from the un-rotated geometry - z unchanged).
 # --------------------------------------------------------------------------
 CLIP_HOLD_FORCE = 8.0
 # stiff enough to reach the force cap well within the pocket half-width
 # (~6mm), otherwise the effective retention is far below CLIP_HOLD_FORCE
 CLIP_GUIDE_KP = 2500.0
 CLIP_GUIDE_KD = 12.0
-CLIP_ZONE_LO = np.array([-0.0085, 0.0084, -0.0019])
-CLIP_ZONE_HI = np.array([0.0215, 0.0213, 0.0091])
-CLIP_SEAT_LOCAL = np.array([0.0149, 0.0031])  # y, z of the pocket centerline
+CLIP_ZONE_LO = np.array([-0.0215, -0.0213, -0.0019])
+CLIP_ZONE_HI = np.array([0.0085, -0.0084, 0.0091])
+CLIP_SEAT_LOCAL = np.array([-0.0149, 0.0031])  # y, z of the pocket centerline
 
 # --------------------------------------------------------------------------
 # haptics (gamepad rumble + VR controller vibration)
