@@ -1,0 +1,38 @@
+# Copyright (c) 2026 The EBiM Benchmark Contributors
+# SPDX-License-Identifier: Apache-2.0
+#
+# Scene cameras for scene_room.py, built by scripts/recording/scene_cameras.py
+# when --enable-scene-cameras (implied by --record) is set.
+#
+# For each entry the builder creates the Camera prim if it does not exist
+# (applying focal_length / focus_distance / projection), applies the pose
+# from this file (this file wins over the USD), and builds the ROS 2
+# OmniGraph — unless /ROS2_CameraGraphs/<name> already exists, in which case
+# the graph is left as the scene built it.
+#
+# The room scene (scripts/scenes/scene_robot_room_keyboard.py in the parent
+# repo) already creates the eval_camera prim and its full graph, so this
+# entry only re-applies the pose; the values below match the scene's
+# hardcoded ones, making that a no-op until edited.
+#
+# contract: <key> validates namespace + resolution against config/topics.yaml
+# cameras.<key>. Entries without a contract key still publish, but the
+# recorder will not record them.
+version: 1
+cameras:
+  eval_camera:
+    prim_path: /World/Scene/eval_camera
+    namespace: /isaac/eval_camera
+    frame_id: eval_camera
+    translation: [2.087, 1.885, 2.7]
+    rotation_xyz_deg: [0.0, 0.0, 0.0]  # top-down; camera looks along -Z
+    focal_length: 20.0
+    focus_distance: 400.0
+    projection: perspective
+    render_resolution:
+      width: 1280
+      height: 720
+    publish_depth: true
+    publish_semantic: true
+    publish_bbox: true
+    contract: eval

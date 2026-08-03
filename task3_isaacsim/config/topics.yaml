@@ -76,7 +76,8 @@ recording:
 
 # Ground-truth streams from scripts/recording/scene_capture.py.
 ground_truth:
-  #object_poses: /isaac/task3/object_poses
+  # object_poses: /isaac/task3/object_poses
+  # pad_points: /isaac/task3/pad_points
   scene_reset: /isaac/task3/scene_reset
   # Any message here triggers the same reset as the '5' hotkey (published
   # by the recorder's menu command 5).
@@ -89,7 +90,7 @@ cameras:
     image: image_raw
     camera_info: camera_info
     depth: depth
-  # Keys are the recorder camera keys (record_task2.py --cameras and the
+  # Keys are the recorder camera keys (record_task3a.py --cameras and the
   # dataset video feature names). shape is [H, W, C] of the RGB stream and
   # must equal render_resolution in camera_sensors.yaml (sensors_key is the
   # camera's key in that file).
