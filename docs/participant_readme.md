@@ -159,7 +159,7 @@ repository — open a **New Issue** with the *Repository Submission* form:
 **➡ [Submit your work](https://github.com/EBiM-Benchmark/submissions/issues/new/choose)**
 
 Your submission is a link to a **public GitHub repo** containing a **Dockerfile** and a **README**
-explaining how to run it (source code is not required). Submissions are **open now**; the submission deadline will be extended and is announced on the [competition page](https://ebim-benchmark.github.io/competition.html) and in [Discord](https://discord.gg/pGwRbMRjuH).
+explaining how to run it (source code is not required). Submissions are **open now**; **Phase I — Simulation closes Aug 10, 2026 (AoE)** and **Phase II — Real-Robot Validation closes Sep 10, 2026 (AoE)**. Full schedule on the [competition page](https://ebim-benchmark.github.io/competition.html); questions in [Discord](https://discord.gg/pGwRbMRjuH).
 
 > **One clarification for Task 1 developers:** the ManipulationNet performance-submission client used in
 > the Task 1 development loop (`eval.sh client`) is **not** the official competition submission — official

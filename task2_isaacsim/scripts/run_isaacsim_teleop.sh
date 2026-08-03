@@ -21,6 +21,12 @@ TASK2_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 TASK2_DIRNAME="$(basename "${TASK2_ROOT}")"
 REPO_ROOT="$(cd "${TASK2_ROOT}/.." && pwd)"
 REPO_NAME="$(basename "${REPO_ROOT}")"
+if [[ -f "${TASK2_ROOT}/.env" ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  source "${TASK2_ROOT}/.env"
+  set +a
+fi
 
 ISAACSIM_CONTAINER="${ISAACSIM_CONTAINER:-isaac-sim-5-1-0-workshop}"
 # Path at which this repo is mounted inside the Isaac Sim container.
@@ -31,6 +37,7 @@ USD_PATH="${USD_PATH:-../task1_isaacsim/assets/Robotiq_2f_85_with_d405_mobile_fr
 OBJECTS_USD_PATH="${OBJECTS_USD_PATH:-../assets/task2_objects/task2_objects_base.usda}"
 ROOM_USD_PATH="${ROOM_USD_PATH:-../assets/robot_room.usd}"
 SCENE="${SCENE:-room}"
+EMBODIMENT="fr3duo_mobile"
 CONTROLLER_MODE="${CONTROLLER_MODE:-position}"
 WITH_KEYBOARD_TELEOP=false
 WITH_GELLO_TELEOP=false
@@ -55,6 +62,7 @@ Options:
   --usd-path PATH            Robot USD path relative to task2_isaacsim/ or absolute
   --objects-usd-path PATH    Task 2 objects USD path (barebone scene only)
   --room-usd-path PATH       Room USD path (room scene only)
+  --embodiment NAME          Embodiment config key (default: fr3duo_mobile)
   --controller-mode MODE     none|position (default: position)
   --with-keyboard-teleop     Start the keyboard->base teleop adapter (default input)
   --with-gello-teleop        Start the GELLO->bridge teleop adapter
@@ -93,6 +101,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --scene)
       SCENE="$2"
+      shift 2
+      ;;
+    --embodiment)
+      EMBODIMENT="$2"
       shift 2
       ;;
     --controller-mode)
@@ -179,6 +191,18 @@ if [[ "${SCENE}" == "room" && ! -f "${HOST_ROOM_USD}" ]]; then
   exit 1
 fi
 
+if [[ "${SCENE}" == "room" ]]; then
+  SHARED_ASSET_PATHS=("${HOST_USD}" "${HOST_ROOM_USD}")
+else
+  SHARED_ASSET_PATHS=("${HOST_USD}" "${HOST_OBJECTS_USD}")
+fi
+for host_path in "${SHARED_ASSET_PATHS[@]}"; do
+  if [[ "${host_path}" != "${REPO_ROOT}/"* ]]; then
+    echo "Asset must be inside ${REPO_ROOT} so the Isaac Sim container can see it: ${host_path}" >&2
+    exit 1
+  fi
+done
+
 case "${CONTROLLER_MODE}" in
   none|position) ;;
   *)
@@ -202,6 +226,7 @@ if [[ "${SCENE}" == "room" ]]; then
 else
   echo "Objects USD:         ${HOST_OBJECTS_USD}"
 fi
+echo "Embodiment:          ${EMBODIMENT}"
 echo "Controller mode:     ${CONTROLLER_MODE}"
 echo "Teleop adapters:     ${TELEOP_ADAPTERS:-<none>}"
 echo "Arm keyboard teleop: ${WITH_ARM_KEYBOARD_TELEOP}"
@@ -227,34 +252,25 @@ ${WITH_BROWSER} || HELPER_ARGS+=("--no-browser")
 ${WITH_REPUBLISHER} || HELPER_ARGS+=("--no-republisher")
 "${SCRIPT_DIR}/run_helper_containers.sh" up "${HELPER_ARGS[@]}"
 
-if [[ "${HOST_USD}" != "${REPO_ROOT}/"* ]]; then
-  echo "Robot USD must be inside ${REPO_ROOT} so the Isaac Sim container can see it." >&2
-  exit 1
-fi
-
 CONTAINER_USD="${CONTAINER_REPO}/${HOST_USD#"${REPO_ROOT}/"}"
 if [[ "${SCENE}" == "room" ]]; then
-  if [[ "${HOST_ROOM_USD}" != "${REPO_ROOT}/"* ]]; then
-    echo "Room USD must be inside ${REPO_ROOT} so the Isaac Sim container can see it." >&2
-    exit 1
-  fi
   CONTAINER_ROOM_USD="${CONTAINER_REPO}/${HOST_ROOM_USD#"${REPO_ROOT}/"}"
   BRIDGE_SCRIPT="scene_room.py"
   BRIDGE_ARGS=(
     "--robot-usd" "${CONTAINER_USD}"
     "--room-usd" "${CONTAINER_ROOM_USD}"
     "--task" "task2"
+    "--embodiment" "${EMBODIMENT}"
+    "--franka-root" "${CONTAINER_REPO}/task1_isaacsim"
   )
 else
-  if [[ "${HOST_OBJECTS_USD}" != "${REPO_ROOT}/"* ]]; then
-    echo "Objects USD must be inside ${REPO_ROOT} so the Isaac Sim container can see it." >&2
-    exit 1
-  fi
   CONTAINER_OBJECTS_USD="${CONTAINER_REPO}/${HOST_OBJECTS_USD#"${REPO_ROOT}/"}"
   BRIDGE_SCRIPT="scene_barebone.py"
   BRIDGE_ARGS=(
     "--usd-path" "${CONTAINER_USD}"
     "--objects-usd-path" "${CONTAINER_OBJECTS_USD}"
+    "--embodiment" "${EMBODIMENT}"
+    "--franka-root" "${CONTAINER_REPO}/task1_isaacsim"
   )
 fi
 

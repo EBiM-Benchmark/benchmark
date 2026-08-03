@@ -127,12 +127,15 @@ TASK2_VIEW_EYE = (1.0, 2.5, 1.35)
 def main():
     room_path = Path(args_cli.room_usd).expanduser()
     robot_path = Path(args_cli.robot_usd).expanduser()
+    franka_root = Path(args_cli.franka_root).expanduser()
     if not room_path.is_file():
         raise FileNotFoundError(f"Room USD not found: {room_path}")
     if not robot_path.is_file():
         raise FileNotFoundError(f"Robot USD not found: {robot_path}")
 
     groups = core._load_joint_groups(
+        franka_root,
+        args_cli.embodiment,
         include_browser_commands=not args_cli.disable_browser_command_topics,
     )
 

@@ -97,3 +97,10 @@ checkpoints/
 task1_mujoco/robotiq_duo_full_scene_minimal_core/build/
 task1_mujoco/**/mnet_out/
 task1_mujoco/MUJOCO_LOG.TXT
+
+# Git-LFS hook artifact. If core.hooksPath is ever set to the relative path
+# "dev/null" (a Windows stand-in for /dev/null), `git lfs install` writes
+# pre-push/post-checkout/post-commit/post-merge into a literal dev/null/
+# directory in the working tree instead of .git/hooks/. Harmless but real, and
+# a `git add -A` would publish it. There is no legitimate dev/null in this repo.
+/dev/null

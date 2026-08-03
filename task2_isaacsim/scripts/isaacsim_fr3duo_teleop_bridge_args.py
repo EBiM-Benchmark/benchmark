@@ -13,6 +13,17 @@ from pathlib import Path
 
 def add_common_bridge_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
+        "--embodiment",
+        default="fr3duo_mobile",
+        help="Embodiment key under task1_isaacsim/assets/embodiments.",
+    )
+    parser.add_argument(
+        "--franka-root",
+        default="/workspace/EBiM_Challenge/task1_isaacsim",
+        help="Task 1 root (containing assets/embodiments) inside the "
+        "container.",
+    )
+    parser.add_argument(
         "--disable-browser-command-topics",
         action="store_true",
         help="Do not subscribe to /isaac/browser/* command topics.",
@@ -37,6 +48,14 @@ def add_common_bridge_args(parser: argparse.ArgumentParser) -> None:
         default=1.0,
         help="Seconds without a new /pedal/state message before forcing "
         "the base command to NONE.",
+    )
+    parser.add_argument(
+        "--command-timeout",
+        type=float,
+        default=1.0,
+        help="Seconds without a new message on a joint group's command "
+        "topics before its cached command stops being applied (the drives "
+        "hold the last applied target). Negative disables the watchdog.",
     )
     parser.add_argument(
         "--spine-keyboard-control",

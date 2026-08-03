@@ -10,9 +10,7 @@ import numpy as np
 import pytest
 
 SCRIPT_PATH = (
-    Path(__file__).resolve().parents[1]
-    / "scripts"
-    / "scene_robot_room_rmpflow.py"
+    Path(__file__).resolve().parents[1] / "scene_robot_room_rmpflow.py"
 )
 spec = importlib.util.spec_from_file_location(
     "scene_robot_room_rmpflow", SCRIPT_PATH
@@ -158,7 +156,7 @@ def test_root_pose_composition_rotates_robot_relative_target():
 
 
 def test_versioned_rmpflow_configs_use_current_hand_tcp_frames():
-    task3_root = Path(__file__).resolve().parents[1]
+    task3_root = Path(__file__).resolve().parents[2]
     config_dir = task3_root / "assets" / "lula" / "mobile_fr3_duo"
     assert (
         scene.ARM_CONFIGS["left"]["end_effector_frame"]

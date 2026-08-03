@@ -11,7 +11,10 @@ originally scaffolded from robot_lab.
 
 This repository also incorporates portions of Isaac Lab
 (https://github.com/isaac-sim/IsaacLab), Copyright (c) 2022-2026 The
-Isaac Lab Project Developers, used under the BSD-3-Clause license.
+Isaac Lab Project Developers, used under the BSD-3-Clause license; see
+LICENSES/BSD-3-Clause.txt for the full license text. LICENSES/README.md
+explains why the copyright years in that file and in the two inherited
+Isaac Lab headers differ.
 
 The task1_isaacsim/ directory adapts the franka_isaacSim prototype by
 Marian Körber (Agile Robots). See task1_isaacsim/NOTICE for the full

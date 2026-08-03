@@ -696,7 +696,7 @@ Run them across the repository before pushing:
 pre-commit run --all-files
 ```
 
-CI runs the same command on every pull request (`.github/workflows/pre-commit.yaml`), and `pre-commit` is the required status check on `main`, so a pull request cannot merge while it is red. The hooks cover Ruff (lint and format), codespell, license headers, and a set of file checks. Their configuration lives in `.pre-commit-config.yaml`, with Ruff's rules in `pyproject.toml`; several directories are excluded, listed under `exclude` at the end of `.pre-commit-config.yaml`.
+CI runs the same command on every pull request (`.github/workflows/pre-commit.yaml`), and `pre-commit` is the required status check on `main`, so a pull request cannot merge while it is red. The hooks cover Ruff (lint and format), codespell, license headers, and a set of file checks. Their configuration lives in `.pre-commit-config.yaml`, with Ruff's rules in `pyproject.toml`; several directories are excluded, listed under `exclude` at the end of `.pre-commit-config.yaml`. Not all of those exclusions are cosmetic. Three of them — `.vscode/`, `scripts/newton_examples/`, and `task1_isaacsim/` — hold files carrying third-party copyright headers (Isaac Lab's in `.vscode/tools/setup_vscode.py`, the Newton Developers' in the other two), and the exclusion is the only thing stopping the license-header hook from stamping an EBiM copyright on top of someone else's. To narrow the list, add a per-hook `exclude:` to `insert-license` covering those paths first; [LICENSES/README.md](LICENSES/README.md) covers the Isaac Lab case in detail.
 
 `pyproject.toml` here holds tool configuration only — this repository is not a pip-installable package, so there is no `pip install -e .` step.
 
