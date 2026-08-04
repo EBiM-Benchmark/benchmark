@@ -3,6 +3,8 @@
 
 import importlib
 import importlib.util
+import inspect
+import random
 import sys
 import types
 from pathlib import Path
@@ -288,6 +290,25 @@ def test_control_stage_configuration_omits_passive_viewer_robot_reference():
 
     assert calls[0][1]["robot_path"] is None
     assert calls[0][1]["robot_position"] == (1.0, 2.0, 0.0)
+
+
+def test_bean_spawn_positions_follow_translated_container_bounds():
+    bounds = ((10.0, 20.0, 0.5), (10.2, 20.4, 0.8))
+    random.seed(7)
+
+    positions = scene_keyboard.bean_spawn_positions_in_bounds(40, bounds)
+
+    assert len(positions) == 40
+    assert all(bounds[0][0] <= x <= bounds[1][0] for x, _, _ in positions)
+    assert all(bounds[0][1] <= y <= bounds[1][1] for _, y, _ in positions)
+    assert all(z >= bounds[0][2] for _, _, z in positions)
+
+
+def test_task3_bean_spawn_uses_live_bowl_bounds():
+    source = inspect.getsource(scene_keyboard.configure_robot_room_stage)
+
+    assert "prim_world_bounds" in source
+    assert "TASK3_BOWL_POSITION" not in source
 
 
 def test_application_cleanup_runs_when_setup_fails():

@@ -72,6 +72,40 @@ class Bounds2D:
 
 
 @dataclass(frozen=True)
+class Bounds3D:
+    x_min: float
+    y_min: float
+    z_min: float
+    x_max: float
+    y_max: float
+    z_max: float
+
+    def __post_init__(self) -> None:
+        if (
+            self.x_min > self.x_max
+            or self.y_min > self.y_max
+            or self.z_min > self.z_max
+        ):
+            raise ValueError("Bounds3D minimums must not exceed maximums")
+
+    @property
+    def center(self) -> Point3D:
+        return Point3D(
+            0.5 * (self.x_min + self.x_max),
+            0.5 * (self.y_min + self.y_max),
+            0.5 * (self.z_min + self.z_max),
+        )
+
+    @property
+    def diagonal(self) -> float:
+        return sqrt(
+            (self.x_max - self.x_min) ** 2
+            + (self.y_max - self.y_min) ** 2
+            + (self.z_max - self.z_min) ** 2
+        )
+
+
+@dataclass(frozen=True)
 class SphereRegion:
     center: Point3D
     radius: float
@@ -117,25 +151,6 @@ TASK3_DINING_AREA = Area2D(
     scale_x=5.9,
     scale_y=3.4,
 )
-TASK3_BEAN_SPAWN_POSITION = Point3D(-3.94, -1.92, 0.8)
-TASK3_BEAN_RECOVERY_REGION = SphereRegion(
-    center=Point3D(
-        -3.9436692037194394,
-        -1.9169676477173505,
-        0.8598584143807657,
-    ),
-    radius=0.2,
-)
-TASK3_SINK_REGION = SinkRegion(
-    bounds=Bounds2D(
-        x_min=-4.245322,
-        y_min=-2.412793,
-        x_max=-3.805322,
-        y_max=-2.042793,
-    ),
-    tabletop_z=0.74699,
-)
-
 DEFAULT_STAGE1_OBJECTS = (
     "simple_tray",
     "bowl2",
@@ -235,9 +250,25 @@ def update_feed_hold(
 
 def count_points_in_sphere(
     points: Sequence[Point3D],
-    region: SphereRegion = TASK3_BEAN_RECOVERY_REGION,
+    region: SphereRegion,
 ) -> int:
     return sum(1 for point in points if region.contains(point))
+
+
+def recovery_region_from_bounds(bounds: Bounds3D) -> SphereRegion:
+    return SphereRegion(center=bounds.center, radius=0.75 * bounds.diagonal)
+
+
+def sink_region_from_bounds(bounds: Bounds3D) -> SinkRegion:
+    return SinkRegion(
+        bounds=Bounds2D(
+            x_min=bounds.x_min,
+            y_min=bounds.y_min,
+            x_max=bounds.x_max,
+            y_max=bounds.y_max,
+        ),
+        tabletop_z=bounds.z_min,
+    )
 
 
 def bean_recovery_score(beans_inside: int, total_beans: int) -> int:
@@ -257,8 +288,8 @@ def bean_recovery_score(beans_inside: int, total_beans: int) -> int:
 def score_stage4_cleanup(
     object_bounds: Mapping[str, Bounds2D],
     object_z_values: Mapping[str, float],
+    sink_region: SinkRegion,
     object_names: Sequence[str] = DEFAULT_UTENSIL_OBJECTS,
-    sink_region: SinkRegion = TASK3_SINK_REGION,
 ) -> StageScore:
     passed = []
     for name in object_names:

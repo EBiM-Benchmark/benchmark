@@ -13,16 +13,17 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import grading  # noqa: E402
 from grading import (  # noqa: E402
     DEFAULT_STAGE1_OBJECTS,
     DEFAULT_UTENSIL_OBJECTS,
-    TASK3_BEAN_RECOVERY_REGION,
     TASK3_KITCHEN_AREA,
-    TASK3_SINK_REGION,
     Area2D,
     Bounds2D,
     FeedHoldState,
     Point3D,
+    SinkRegion,
+    SphereRegion,
     bean_recovery_score,
     classify_table_area,
     count_points_in_sphere,
@@ -188,7 +189,8 @@ def test_feed_hold_accumulates_continuously_and_resets_on_break():
 
 
 def test_bean_recovery_counts_sphere_volume_and_thresholds():
-    center = TASK3_BEAN_RECOVERY_REGION.center
+    region = SphereRegion(Point3D(1.0, 2.0, 3.0), radius=0.2)
+    center = region.center
     inside = [center, Point3D(center.x + 0.19, center.y, center.z)]
     outside = [Point3D(center.x + 0.21, center.y, center.z)]
 
@@ -196,14 +198,13 @@ def test_bean_recovery_counts_sphere_volume_and_thresholds():
         "sphere includes boundary points",
         count_points_in_sphere(
             [inside[0], Point3D(center.x + 0.2, center.y, center.z)],
-            TASK3_BEAN_RECOVERY_REGION,
+            region,
         )
         == 2,
     )
     expect(
         "sphere excludes outside points",
-        count_points_in_sphere([*inside, *outside], TASK3_BEAN_RECOVERY_REGION)
-        == 2,
+        count_points_in_sphere([*inside, *outside], region) == 2,
     )
     expect("bean recovery 100 percent", bean_recovery_score(10, 10) == 4)
     expect("bean recovery 90 percent", bean_recovery_score(9, 10) == 3)
@@ -215,8 +216,34 @@ def test_bean_recovery_counts_sphere_volume_and_thresholds():
     )
 
 
+def test_bean_recovery_region_follows_container_bounds():
+    bounds = grading.Bounds3D(
+        x_min=10.0,
+        y_min=20.0,
+        z_min=0.5,
+        x_max=12.0,
+        y_max=24.0,
+        z_max=2.5,
+    )
+
+    region = grading.recovery_region_from_bounds(bounds)
+
+    expect(
+        "recovery region follows bounds center",
+        region.center == Point3D(11.0, 22.0, 1.5),
+    )
+    expect(
+        "recovery radius follows bounds diagonal",
+        abs(region.radius - 0.75 * (24.0**0.5)) < 1e-12,
+    )
+
+
 def test_stage4_scores_utensils_overlapping_sink_above_tabletop():
-    sink = TASK3_SINK_REGION.bounds
+    sink_region = SinkRegion(
+        bounds=Bounds2D(-4.2, -2.4, -3.8, -2.0),
+        tabletop_z=0.75,
+    )
+    sink = sink_region.bounds
     poses = {
         "simple_tray": Bounds2D(
             sink.x_min, sink.y_min, sink.x_max, sink.y_max
@@ -241,10 +268,10 @@ def test_stage4_scores_utensils_overlapping_sink_above_tabletop():
         "bowl2": 0.80,
         "spoon2": 0.80,
         "plate2": 0.70,
-        "cup": TASK3_SINK_REGION.tabletop_z,
+        "cup": sink_region.tabletop_z,
     }
 
-    result = score_stage4_cleanup(poses, z_values)
+    result = score_stage4_cleanup(poses, z_values, sink_region=sink_region)
 
     expect("stage4 counts overlap and tabletop z", result.score == 3)
     expect(
@@ -255,6 +282,25 @@ def test_stage4_scores_utensils_overlapping_sink_above_tabletop():
         "stage4 records returned objects",
         result.passed == ["simple_tray", "bowl2", "cup"],
     )
+
+
+def test_sink_region_follows_boundary_bounds():
+    boundary = grading.Bounds3D(
+        x_min=10.0,
+        y_min=20.0,
+        z_min=0.75,
+        x_max=12.0,
+        y_max=24.0,
+        z_max=0.80,
+    )
+
+    region = grading.sink_region_from_bounds(boundary)
+
+    expect(
+        "sink xy follows boundary bounds",
+        region.bounds == Bounds2D(10.0, 20.0, 12.0, 24.0),
+    )
+    expect("sink tabletop follows boundary base", region.tabletop_z == 0.75)
 
 
 TEST_GROUPS = {
@@ -269,9 +315,11 @@ TEST_GROUPS = {
     ],
     "stage3": [
         test_bean_recovery_counts_sphere_volume_and_thresholds,
+        test_bean_recovery_region_follows_container_bounds,
     ],
     "stage4": [
         test_stage4_scores_utensils_overlapping_sink_above_tabletop,
+        test_sink_region_follows_boundary_bounds,
     ],
 }
 TEST_GROUPS["all"] = [
