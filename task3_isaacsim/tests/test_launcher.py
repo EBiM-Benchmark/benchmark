@@ -79,6 +79,54 @@ def test_scene_configures_profile_drives_before_world_reset():
     assert configure_line < reset_line
 
 
+def test_scene_enables_physx_ui_for_gui_runs():
+    tree = ast.parse(SCENE.read_text())
+
+    assert any(
+        isinstance(node, ast.If)
+        and ast.unparse(node.test) == "not args_cli.headless"
+        and any(
+            isinstance(child, ast.Call)
+            and isinstance(child.func, ast.Name)
+            and child.func.id == "enable_extension"
+            and child.args
+            and isinstance(child.args[0], ast.Constant)
+            and child.args[0].value == "omni.physx.ui"
+            for child in ast.walk(node)
+        )
+        for node in tree.body
+    )
+
+
+def test_scene_enables_fabric_for_world():
+    tree = ast.parse(SCENE.read_text())
+    main = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "main"
+    )
+    world_call = next(
+        node
+        for node in ast.walk(main)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "World"
+    )
+    sim_params_keywords = [
+        keyword.value
+        for keyword in world_call.keywords
+        if keyword.arg == "sim_params"
+    ]
+
+    assert len(sim_params_keywords) == 1
+    sim_params = sim_params_keywords[0]
+    assert isinstance(sim_params, ast.Dict)
+    assert {
+        key.value: value.value
+        for key, value in zip(sim_params.keys, sim_params.values, strict=True)
+    } == {"use_fabric": True}
+
+
 def test_helper_up_removes_services_disabled_by_new_options(tmp_path):
     helper = TASK3_ROOT / "scripts" / "run_helper_containers.sh"
     fake_bin = tmp_path / "bin"

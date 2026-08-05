@@ -1,0 +1,106 @@
+# Copyright (c) 2026 The EBiM Benchmark Contributors
+# SPDX-License-Identifier: Apache-2.0
+
+# The robot description defines the generalized coordinates and how to map those
+# to the underlying URDF dofs.
+
+api_version: 1.0
+
+# Defines the generalized coordinates. Each generalized coordinate is assumed
+# to have an entry in the URDF.
+# Lula will only use these joints to control the robot position.
+
+cspace:
+    - left_fr3v2_joint1
+    - left_fr3v2_joint2
+    - left_fr3v2_joint3
+    - left_fr3v2_joint4
+    - left_fr3v2_joint5
+    - left_fr3v2_joint6
+    - left_fr3v2_joint7
+
+default_q: [
+    -0.0005, -0.0, -0.0002, -0.1169, -0.0002, 0.4402, 0.0004
+]
+
+acceleration_limits: [
+   10, 10, 10, 10, 10, 10, 10
+]
+
+jerk_limits: [
+   10000, 10000, 10000, 10000, 10000, 10000, 10000
+]
+
+# Most dimensions of the cspace have a direct corresponding element
+# in the URDF. This list of rules defines how unspecified coordinates
+# should be extracted or how values in the URDF should be overwritten.
+
+cspace_to_urdf_rules:
+    - {name: rocker_arm_joint, rule: fixed, value: 0.0044}
+    - {name: tmrv0_2_joint_0, rule: fixed, value: -2.2503}
+    - {name: caster_front_left_steering_joint, rule: fixed, value: -0.0007}
+    - {name: franka_spine_vertical_joint, rule: fixed, value: 0.0}
+    - {name: tmrv0_2_joint_2, rule: fixed, value: 0.0}
+    - {name: caster_rear_right_steering_joint, rule: fixed, value: 0.0119}
+    - {name: tmrv0_2_joint_1, rule: fixed, value: 2.2622}
+    - {name: caster_front_left_joint, rule: fixed, value: -0.024}
+    - {name: tmrv0_2_joint_3, rule: fixed, value: -0.0005}
+    - {name: caster_rear_right_joint, rule: fixed, value: -0.0014}
+
+    # === 左手臂夹爪关节命名更新 (Left Gripper Joints Fixed) ===
+    - {name: left_left_gripper_joint, rule: fixed, value: 0.0115}
+    - {name: left_left_2_joint, rule: fixed, value: -0.0014}
+    - {name: left_left_support_joint, rule: fixed, value: -0.0609}
+    - {name: left_right_1_joint, rule: fixed, value: -0.0697}
+    - {name: left_right_2_joint, rule: fixed, value: -0.0021}
+    - {name: left_right_support_joint, rule: fixed, value: 0.0697}
+
+# Lula uses collision spheres to define the robot geometry in order to avoid
+# collisions with external obstacles.  If no spheres are specified, Lula will
+# not be able to avoid obstacles.
+
+collision_spheres:
+  - left_fr3v2_link0:
+    - center: [0.027, 0.019, 0.063]
+      radius: 0.085
+    - center: [0.008, -0.003, 0.165]
+      radius: 0.07
+  - left_fr3v2_link1:
+    - center: [-0.0, -0.061, -0.002]
+      radius: 0.085
+    - center: [-0.007, -0.01, -0.14]
+      radius: 0.078
+    - center: [0.012, -0.035, -0.065]
+      radius: 0.07
+  - left_fr3v2_link2:
+    - center: [-0.0, -0.019, 0.056]
+      radius: 0.085
+    - center: [-0.002, -0.134, 0.004]
+      radius: 0.085
+  - left_fr3v2_link3:
+    - center: [0.014, 0.006, -0.074]
+      radius: 0.08
+    - center: [0.073, 0.043, -0.003]
+      radius: 0.08
+  - left_fr3v2_link4:
+    - center: [0.009, 0.005, 0.058]
+      radius: 0.08
+    - center: [-0.08, 0.08, 0.003]
+      radius: 0.07
+  - left_fr3v2_link5:
+    - center: [0.003, 0.068, -0.008]
+      radius: 0.072
+    - center: [-0.0, 0.0, -0.228]
+      radius: 0.07
+    - center: [-0.002, 0.057, -0.176]
+      radius: 0.055
+    - center: [-0.003, 0.079, -0.112]
+      radius: 0.05
+  - left_fr3v2_link6:
+    - center: [0.0, 0.0, 0.0]
+      radius: 0.06
+    - center: [0.086, 0.023, 0.004]
+      radius: 0.07
+  - left_fr3v2_link7:
+    - center: [0.012, 0.001, 0.076]
+      radius: 0.06

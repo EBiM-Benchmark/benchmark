@@ -38,6 +38,10 @@ RUN --mount=type=cache,target=/var/cache/apt \
     # Add sourcing of setup.bash to .bashrc
     echo "source /opt/ros/jazzy/setup.bash" >> ${DOCKER_USER_HOME}/.bashrc
 
+# Install OpenCV into Isaac Sim's bundled Python without replacing its NumPy.
+RUN ${ISAACLAB_PATH}/isaaclab.sh -p -m pip install --no-deps \
+    opencv-python-headless
+
 # Copy the RMW specifications for ROS2
 # https://docs.isaacsim.omniverse.nvidia.com/latest/installation/install_ros.html
 COPY --chown=isaaclab:isaaclab docker/.ros/ ${DOCKER_USER_HOME}/.ros/
