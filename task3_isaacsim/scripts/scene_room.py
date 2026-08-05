@@ -49,16 +49,6 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=None,
         help="Override the robot USD selected by --gripper.",
     )
-    # parser.add_argument(
-    #     "--franka-root",
-    #     default="/workspace/EBiM_Challenge/task1_isaacsim",
-    #     help="Task 1 root (containing assets/embodiments) inside the Isaac Lab container.",
-    # )
-    # parser.add_argument(
-    #     "--embodiment",
-    #     default="fr3duo_mobile",
-    #     help="Embodiment key under assets/embodiments.",
-    # )
     parser.add_argument("--robot-x", type=float, default=None)
     parser.add_argument("--robot-y", type=float, default=None)
     parser.add_argument("--robot-z", type=float, default=None)
@@ -117,8 +107,9 @@ from isaacsim.core.api import World  # noqa: E402
 from isaacsim.core.prims import SingleArticulation  # noqa: E402
 
 ROBOT_PRIM_PATH = "/World/Robot"
-TASK_OBJECTS_ROOT = "/World/Scene/task_objects"
-
+TASK_OBJECTS_ROOT = "/World/Environment/RobotRoom/Asset/{}"
+OBJECT_NAMES = ["head", "bowl2", "plate2", "spoon2", "cup", "simple_tray"]
+OBJECT_PRIM_PATHS = [TASK_OBJECTS_ROOT.format(name) for name in OBJECT_NAMES]
 
 def main() -> None:
     room_path = Path(args_cli.room_usd).expanduser()
@@ -163,11 +154,7 @@ def main() -> None:
     # build_stage already created the eval camera prim + graph; the scene
     # camera config pass adopts them (pose from yaml) and only builds
     # graphs for cameras the scene did not author.
-    stage = omni.usd.get_context().get_stage()
 
-    recording.setup_recording_cameras(
-        stage, args_cli, ROBOT_PRIM_PATH, "cameras_room.yaml"
-    )
 
 
 
@@ -177,6 +164,14 @@ def main() -> None:
         stage_units_in_meters=1.0,
         physics_dt=1.0 / args_cli.physics_hz,
         rendering_dt=1.0 / args_cli.render_hz,
+    )
+
+    world.get_physics_context().enable_fabric(True)
+    #world.set_gpu_dynamics_enabled(True)
+    stage = omni.usd.get_context().get_stage()
+
+    recording.setup_recording_cameras(
+        stage, args_cli, ROBOT_PRIM_PATH, "cameras_room.yaml"
     )
     core.prepare_robot_prim(ROBOT_PRIM_PATH, args_cli)
     core._configure_drives(
@@ -211,7 +206,7 @@ def main() -> None:
         robot,
         stage,
         args_cli,
-        TASK_OBJECTS_ROOT,
+        OBJECT_PRIM_PATHS,
         spine_controller=spine_keyboard_controller,
         arm_teleop=arm_keyboard_teleop,
     )

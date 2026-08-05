@@ -33,16 +33,17 @@ except Exception:  # pragma: no cover - ships with Isaac Sim
 
 # Shared topic contract from scripts/topics.py (scripts/ is on sys.path in
 # every entry point that imports this package).
-from topics import load_topics
+from topics3 import load_topics
 
 _GROUND_TRUTH_TOPICS = load_topics()["ground_truth"]
-# OBJECT_POSES_TOPIC = _GROUND_TRUTH_TOPICS["object_poses"]
+OBJECT_POSES_TOPIC = _GROUND_TRUTH_TOPICS["object_poses"]
 # PAD_POINTS_TOPIC = _GROUND_TRUTH_TOPICS["pad_points"]
 SCENE_RESET_TOPIC = _GROUND_TRUTH_TOPICS["scene_reset"]
 SCENE_RESET_REQUEST_TOPIC = _GROUND_TRUTH_TOPICS["scene_reset_request"]
 
 # Objects whose names start with this prefix are jittered as one rigid group
 # (the deformable pad is attached to the sticker base).
+#
 PAD_GROUP_PREFIX = "thermalpad"
 
 
@@ -56,136 +57,135 @@ def _quat_wxyz(rotation: Gf.Quatd) -> list[float]:
     ]
 
 
-# class GroundTruthPublisher:
-#     """Publish task-object world poses (every tick) and thermal-pad mesh
-#     vertices (every pad_points_every ticks) on /isaac/task2/*.
+class GroundTruthPublisher:
+    """Publish task-object world poses (every tick) and thermal-pad mesh
+    vertices (every pad_points_every ticks) on /isaac/task2/*.
 
-#     object_poses: std_msgs/String JSON
-#         {"sim_time": t, "objects": {name: [x, y, z, qw, qx, qy, qz]}}
-#     pad_points: std_msgs/Float32MultiArray
-#         data = [sim_time, n_points, x0, y0, z0, x1, ...] (world frame)
-#     """
+    object_poses: std_msgs/String JSON
+        {"sim_time": t, "objects": {name: [x, y, z, qw, qx, qy, qz]}}
+    pad_points: std_msgs/Float32MultiArray
+        data = [sim_time, n_points, x0, y0, z0, x1, ...] (world frame)
+    """
 
-#     def __init__(
-#         self,
-#         stage,
-#         objects_root_path: str,
-#         *,
-#         pad_key: str = "thermalpad",
-#         pad_points_every: int = 6,
-#     ):
-#         self._stage = stage
-#         self._pad_points_every = max(int(pad_points_every), 0)
-#         self._tick_count = 0
-#         self._poses_pub = None
-#         self._pad_pub = None
+    def __init__(
+        self,
+        stage,
+        objects_root_paths: list(str),
+        # *,
+        # pad_key: str = "thermalpad",
+        # pad_points_every: int = 6,
+    ):
+        self._stage = stage
+        # self._pad_points_every = max(int(pad_points_every), 0)
+        self._tick_count = 0
+        self._poses_pub = None
+        # self._pad_pub = None
 
-#         root_prim = stage.GetPrimAtPath(objects_root_path)
-#         if not root_prim.IsValid():
-#             raise RuntimeError(
-#                 f"Task objects root prim not found: {objects_root_path}"
-#             )
-#         self._object_prims = {
-#             prim.GetName(): prim for prim in root_prim.GetChildren()
-#         }
-#         if not self._object_prims:
-#             raise RuntimeError(
-#                 f"No task object prims under {objects_root_path}"
-#             )
+        prims = [stage.GetPrimAtPath(prim_path) for prim_path in objects_root_paths]
+        for prim_path, prim in zip(objects_root_paths, prims):
+            if not prim.IsValid():
+                raise RuntimeError(
+                    f"Task object prim not found: {prim_path}"
+                )
+        self._object_prims = {
+            prim.GetName(): prim for prim in prims
+        }
+        print(f"Object names: {self._object_prims.keys()}", flush=True)
 
-#         # Deformable thermal-pad meshes: prefer the PhysX deformable-body
-#         # API (works for both the room scene's per-object references and the
-#         # barebone scene's aggregate USD); fall back to all meshes under the
-#         # pad_key child.
-#         self._pad_meshes = []
-#         if PhysxSchema is not None:
-#             self._pad_meshes = [
-#                 prim
-#                 for prim in Usd.PrimRange(root_prim)
-#                 if prim.IsA(UsdGeom.Mesh)
-#                 and prim.HasAPI(PhysxSchema.PhysxDeformableBodyAPI)
-#             ]
-#         if not self._pad_meshes:
-#             pad_prim = stage.GetPrimAtPath(f"{objects_root_path}/{pad_key}")
-#             if pad_prim.IsValid():
-#                 self._pad_meshes = [
-#                     prim
-#                     for prim in Usd.PrimRange(pad_prim)
-#                     if prim.IsA(UsdGeom.Mesh)
-#                 ]
-#         if not self._pad_meshes:
-#             print(
-#                 "Warning: no thermal-pad meshes found under "
-#                 f"{objects_root_path}/{pad_key}; pad points will not be "
-#                 "published",
-#                 file=sys.stderr,
-#             )
-#         print(
-#             "Recording: ground truth for objects "
-#             f"{sorted(self._object_prims)} "
-#             f"({len(self._pad_meshes)} pad meshes)",
-#             flush=True,
-#         )
 
-#     def bind(self, node) -> None:
-#         self._poses_pub = node.create_publisher(String, OBJECT_POSES_TOPIC, 10)
-#         self._pad_pub = node.create_publisher(
-#             Float32MultiArray, PAD_POINTS_TOPIC, 10
-#         )
+        # Deformable thermal-pad meshes: prefer the PhysX deformable-body
+        # API (works for both the room scene's per-object references and the
+        # barebone scene's aggregate USD); fall back to all meshes under the
+        # pad_key child.
+        # self._pad_meshes = []
+        # if PhysxSchema is not None:
+        #     self._pad_meshes = [
+        #         prim
+        #         for prim in Usd.PrimRange(root_prim)
+        #         if prim.IsA(UsdGeom.Mesh)
+        #         and prim.HasAPI(PhysxSchema.PhysxDeformableBodyAPI)
+        #     ]
+        # if not self._pad_meshes:
+        #     pad_prim = stage.GetPrimAtPath(f"{objects_root_path}/{pad_key}")
+        #     if pad_prim.IsValid():
+        #         self._pad_meshes = [
+        #             prim
+        #             for prim in Usd.PrimRange(pad_prim)
+        #             if prim.IsA(UsdGeom.Mesh)
+        #         ]
+        # if not self._pad_meshes:
+        #     print(
+        #         "Warning: no thermal-pad meshes found under "
+        #         f"{objects_root_path}/{pad_key}; pad points will not be "
+        #         "published",
+        #         file=sys.stderr,
+        #     )
+        print(
+            "Recording: ground truth for objects "
+            f"{sorted(self._object_prims)} "
+    #        f"({len(self._pad_meshes)} pad meshes)",
+    #        flush=True,
+        )
 
-#     def _publish_object_poses(self, sim_time: float, xform_cache) -> None:
-#         objects = {}
-#         for name, prim in self._object_prims.items():
-#             world = xform_cache.GetLocalToWorldTransform(prim)
-#             translation = world.ExtractTranslation()
-#             objects[name] = [
-#                 float(translation[0]),
-#                 float(translation[1]),
-#                 float(translation[2]),
-#                 *_quat_wxyz(world.ExtractRotationQuat()),
-#             ]
-#         msg = String()
-#         msg.data = json.dumps({"sim_time": sim_time, "objects": objects})
-#         self._poses_pub.publish(msg)
+    def bind(self, node) -> None:
+        self._poses_pub = node.create_publisher(String, OBJECT_POSES_TOPIC, 10)
+        # self._pad_pub = node.create_publisher(
+        #     Float32MultiArray, PAD_POINTS_TOPIC, 10
+        # )
 
-#     def _publish_pad_points(self, sim_time: float, xform_cache) -> None:
-#         chunks = []
-#         for mesh_prim in self._pad_meshes:
-#             points_attr = UsdGeom.Mesh(mesh_prim).GetPointsAttr().Get()
-#             if points_attr is None:
-#                 continue
-#             points = np.asarray(points_attr, dtype=np.float64)
-#             if points.size == 0:
-#                 continue
-#             matrix = np.asarray(
-#                 xform_cache.GetLocalToWorldTransform(mesh_prim),
-#                 dtype=np.float64,
-#             )
-#             # USD uses row-vector convention: p_world = p_local * M.
-#             chunks.append(points @ matrix[:3, :3] + matrix[3, :3])
-#         if not chunks:
-#             return
-#         world_points = np.concatenate(chunks, axis=0).astype(np.float32)
-#         msg = Float32MultiArray()
-#         msg.data = [
-#             float(sim_time),
-#             float(world_points.shape[0]),
-#             *world_points.reshape(-1).tolist(),
-#         ]
-#         self._pad_pub.publish(msg)
+    def _publish_object_poses(self, sim_time: float, xform_cache) -> None:
+        objects = {}
+        for name, prim in self._object_prims.items():
+            world = xform_cache.GetLocalToWorldTransform(prim)
+            translation = world.ExtractTranslation()
+            objects[name] = [
+                float(translation[0]),
+                float(translation[1]),
+                float(translation[2]),
+                *_quat_wxyz(world.ExtractRotationQuat()),
+            ]
+        msg = String()
+        msg.data = json.dumps({"sim_time": sim_time, "objects": objects})
+        self._poses_pub.publish(msg)
 
-#     def tick(self, sim_time: float) -> None:
-#         if self._poses_pub is None:
-#             return
-#         xform_cache = UsdGeom.XformCache()
-#         self._publish_object_poses(sim_time, xform_cache)
-#         self._tick_count += 1
-#         if (
-#             self._pad_meshes
-#             and self._pad_points_every > 0
-#             and self._tick_count % self._pad_points_every == 0
-#         ):
-#             self._publish_pad_points(sim_time, xform_cache)
+    # def _publish_pad_points(self, sim_time: float, xform_cache) -> None:
+    #     chunks = []
+    #     for mesh_prim in self._pad_meshes:
+    #         points_attr = UsdGeom.Mesh(mesh_prim).GetPointsAttr().Get()
+    #         if points_attr is None:
+    #             continue
+    #         points = np.asarray(points_attr, dtype=np.float64)
+    #         if points.size == 0:
+    #             continue
+    #         matrix = np.asarray(
+    #             xform_cache.GetLocalToWorldTransform(mesh_prim),
+    #             dtype=np.float64,
+    #         )
+    #         # USD uses row-vector convention: p_world = p_local * M.
+    #         chunks.append(points @ matrix[:3, :3] + matrix[3, :3])
+    #     if not chunks:
+    #         return
+    #     world_points = np.concatenate(chunks, axis=0).astype(np.float32)
+    #     msg = Float32MultiArray()
+    #     msg.data = [
+    #         float(sim_time),
+    #         float(world_points.shape[0]),
+    #         *world_points.reshape(-1).tolist(),
+    #     ]
+    #     self._pad_pub.publish(msg)
+
+    def tick(self, sim_time: float) -> None:
+        if self._poses_pub is None:
+            return
+        xform_cache = UsdGeom.XformCache()
+        self._publish_object_poses(sim_time, xform_cache)
+        self._tick_count += 1
+        # if (
+        #     self._pad_meshes
+        #     and self._pad_points_every > 0
+        #     and self._tick_count % self._pad_points_every == 0
+        # ):
+        #     self._publish_pad_points(sim_time, xform_cache)
 
 
 class SceneResetController:
@@ -206,7 +206,7 @@ class SceneResetController:
         world,
         robot,
         stage,
-        objects_root_path: str,
+        objects_root_paths: str,
         *,
         spine_controller=None,
         arm_teleop=None,

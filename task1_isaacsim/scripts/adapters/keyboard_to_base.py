@@ -45,14 +45,15 @@ KEY_TO_PEDAL = {
     "d": "B",
     "q": "A+C",
     "e": "B+C",
+    "NONE": "NONE", 
 }
 
 
 class KeyboardToBase(Node):
     def __init__(self) -> None:
         super().__init__("keyboard_to_base")
-        self._pub = self.create_publisher(String, "/pedal/state", 10)
-        self._sub = self.create_subscription(String, "/keyboard/state", self._on_key, 10)
+        self._pub = self.create_publisher(String, "/pedal/state", 1)
+        self._sub = self.create_subscription(String, "/keyboard/state", self._on_key, 1)
         self.get_logger().info(
             "keyboard_to_base started: /keyboard/state (w/a/s/d/q/e) -> /pedal/state"
         )
@@ -62,7 +63,10 @@ class KeyboardToBase(Node):
         if token is None:
             return
         out = String()
-        out.data = token
+        out.data = token        
+        self.get_logger().info(
+            f"keyboard_to_base: {token}"
+        )
         self._pub.publish(out)
 
 

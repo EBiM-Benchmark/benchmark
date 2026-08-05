@@ -50,19 +50,19 @@ def setup_recording_cameras(
                 file=sys.stderr,
             )
 
-    if args_cli.enable_scene_cameras:
-        from . import scene_cameras  # noqa: PLC0415
+    # if args_cli.enable_scene_cameras:
+    #     from . import scene_cameras  # noqa: PLC0415
 
-        config = args_cli.scene_cameras_config or (
-            _CONFIG_DIR / default_scene_config
-        )
-        try:
-            scene_cameras.setup_scene_camera_graphs(stage, config)
-        except Exception as exc:  # noqa: BLE001 - recording is optional
-            print(
-                f"Warning: scene camera publishers unavailable: {exc}",
-                file=sys.stderr,
-            )
+    #     config = args_cli.scene_cameras_config or (
+    #         _CONFIG_DIR / default_scene_config
+    #     )
+    #     try:
+    #         scene_cameras.setup_scene_camera_graphs(stage, config)
+    #     except Exception as exc:  # noqa: BLE001 - recording is optional
+    #         print(
+    #             f"Warning: scene camera publishers unavailable: {exc}",
+    #             file=sys.stderr,
+    #         )
 
 
 def build_recording_tick_callbacks(
@@ -70,7 +70,7 @@ def build_recording_tick_callbacks(
     robot,
     stage,
     args_cli,
-    objects_root: str,
+    object_roots: list[str],
     *,
     spine_controller,
     arm_teleop,
@@ -79,19 +79,19 @@ def build_recording_tick_callbacks(
 
     Failures only warn: recording is optional for teleop."""
     callbacks = []
-    # if args_cli.publish_ground_truth:
-    #     from .scene_capture import GroundTruthPublisher  # noqa: PLC0415
+    if args_cli.publish_ground_truth:
+        from .scene_capture import GroundTruthPublisher  # noqa: PLC0415
 
-    #     try:
-    #         callbacks.append(
-    #             GroundTruthPublisher(
-    #                 stage,
-    #                 objects_root,
-    #                 pad_points_every=args_cli.ground_truth_pad_every,
-    #             )
-    #         )
-    #     except Exception as exc:  # noqa: BLE001 - recording is optional
-    #         print(f"Warning: ground-truth publisher unavailable: {exc}")
+        try:
+            callbacks.append(
+                GroundTruthPublisher(
+                    stage,
+                    object_roots,
+                    # pad_points_every=args_cli.ground_truth_pad_every,
+                )
+            )
+        except Exception as exc:  # noqa: BLE001 - recording is optional
+            print(f"Warning: ground-truth publisher unavailable: {exc}")
     if args_cli.scene_reset_hotkey:
         from .scene_capture import SceneResetController  # noqa: PLC0415
         print("setup scene reset controller")
@@ -101,7 +101,7 @@ def build_recording_tick_callbacks(
                     world,
                     robot,
                     stage,
-                    objects_root,
+                    object_roots,
                     spine_controller=spine_controller,
                     arm_teleop=arm_teleop,
                     randomize=args_cli.randomize_objects,

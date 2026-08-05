@@ -28,7 +28,7 @@ try:
 except Exception:  # pragma: no cover - PyYAML ships with Isaac Sim
     yaml = None
 
-from topics import load_topics
+from topics3 import load_topics
 
 CAMERA_GRAPH_ROOT = "/ROS2_CameraGraphs"
 

@@ -76,7 +76,7 @@ recording:
 
 # Ground-truth streams from scripts/recording/scene_capture.py.
 ground_truth:
-  # object_poses: /isaac/task3/object_poses
+  object_poses: /isaac/task3/object_poses
   # pad_points: /isaac/task3/pad_points
   scene_reset: /isaac/task3/scene_reset
   # Any message here triggers the same reset as the '5' hotkey (published
@@ -109,9 +109,9 @@ cameras:
       shape: [480, 848, 3]
   # Static room camera published by the room scene (recorder key
   # "eval_camera"); the extra streams feed --suggest-success.
-  eval:
-    namespace: /isaac/eval_camera
-    shape: [720, 1280, 3]
-    bbox_2d_tight: /isaac/eval_camera/bbox_2d_tight
-    semantic_labels: /isaac/eval_camera/semantic_labels
-    semantic_segmentation: /isaac/eval_camera/semantic_segmentation
+  # eval:
+  #   namespace: /isaac/eval_camera
+  #   shape: [720, 1280, 3]
+  #   bbox_2d_tight: /isaac/eval_camera/bbox_2d_tight
+  #   semantic_labels: /isaac/eval_camera/semantic_labels
+  #   semantic_segmentation: /isaac/eval_camera/semantic_segmentation

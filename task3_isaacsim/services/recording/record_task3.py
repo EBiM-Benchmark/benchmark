@@ -93,7 +93,7 @@ except ImportError:  # pragma: no cover - needed only for --suggest-success
 # The shared topic contract loader lives in task2_isaacsim/scripts/; it is
 # import-safe outside Isaac Sim (stdlib + PyYAML only).
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
-from topics import camera_topic, load_topics  # noqa: E402
+from topics3 import camera_topic, load_topics  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Topic constants — all names come from config/topics.yaml (fail-hard load);
@@ -107,19 +107,19 @@ APPLIED_COMMANDS_TOPIC = _TOPICS["recording"]["applied_joint_commands"]
 ODOM_TOPIC = _TOPICS["recording"]["odom"]
 CMD_VEL_APPLIED_TOPIC = _TOPICS["recording"]["cmd_vel_applied"]
 EE_POSE_TOPICS = dict(_TOPICS["recording"]["ee_pose"])
-# OBJECT_POSES_TOPIC = _TOPICS["ground_truth"]["object_poses"]
+OBJECT_POSES_TOPIC = _TOPICS["ground_truth"]["object_poses"]
 # PAD_POINTS_TOPIC = _TOPICS["ground_truth"]["pad_points"]
 SCENE_RESET_TOPIC = _TOPICS["ground_truth"]["scene_reset"]
 SCENE_RESET_REQUEST_TOPIC = _TOPICS["ground_truth"]["scene_reset_request"]
-EVAL_BBOX_TOPIC = _TOPICS["cameras"]["eval"]["bbox_2d_tight"]
-EVAL_LABELS_TOPIC = _TOPICS["cameras"]["eval"]["semantic_labels"]
-EVAL_SEGMENTATION_TOPIC = _TOPICS["cameras"]["eval"]["semantic_segmentation"]
+# EVAL_BBOX_TOPIC = _TOPICS["cameras"]["eval"]["bbox_2d_tight"]
+# EVAL_LABELS_TOPIC = _TOPICS["cameras"]["eval"]["semantic_labels"]
+#EVAL_SEGMENTATION_TOPIC = _TOPICS["cameras"]["eval"]["semantic_segmentation"]
 
 
 def _build_camera_table(topics):
     """Recorder camera table (keys = --cameras / dataset video keys)."""
     entries = dict(topics["cameras"]["robot"])
-    entries["eval_camera"] = topics["cameras"]["eval"]
+    #entries["eval_camera"] = topics["cameras"]["eval"]
     return {
         key: {
             "image_topic": camera_topic(topics, entry["namespace"], "image"),
@@ -245,6 +245,8 @@ class Task2RecorderNode(Node):
         self.ee_poses = {"left": None, "right": None}
         self.images = {key: None for key in camera_keys}
         self.depths = {key: None for key in camera_keys}
+        self.object_poses_raw = None
+        #self.pad_points_raw = None
         self.reset_events = []
         self.eval_bbox = None
         self.eval_labels = None
@@ -285,9 +287,9 @@ class Task2RecorderNode(Node):
                     lambda msg, key=key: self._on_depth(key, msg),
                     qos_profile_sensor_data,
                 )
-        # self.create_subscription(
-        #     String, OBJECT_POSES_TOPIC, self._on_object_poses, qos_depth
-        # )
+        self.create_subscription(
+            String, OBJECT_POSES_TOPIC, self._on_object_poses, qos_depth
+        )
         # self.create_subscription(
         #     Float32MultiArray, PAD_POINTS_TOPIC, self._on_pad_points, qos_depth
         # )
@@ -297,22 +299,22 @@ class Task2RecorderNode(Node):
         self._reset_request_pub = self.create_publisher(
             String, SCENE_RESET_REQUEST_TOPIC, qos_depth
         )
-        if suggest_success and Detection2DArray is not None:
-            self.create_subscription(
-                Detection2DArray,
-                EVAL_BBOX_TOPIC,
-                self._on_eval_bbox,
-                qos_depth,
-            )
-            self.create_subscription(
-                String, EVAL_LABELS_TOPIC, self._on_eval_labels, qos_depth
-            )
-            self.create_subscription(
-                Image,
-                EVAL_SEGMENTATION_TOPIC,
-                self._on_eval_segmentation,
-                qos_profile_sensor_data,
-            )
+        #if suggest_success and Detection2DArray is not None:
+            # self.create_subscription(
+            #     Detection2DArray,
+            #     EVAL_BBOX_TOPIC,
+            #     self._on_eval_bbox,
+            #     qos_depth,
+            # )
+            # self.create_subscription(
+            #     String, EVAL_LABELS_TOPIC, self._on_eval_labels, qos_depth
+            # )
+            # self.create_subscription(
+            #     Image,
+            #     EVAL_SEGMENTATION_TOPIC,
+            #     self._on_eval_segmentation,
+            #     qos_profile_sensor_data,
+            # )
 
     def _count(self, key):
         self.message_counts[key] = self.message_counts.get(key, 0) + 1
@@ -378,10 +380,10 @@ class Task2RecorderNode(Node):
             self.depths[key] = msg
             self._count(f"depth_{key}")
 
-    # def _on_object_poses(self, msg):
-    #     with self.lock:
-    #         self.object_poses_raw = msg.data
-    #         self._count("object_poses")
+    def _on_object_poses(self, msg):
+        with self.lock:
+            self.object_poses_raw = msg.data
+            self._count("object_poses")
 
     # def _on_pad_points(self, msg):
     #     with self.lock:
@@ -419,6 +421,8 @@ class Task2RecorderNode(Node):
                 "ee_poses": dict(self.ee_poses),
                 "images": dict(self.images),
                 "depths": dict(self.depths),
+                "object_poses_raw": self.object_poses_raw,
+                #"pad_points_raw": self.pad_points_raw,
             }
 
     def drain_reset_events(self) -> list:
@@ -503,120 +507,120 @@ def build_state(snap: dict) -> np.ndarray:
 # ---------------------------------------------------------------------------
 # Ground-truth extras buffered per episode
 # ---------------------------------------------------------------------------
-# class ExtrasBuffer:
-#     def __init__(self):
-#         self.reset()
+class ExtrasBuffer:
+    def __init__(self):
+        self.reset()
 
-#     def reset(self):
-#         self.sim_times = []
-#         self.wall_times_ns = []
-#         self.object_names = None
-#         self.object_poses = []
-#         self.pad_times = []
-#         self.pad_points = []
-#         self._last_pad_time = None
-#         self.depth_frames = {}  # cam -> list[(frame_idx, array)]
-#         self.reset_events = []
+    def reset(self):
+        self.sim_times = []
+        self.wall_times_ns = []
+        self.object_names = None
+        self.object_poses = []
+        # self.pad_times = []
+        # self.pad_points = []
+        # self._last_pad_time = None
+        self.depth_frames = {}  # cam -> list[(frame_idx, array)]
+        self.reset_events = []
 
-#     def add_frame(self, frame_index: int, snap: dict, *, depth_this_frame):
-#         """Buffer one frame of ground truth; returns what was appended so
-#         the in-flight crash-recovery stream can mirror it."""
-#         self.sim_times.append(snap["sim_time"])
-#         self.wall_times_ns.append(time.time_ns())
+    def add_frame(self, frame_index: int, snap: dict, *, depth_this_frame):
+        """Buffer one frame of ground truth; returns what was appended so
+        the in-flight crash-recovery stream can mirror it."""
+        self.sim_times.append(snap["sim_time"])
+        self.wall_times_ns.append(time.time_ns())
 
-#         # # raw = snap["object_poses_raw"]
-#         # # pose_row = None
-#         # # if raw is not None:
-#         # #     try:
-#         # #         payload = json.loads(raw)
-#         # #         objects = payload.get("objects", {})
-#         # #         if self.object_names is None:
-#         # #             self.object_names = sorted(objects)
-#         # #         pose_row = np.array(
-#         # #             [
-#         # #                 objects.get(name, [np.nan] * 7)
-#         # #                 for name in self.object_names
-#         # #             ],
-#         # #             dtype=np.float32,
-#         # #         )
-#         # #     except (ValueError, TypeError):
-#         # #         pose_row = None
-#         # # if pose_row is None:
-#         # #     width = len(self.object_names) if self.object_names else 0
-#         # #     pose_row = np.full((width, 7), np.nan, dtype=np.float32)
-#         # # self.object_poses.append(pose_row)
+        raw = snap["object_poses_raw"]
+        pose_row = None
+        if raw is not None:
+            try:
+                payload = json.loads(raw)
+                objects = payload.get("objects", {})
+                if self.object_names is None:
+                    self.object_names = sorted(objects)
+                pose_row = np.array(
+                    [
+                        objects.get(name, [np.nan] * 7)
+                        for name in self.object_names
+                    ],
+                    dtype=np.float32,
+                )
+            except (ValueError, TypeError):
+                pose_row = None
+        if pose_row is None:
+            width = len(self.object_names) if self.object_names else 0
+            pose_row = np.full((width, 7), np.nan, dtype=np.float32)
+        self.object_poses.append(pose_row)
 
-#         # # pad_time, points = parse_pad_points(snap["pad_points_raw"])
-#         # # new_pad_points = None
-#         # # if points is not None and pad_time != self._last_pad_time:
-#         # #     self._last_pad_time = pad_time
-#         # #     self.pad_times.append(pad_time)
-#         # #     self.pad_points.append(points)
-#         # #     new_pad_points = points
+        # pad_time, points = parse_pad_points(snap["pad_points_raw"])
+        # new_pad_points = None
+        # if points is not None and pad_time != self._last_pad_time:
+        #     self._last_pad_time = pad_time
+        #     self.pad_times.append(pad_time)
+        #     self.pad_points.append(points)
+        #     new_pad_points = points
 
-#         # if depth_this_frame:
-#         #     for key, msg in snap["depths"].items():
-#         #         if msg is None:
-#         #             continue
-#         #         self.depth_frames.setdefault(key, []).append(
-#         #             (frame_index, depth_msg_to_array(msg).astype(np.float16))
-#         #         )
+        if depth_this_frame:
+            for key, msg in snap["depths"].items():
+                if msg is None:
+                    continue
+                self.depth_frames.setdefault(key, []).append(
+                    (frame_index, depth_msg_to_array(msg).astype(np.float16))
+                )
 
-#         # return {
-#         #     "object_names": self.object_names,
-#         #     "object_poses": pose_row,
-#         #     "pad_time": pad_time if new_pad_points is not None else None,
-#         #     "pad_points": new_pad_points,
-#         # }
+        return {
+            "object_names": self.object_names,
+            "object_poses": pose_row,
+            # "pad_time": pad_time if new_pad_points is not None else None,
+            # "pad_points": new_pad_points,
+        }
 
-#     def save(self, extras_dir: Path, episode_index: int) -> dict:
-#         extras_dir.mkdir(parents=True, exist_ok=True)
-#         arrays = {
-#             "sim_time": np.asarray(self.sim_times, dtype=np.float64),
-#             "wall_time_ns": np.asarray(self.wall_times_ns, dtype=np.int64),
-#         }
-#         if self.object_names:
-#             widths = {row.shape[0] for row in self.object_poses}
-#             if len(widths) > 1:  # names discovered mid-episode
-#                 width = len(self.object_names)
-#                 self.object_poses = [
-#                     row
-#                     if row.shape[0] == width
-#                     else np.full((width, 7), np.nan, dtype=np.float32)
-#                     for row in self.object_poses
-#                 ]
-#             # arrays["object_poses"] = np.stack(self.object_poses)
-#             # arrays["object_names"] = np.array(self.object_names)
-#         if self.pad_points:
-#             counts = {points.shape[0] for points in self.pad_points}
-#             if len(counts) == 1:
-#                 arrays["pad_points"] = np.stack(self.pad_points)
-#             else:  # topology changed (should not happen); store flattened
-#                 arrays["pad_points_flat"] = np.concatenate(
-#                     [points.reshape(-1) for points in self.pad_points]
-#                 )
-#                 arrays["pad_points_counts"] = np.asarray(
-#                     [points.shape[0] for points in self.pad_points],
-#                     dtype=np.int64,
-#                 )
-#             arrays["pad_sim_time"] = np.asarray(
-#                 self.pad_times, dtype=np.float64
-#             )
-#         for key, frames in self.depth_frames.items():
-#             arrays[f"depth_{key}"] = np.stack([f[1] for f in frames])
-#             arrays[f"depth_{key}_frame_index"] = np.asarray(
-#                 [f[0] for f in frames], dtype=np.int64
-#             )
-#         path = extras_dir / f"episode_{episode_index:06d}.npz"
-#         np.savez_compressed(path, **arrays)
-#         return {
-#             "extras_file": path.name,
-#             "frames": len(self.sim_times),
-#             "pad_snapshots": len(self.pad_points),
-#             "depth_frames": {
-#                 key: len(frames) for key, frames in self.depth_frames.items()
-#             },
-#         }
+    def save(self, extras_dir: Path, episode_index: int) -> dict:
+        extras_dir.mkdir(parents=True, exist_ok=True)
+        arrays = {
+            "sim_time": np.asarray(self.sim_times, dtype=np.float64),
+            "wall_time_ns": np.asarray(self.wall_times_ns, dtype=np.int64),
+        }
+        if self.object_names:
+            widths = {row.shape[0] for row in self.object_poses}
+            if len(widths) > 1:  # names discovered mid-episode
+                width = len(self.object_names)
+                self.object_poses = [
+                    row
+                    if row.shape[0] == width
+                    else np.full((width, 7), np.nan, dtype=np.float32)
+                    for row in self.object_poses
+                ]
+            arrays["object_poses"] = np.stack(self.object_poses)
+            arrays["object_names"] = np.array(self.object_names)
+        # if self.pad_points:
+        #     counts = {points.shape[0] for points in self.pad_points}
+        #     if len(counts) == 1:
+        #         arrays["pad_points"] = np.stack(self.pad_points)
+        #     else:  # topology changed (should not happen); store flattened
+        #         arrays["pad_points_flat"] = np.concatenate(
+        #             [points.reshape(-1) for points in self.pad_points]
+        #         )
+        #         arrays["pad_points_counts"] = np.asarray(
+        #             [points.shape[0] for points in self.pad_points],
+        #             dtype=np.int64,
+        #         )
+        #     arrays["pad_sim_time"] = np.asarray(
+        #         self.pad_times, dtype=np.float64
+        #     )
+        for key, frames in self.depth_frames.items():
+            arrays[f"depth_{key}"] = np.stack([f[1] for f in frames])
+            arrays[f"depth_{key}_frame_index"] = np.asarray(
+                [f[0] for f in frames], dtype=np.int64
+            )
+        path = extras_dir / f"episode_{episode_index:06d}.npz"
+        np.savez_compressed(path, **arrays)
+        return {
+            "extras_file": path.name,
+            "frames": len(self.sim_times),
+            # "pad_snapshots": len(self.pad_points),
+            "depth_frames": {
+                key: len(frames) for key, frames in self.depth_frames.items()
+            },
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -1190,7 +1194,6 @@ def wait_for_streams(node: Task2RecorderNode, camera_keys, timeout_s):
         "⚠️  Still waiting for topics: "
         + ", ".join(missing)
         + "\n   Is the sim running scene_room.py --record "
-        "(and the eval camera for eval_camera)?"
     )
     return False
 
@@ -1362,8 +1365,8 @@ def save_episode_with_metadata(
     node,
     args,
     eval_modules,
-    # extras,
-    # extras_dir,
+    extras,
+    extras_dir,
     meta_path,
     *,
     frame_count,
@@ -1385,45 +1388,45 @@ def save_episode_with_metadata(
             and suggestion.get("iou_thermalpad_vs_target_current", 0.0) > 0.0
         )
     )
-    # episode_index = dataset.num_episodes
-    # print(f"💾 Saving episode {episode_index} ...")
+    episode_index = dataset.num_episodes
+    print(f"💾 Saving episode {episode_index} ...")
     dataset.save_episode()
-    # extras_info = extras.save(extras_dir, episode_index)
-    # meta_line = {
-    #     "episode_index": episode_index,
-    #     "success": success,
-    #     "frames": frame_count,
-    #     "dropped_stale_frames": dropped_stale,
-    #     "encoder_dropped_frames": encoder_dropped or None,
-    #     "fps_sim": args.fps,
-    #     "task": args.single_task,
-    #     "sim_time_start": episode_start_sim,
-    #     "sim_time_end": sim_time_end,
-    #     "wall_time_saved": time.time(),
-    #     "scene_reset_events": [
-    #         json.loads(event)
-    #         for event in (pre_reset_events + node.drain_reset_events())
-    #     ],
-    #     "success_suggestion": {
-    #         key: suggestion[key]
-    #         for key in (
-    #             "iou_thermalpad_vs_target_current",
-    #             "is_orientation_correct",
-    #             "orientation_case",
-    #         )
-    #     }
-    #     if suggestion
-    #     else None,
-    #     **extras_info,
-    # }
-    # extras_dir.mkdir(parents=True, exist_ok=True)
-    # with meta_path.open("a", encoding="utf-8") as f:
-    #     f.write(json.dumps(meta_line) + "\n")
-    # print(
-    #     f"✔ Saved episode {episode_index} "
-    #     f"({frame_count} frames, success={success}, "
-    #     f"{dropped_stale} stale frames dropped)"
-    # )
+    extras_info = extras.save(extras_dir, episode_index)
+    meta_line = {
+        "episode_index": episode_index,
+        "success": success,
+        "frames": frame_count,
+        "dropped_stale_frames": dropped_stale,
+        "encoder_dropped_frames": encoder_dropped or None,
+        "fps_sim": args.fps,
+        "task": args.single_task,
+        "sim_time_start": episode_start_sim,
+        "sim_time_end": sim_time_end,
+        "wall_time_saved": time.time(),
+        "scene_reset_events": [
+            json.loads(event)
+            for event in (pre_reset_events + node.drain_reset_events())
+        ],
+        "success_suggestion": {
+            key: suggestion[key]
+            for key in (
+                "iou_thermalpad_vs_target_current",
+                "is_orientation_correct",
+                "orientation_case",
+            )
+        }
+        if suggestion
+        else None,
+        **extras_info,
+    }
+    extras_dir.mkdir(parents=True, exist_ok=True)
+    with meta_path.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(meta_line) + "\n")
+    print(
+        f"✔ Saved episode {episode_index} "
+        f"({frame_count} frames, success={success}, "
+        f"{dropped_stale} stale frames dropped)"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1466,7 +1469,7 @@ def run_recording(args):
     tmp_dir = setup_recording_tmp(dataset_path)
     extras_dir = Path(dataset_path) / "task3_extras"
     meta_path = extras_dir / "episodes_task3.jsonl"
-    #extras = ExtrasBuffer()
+    extras = ExtrasBuffer()
 
     print_controls_menu(camera_keys, args.fps)
 
@@ -1530,7 +1533,7 @@ def run_recording(args):
             # empty, but stray frames from an abnormal abort would silently
             # prepend to this episode.
             clear_episode_buffer(dataset)
-            #extras.reset()
+            extras.reset()
             pre_reset_events = node.drain_reset_events()
             snap = node.snapshot()
             episode_start_sim = snap["sim_time"]
@@ -1601,14 +1604,14 @@ def run_recording(args):
                     dropped_stale += 1
                 else:
                     dataset.add_frame(frame)
-                    # extras.add_frame(
-                    #     frame_count,
-                    #     snap,
-                    #     depth_this_frame=(
-                    #         args.record_depth
-                    #         and frame_count % max(args.depth_every, 1) == 0
-                    #     ),
-                    # )
+                    extras.add_frame(
+                        frame_count,
+                        snap,
+                        depth_this_frame=(
+                            args.record_depth
+                            and frame_count % max(args.depth_every, 1) == 0
+                        ),
+                    )
                     frame_count += 1
                 next_sample += sample_period
 
@@ -1637,8 +1640,8 @@ def run_recording(args):
                     node,
                     args,
                     eval_modules,
-                    # extras,
-                    # extras_dir,
+                    extras,
+                    extras_dir,
                     meta_path,
                     frame_count=frame_count,
                     dropped_stale=dropped_stale,
@@ -1650,7 +1653,7 @@ def run_recording(args):
                 recorded_episodes += 1
             else:
                 clear_episode_buffer(dataset)
-                #extras.reset()
+                extras.reset()
                 node.drain_reset_events()
                 print("🗑  Episode discarded.")
             if stop_cmd == "quit":
@@ -1715,7 +1718,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--cameras",
         type=str,
-        default="head,wrist_left,wrist_right,eval_camera",
+        default="head,wrist_left,wrist_right",
         help=f"Comma-separated subset of {sorted(CAMERAS)}.",
     )
     parser.add_argument(

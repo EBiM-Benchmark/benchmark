@@ -21,7 +21,7 @@ robot_id: fr3duo_mobile_task3
 
 # Sampling (paced on /isaac/clock simulation time).
 fps: 30
-cameras: head,wrist_left,wrist_right,eval_camera
+cameras: head,wrist_left,wrist_right
 record_depth: false
 depth_every: 6          # store depth every N frames (6 = 5 Hz at 30 fps)
 

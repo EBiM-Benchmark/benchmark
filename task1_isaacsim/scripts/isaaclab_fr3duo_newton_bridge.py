@@ -951,20 +951,22 @@ class IsaacLabRosBridge(Node):
         if timeout_sec >= 0.0 and now_sec - self._latest_pedal_time_sec > timeout_sec:
             self._latest_pedal_state = "NONE"
             return 0.0, 0.0, 0.0
+        print(f"Pedal state: {self._latest_pedal_state}", flush=True)
         state = self._latest_pedal_state
+
         # Forward/back tokens are emitted by keyboard_to_base.py (w/s keys); the
         # foot pedal only produces the strafe/yaw tokens below.
-        if state == "FWD":
+        if state == "1A":
             return linear_speed_mps, 0.0, 0.0
-        if state == "BACK":
+        if state == "2A":
             return -linear_speed_mps, 0.0, 0.0
-        if state == "A":
+        if state == "2B":
             return 0.0, linear_speed_mps, 0.0
-        if state == "B":
+        if state == "1B":
             return 0.0, -linear_speed_mps, 0.0
-        if state in {"A+C", "C+A"}:
+        if state == "1C":
             return 0.0, 0.0, angular_speed_radps
-        if state in {"B+C", "C+B"}:
+        if state == "2C":
             return 0.0, 0.0, -angular_speed_radps
         return 0.0, 0.0, 0.0
 

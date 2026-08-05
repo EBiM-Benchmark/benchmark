@@ -18,21 +18,21 @@
 # contract: <key> validates namespace + resolution against config/topics.yaml
 # cameras.<key>. Entries without a contract key still publish, but the
 # recorder will not record them.
-version: 1
-cameras:
-  eval_camera:
-    prim_path: /World/Scene/eval_camera
-    namespace: /isaac/eval_camera
-    frame_id: eval_camera
-    translation: [2.087, 1.885, 2.7]
-    rotation_xyz_deg: [0.0, 0.0, 0.0]  # top-down; camera looks along -Z
-    focal_length: 20.0
-    focus_distance: 400.0
-    projection: perspective
-    render_resolution:
-      width: 1280
-      height: 720
-    publish_depth: true
-    publish_semantic: true
-    publish_bbox: true
-    contract: eval
+# version: 1
+# cameras:
+#   eval_camera:
+#     prim_path: /World/Scene/eval_camera
+#     namespace: /isaac/eval_camera
+#     frame_id: eval_camera
+#     translation: [2.087, 1.885, 2.7]
+#     rotation_xyz_deg: [0.0, 0.0, 0.0]  # top-down; camera looks along -Z
+#     focal_length: 20.0
+#     focus_distance: 400.0
+#     projection: perspective
+#     render_resolution:
+#       width: 1280
+#       height: 720
+#     publish_depth: true
+#     publish_semantic: true
+#     publish_bbox: true
+#     contract: eval

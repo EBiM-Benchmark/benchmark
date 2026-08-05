@@ -16,7 +16,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from topics import load_topics
+from topics3 import load_topics
 
 from pxr import Gf, UsdGeom
 
