@@ -62,11 +62,13 @@ INITIAL_VIEW_POSE = (
 BEAN_PHYSICS = {
     "radius": 0.0025,
     "half_height": 0.0016,
-    "spawn_height": 0.02,
+    "spawn_height": 0.07,
     "spawn_wall_thickness": 0.016,
     "spawn_spacing_scale": 1.2,
-    "friction": 0.55,
+    "friction": 0.4,
     "restitution": 0.02,
+    "contact_offset": 0.002,
+    "rest_offset": 0.0005,
 }
 TASK_ROBOT_POSES = {
     "task1": {"position": (4.4, -2.5, 0.0), "yaw": 90.0},
@@ -797,10 +799,12 @@ def add_coffee_beans(
     if count <= 0:
         return
 
+    from pxr import PhysxSchema as pxr_physx_schema
     from pxr import UsdGeom as pxr_usd_geom
     from pxr import UsdPhysics as pxr_usd_physics
     from pxr import UsdShade as pxr_usd_shade
 
+    PhysxSchema: Any = pxr_physx_schema
     UsdGeom: Any = pxr_usd_geom
     UsdPhysics: Any = pxr_usd_physics
     UsdShade: Any = pxr_usd_shade
@@ -837,6 +841,11 @@ def add_coffee_beans(
         set_xform(bean_prim, position, yaw_to_quat(math.degrees(yaw)))
 
         UsdPhysics.CollisionAPI.Apply(bean_prim)
+        physx_collision_api = PhysxSchema.PhysxCollisionAPI.Apply(bean_prim)
+        physx_collision_api.CreateContactOffsetAttr(
+            BEAN_PHYSICS["contact_offset"]
+        )
+        physx_collision_api.CreateRestOffsetAttr(BEAN_PHYSICS["rest_offset"])
         if dynamic:
             UsdPhysics.RigidBodyAPI.Apply(bean_prim)
             mass_api = UsdPhysics.MassAPI.Apply(bean_prim)

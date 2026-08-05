@@ -95,6 +95,8 @@ simulation_app = SimulationApp(
 from isaacsim.core.utils.extensions import enable_extension  # noqa: E402
 
 enable_extension("isaacsim.ros2.bridge")
+if not args_cli.headless:
+    enable_extension("omni.physx.ui")
 simulation_app.update()
 
 import isaacsim_fr3duo_teleop_bridge_core as core  # noqa: E402
@@ -147,6 +149,7 @@ def main() -> None:
         stage_units_in_meters=1.0,
         physics_dt=1.0 / args_cli.physics_hz,
         rendering_dt=1.0 / args_cli.render_hz,
+        sim_params={"use_fabric": True},
     )
     core.prepare_robot_prim(ROBOT_PRIM_PATH, args_cli)
     core._configure_drives(
