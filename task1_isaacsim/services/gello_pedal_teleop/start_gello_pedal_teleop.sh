@@ -8,6 +8,7 @@ INSTALL_ROOT=/tmp/task1_teleop_install
 BUILD_ROOT=/tmp/task1_teleop_build
 LOG_ROOT=/tmp/task1_teleop_log
 GELLO_CONFIG_FILE="${GELLO_CONFIG_FILE:-franka_gello_duo.yaml}"
+PEDAL_MODE="${PEDAL_MODE:-manual}"
 
 if [[ ! -f "${TELEOPERATION_ROOT}/src/franka_gello_state_publisher/package.xml" ]]; then
   echo "teleoperation repository is not mounted at ${TELEOPERATION_ROOT}" >&2
@@ -29,14 +30,29 @@ gello_bridge_pid=$!
 ros2 launch franka_gello_state_publisher main.launch.py config_file:="${GELLO_CONFIG_FILE}" &
 gello_publisher_pid=$!
 
+worker_pids=("${gello_bridge_pid}" "${gello_publisher_pid}")
+
 echo "GELLO teleoperation is running in task1_gello_pedal_teleop."
-echo "Start the pedal publisher from an interactive terminal with:"
-echo "  docker exec -it task1_gello_pedal_teleop bash -lc 'source /opt/ros/jazzy/setup.bash && source ${INSTALL_ROOT}/setup.bash && ros2 run pedal_state_publisher pedal_state_publisher'"
+if [[ "${PEDAL_MODE}" == "dual" ]]; then
+  dual_pedal_args=()
+  if [[ -n "${PEDAL_ONE_DEVICE:-}" ]]; then
+    dual_pedal_args+=(--pedal-one-device "${PEDAL_ONE_DEVICE}")
+  fi
+  if [[ -n "${PEDAL_TWO_DEVICE:-}" ]]; then
+    dual_pedal_args+=(--pedal-two-device "${PEDAL_TWO_DEVICE}")
+  fi
+  python3 /workspace/task1_isaacsim/scripts/adapters/dual_pedal_to_base.py "${dual_pedal_args[@]}" &
+  worker_pids+=("$!")
+  echo "Dual-pedal six-motion publisher is running."
+else
+  echo "Start the single-pedal publisher from an interactive terminal with:"
+  echo "  docker exec -it task1_gello_pedal_teleop bash -lc 'source /opt/ros/jazzy/setup.bash && source ${INSTALL_ROOT}/setup.bash && ros2 run pedal_state_publisher pedal_state_publisher'"
+fi
 
 cleanup() {
-  kill "${gello_bridge_pid}" "${gello_publisher_pid}" 2>/dev/null || true
-  wait "${gello_bridge_pid}" "${gello_publisher_pid}" 2>/dev/null || true
+  kill "${worker_pids[@]}" 2>/dev/null || true
+  wait "${worker_pids[@]}" 2>/dev/null || true
 }
 trap cleanup EXIT INT TERM
 
-wait -n "${gello_bridge_pid}" "${gello_publisher_pid}"
+wait -n "${worker_pids[@]}"
