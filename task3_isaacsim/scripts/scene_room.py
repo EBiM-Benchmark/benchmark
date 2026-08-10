@@ -49,10 +49,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=None,
         help="Override the robot USD selected by --gripper.",
     )
-    parser.add_argument("--robot-x", type=float, default=None)
-    parser.add_argument("--robot-y", type=float, default=None)
-    parser.add_argument("--robot-z", type=float, default=None)
-    parser.add_argument("--robot-yaw", type=float, default=None)
+    parser.add_argument("--robot-x", type=float, default=-4.6)
+    parser.add_argument("--robot-y", type=float, default=2.7)
+    parser.add_argument("--robot-z", type=float, default=0.0)
+    parser.add_argument("--robot-yaw", type=float, default=-90.0)
     parser.add_argument(
         "--head-placement",
         type=room_scene.head_placement_arg,
@@ -114,6 +114,8 @@ OBJECT_NAMES = ["head", "bowl2", "plate2", "spoon2", "cup", "simple_tray"]
 OBJECT_PRIM_PATHS = [TASK_OBJECTS_ROOT.format(name) for name in OBJECT_NAMES]
 
 def main() -> None:
+
+
     room_path = Path(args_cli.room_usd).expanduser()
     robot_path = Path(args_cli.robot_usd).expanduser()
     franka_root = Path(args_cli.franka_root).expanduser()
@@ -136,8 +138,14 @@ def main() -> None:
     #     include_browser_commands=not args_cli.disable_browser_command_topics,
     # )
     args_cli.task = "task3"
+    args_cli.robot_x = -4.0
+    args_cli.robot_y = -1.5
+    args_cli.robot_z = 0.0
+    args_cli.robot_yaw = -180.0
+
     robot_position = room_scene.resolve_robot_position(args_cli)
     robot_yaw = room_scene.resolve_robot_yaw(args_cli)
+
 
     room_scene.build_stage(
         omni.kit.app.get_app(),

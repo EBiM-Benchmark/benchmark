@@ -1,6 +1,6 @@
 #!/bin/bash
 set -e
-
+echo "test"
 uid="${HOST_UID:-1000}"
 gid="${HOST_GID:-1000}"
 

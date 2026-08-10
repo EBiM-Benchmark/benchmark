@@ -12,6 +12,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         gosu \
         ros-jazzy-vision-msgs \
         ros-jazzy-rosgraph-msgs \
+        ros-jazzy-rviz2 \
+        libogre1.12.10 \
     && rm -rf /var/lib/apt/lists/*
 
 # --ignore-installed: Debian-installed python packages (packaging, numpy,

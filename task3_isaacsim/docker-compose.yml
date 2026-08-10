@@ -97,6 +97,7 @@ services:
     network_mode: host
     ipc: host
     working_dir: /repo/task3_isaacsim
+    privileged: true
     command: >
       bash -lc "source /opt/ros/jazzy/setup.bash &&
       python3 services/recording/record_task3.py
@@ -111,8 +112,10 @@ services:
       - HOME=/tmp
       - HOST_UID=${HOST_UID:-1000}
       - HOST_GID=${HOST_GID:-1000}
+      - DISPLAY=$DISPLAY 
     volumes:
       - ..:/repo
+      - $HOME/.Xauthority:/root/.Xauthority 
     stdin_open: true
     tty: true
     profiles:

@@ -1181,6 +1181,8 @@ def configure_robot_room_stage(
             + ", ".join(removed_physics_scenes),
             flush=True,
         )
+    print("\n\n\n-----------------------------------”}")
+
     if (
         robot_path is not None
         and robot_position is not None
