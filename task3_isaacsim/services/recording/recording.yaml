@@ -13,9 +13,9 @@
 # Dataset identity: repo_id becomes <hub_namespace>/<repo_name>_vN, written
 # to <output_dir>/<repo_name>_vN/.
 # The output_dir is relative to task3_isaacsim/.
-repo_name: task3_cleaning
+repo_name: task3_cleaning_bowl_pickup
 hub_namespace: ebim
-single_task: Pickup the board with the cleaning utensils. Then drive to the face and feed it beens with the spoon.
+single_task: Pickup the bowl with beens together with the spoon.
 output_dir: dataset/
 robot_id: fr3duo_mobile_task3
 

@@ -9,6 +9,8 @@ import argparse
 import sys
 from pathlib import Path
 
+
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SHARED_SCENES_DIR = REPO_ROOT / "scripts" / "scenes"
 TASK2_SCRIPTS_DIR = REPO_ROOT / "task2_isaacsim" / "scripts"
@@ -70,6 +72,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
         arm_teleop_gripper_open=None,
         arm_teleop_gripper_closed=None,
     )
+    parser.add_argument(
+        "--start-at-cutlet-pickup",
+        action="store_true",
+        help="Start the robot at the cutlet pickup location.",)
+    parser.add_argument(
+        "--start-at-feeding-location",
+        action="store_true",
+        help="Start the robot at the feeding location.",)
+    
     return parser
 
 
@@ -85,6 +96,7 @@ def resolve_profile_defaults(args: argparse.Namespace):
 
 
 args_cli = build_arg_parser().parse_args()
+
 profile_cli = resolve_profile_defaults(args_cli)
 resolve_recording_flags(args_cli)
 
@@ -97,10 +109,14 @@ simulation_app = SimulationApp(
 
 from isaacsim.core.utils.extensions import enable_extension  # noqa: E402
 
+from isaacsim.core.simulation_manager import SimulationManager
+from pxr import PhysxSchema
+
 enable_extension("isaacsim.ros2.bridge")
 if not args_cli.headless:
     enable_extension("omni.physx.ui")
 simulation_app.update()
+print(f"flag cutlet_pickup {args_cli.start_at_cutlet_pickup})")
 
 import isaacsim_fr3duo_teleop_bridge_core as core  # noqa: E402
 
@@ -138,10 +154,14 @@ def main() -> None:
     #     include_browser_commands=not args_cli.disable_browser_command_topics,
     # )
     args_cli.task = "task3"
-    args_cli.robot_x = -4.0
-    args_cli.robot_y = -1.5
-    args_cli.robot_z = 0.0
-    args_cli.robot_yaw = -180.0
+    if args_cli.start_at_cutlet_pickup:
+        args_cli.robot_x = -4.0
+        args_cli.robot_y = -1.5
+        args_cli.robot_z = 0.0
+        args_cli.robot_yaw = -180.0
+    elif args_cli.start_at_feeding_location:
+        #TODO setlect proper location for feeding, this is just a placeholder
+        pass
 
     robot_position = room_scene.resolve_robot_position(args_cli)
     robot_yaw = room_scene.resolve_robot_yaw(args_cli)
@@ -176,11 +196,40 @@ def main() -> None:
         rendering_dt=1.0 / args_cli.render_hz,
         sim_params={"use_fabric": True},
     )
+    SimulationManager.enable_ccd(
+    True,
+    physics_scene=physics_scene_path,
+)
 
-    world.get_physics_context().enable_fabric(True)
+
+    print(
+        "GPU dynamics:",
+        SimulationManager.is_gpu_dynamics_enabled(physics_scene_path),
+    )
+
+    print(
+        "CCD:",
+        SimulationManager.is_ccd_enabled(physics_scene_path),
+    )
+
     #world.set_gpu_dynamics_enabled(True)
     stage = omni.usd.get_context().get_stage()
+    # for prim_path in OBJECT_PRIM_PATHS:
+    #     body_prim = stage.GetPrimAtPath(prim_path)
+    #     physx_rigid_body = PhysxSchema.PhysxRigidBodyAPI.Apply(body_prim)
+    #     physx_rigid_body.CreateEnableCCDAttr(True)
 
+    body_prim = stage.GetPrimAtPath("/World/Environment/RobotRoom/Asset/simple_tray")
+    physx_rigid_body = PhysxSchema.PhysxRigidBodyAPI.Apply(body_prim)
+    physx_rigid_body.CreateEnableCCDAttr(True)
+
+    spoon_prim= stage.GetPrimAtPath("/World/Environment/RobotRoom/Asset/spoon2")
+    physx_rigid_body = PhysxSchema.PhysxRigidBodyAPI.Apply(spoon_prim)
+    physx_rigid_body.CreateEnableCCDAttr(True)
+
+    bowl_prim = stage.GetPrimAtPath("/World/Environment/RobotRoom/Asset/bowl2")
+    physx_rb = PhysxSchema.PhysxRigidBodyAPI.Apply(bowl_prim)
+    physx_rb.CreateSolverPositionIterationCountAttr().Set(32)
     recording.setup_recording_cameras(
         stage, args_cli, ROBOT_PRIM_PATH, "cameras_room.yaml"
     )

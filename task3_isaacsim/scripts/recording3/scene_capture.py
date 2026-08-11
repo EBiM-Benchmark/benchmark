@@ -206,7 +206,7 @@ class SceneResetController:
         world,
         robot,
         stage,
-        objects_root_paths: str,
+        objects_root_paths: list[str],
         *,
         spine_controller=None,
         arm_teleop=None,

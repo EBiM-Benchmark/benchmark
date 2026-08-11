@@ -40,7 +40,7 @@ INSIDE_KIT_ENV_VAR = "EBIM_SCENE_LAUNCH_INSIDE_KIT"
 INNER_ARGV_ENV_VAR = "EBIM_SCENE_LAUNCH_ARGV"
 ISAACSIM_LAUNCHER = Path("/isaac-sim/isaac-sim.sh")
 DEFAULT_BEAN_COLOR = (0.20, 0.12, 0.07)
-DEFAULT_BEAN_COUNT = 300
+DEFAULT_BEAN_COUNT = 150
 DEFAULT_BEAN_DENSITY = 850.0
 BOWL_USD = asset_path("bowl2.usd")
 TASK3_HEAD_PLACEMENTS = {
@@ -1152,6 +1152,8 @@ def configure_robot_room_stage(
 ) -> Any:
     from pxr import UsdGeom as pxr_usd_geom
     from pxr import UsdLux as pxr_usd_lux
+    from pxr import PhysxSchema
+
 
     UsdGeom: Any = pxr_usd_geom
     UsdLux: Any = pxr_usd_lux
@@ -1220,6 +1222,8 @@ def configure_robot_room_stage(
             str(room_asset_prim.GetPath()),
             "bowl2",
         )
+        print("Resolved bowl prim path:", bowl_prim_path)
+
         add_coffee_beans(
             stage,
             count=DEFAULT_BEAN_COUNT,

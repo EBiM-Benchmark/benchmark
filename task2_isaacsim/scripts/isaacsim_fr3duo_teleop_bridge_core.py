@@ -1685,9 +1685,9 @@ def run_teleop_loop(
     # iterates at physics rate.
     rendering = force_render or not args.headless
     loop_dt = (
-        1.0 / 120#max(args.render_hz, 1.0)
+        1.0 / max(args.render_hz, 1.0)
         if rendering
-        else 1.0 / 120#max(args.physics_hz, 1.0)
+        else 1.0 / max(args.physics_hz, 1.0)
     )
 
     try:
