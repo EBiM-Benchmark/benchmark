@@ -1139,6 +1139,7 @@ class Example:
         self.sim_substeps = int(args.substeps)
         self.sim_dt = self.frame_dt / float(self.sim_substeps)
         self.sim_time = 0.0
+        self.pre_substep_callback = None
 
         _, curve_prim = _open_curve_stage(usd_path, args.curve_prim_path)
         shape_ke = _override_or_curve_attr(args.shape_ke, curve_prim, "newton:ke", 1.0e5)
@@ -1644,6 +1645,8 @@ class Example:
 
     def simulate(self) -> None:
         for _ in range(self.sim_substeps):
+            if self.pre_substep_callback is not None:
+                self.pre_substep_callback(self.state_0, self.sim_dt)
             self.state_0.clear_forces()
             self.viewer.apply_forces(self.state_0)
             if self.gripper_controller is not None:

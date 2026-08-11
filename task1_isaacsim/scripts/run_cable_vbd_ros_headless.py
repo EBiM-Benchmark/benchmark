@@ -115,6 +115,7 @@ def main() -> None:
 
     rclpy.init()
     node = CableRosBridge(example, args)
+    example.pre_substep_callback = node.apply_robotiq_finger_targets
     num_frames = int(getattr(args, "num_frames", 0) or 0)
     frame_dt = float(example.frame_dt)
     frame_count = 0
@@ -123,7 +124,6 @@ def main() -> None:
         while rclpy.ok():
             frame_start = time.monotonic()
             rclpy.spin_once(node, timeout_sec=0.0)
-            node.apply_robotiq_finger_targets()
             example.step()
             node.publish_cable_state()
             node.publish_gripper_collision_boxes()
