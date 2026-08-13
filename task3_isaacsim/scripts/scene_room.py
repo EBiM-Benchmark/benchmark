@@ -160,8 +160,12 @@ def main() -> None:
         args_cli.robot_z = 0.0
         args_cli.robot_yaw = -180.0
     elif args_cli.start_at_feeding_location:
-        #TODO setlect proper location for feeding, this is just a placeholder
-        pass
+        args_cli.robot_x = -4.0
+        args_cli.robot_y = 0.8
+        args_cli.robot_z = 0.0
+        args_cli.robot_yaw = 0.0
+        #TODO relocate the tray to the feeding location
+
 
     robot_position = room_scene.resolve_robot_position(args_cli)
     robot_yaw = room_scene.resolve_robot_yaw(args_cli)
@@ -236,10 +240,16 @@ def main() -> None:
     # physx_rigid_body = PhysxSchema.PhysxRigidBodyAPI.Apply(spoon_prim)
     # physx_rigid_body.CreateEnableCCDAttr(True)
 
+    # bowl_prim = stage.GetPrimAtPath("/World/Environment/RobotRoom/Asset/bowl2")
+    # physx_rb = PhysxSchema.PhysxRigidBodyAPI.Apply(bowl_prim)
+    # physx_rb.CreateSolverPositionIterationCountAttr().Set(32)
+    # physx_rb.CreateEnableCCDAttr(True)
+
+    tray_prim = stage.GetPrimAtPath("/World/Environment/RobotRoom/Asset/simple_tray")
     bowl_prim = stage.GetPrimAtPath("/World/Environment/RobotRoom/Asset/bowl2")
-    physx_rb = PhysxSchema.PhysxRigidBodyAPI.Apply(bowl_prim)
-    physx_rb.CreateSolverPositionIterationCountAttr().Set(32)
-    physx_rb.CreateEnableCCDAttr(True)
+    spoon_prim = stage.GetPrimAtPath("/World/Environment/RobotRoom/Asset/spoon2")
+    cup_prim = stage.GetPrimAtPath("/World/Environment/RobotRoom/Asset/cup")
+    plate_prim = stage.GetPrimAtPath("/World/Environment/RobotRoom/Asset/plate2")
 
     recording.setup_recording_cameras(
         stage, args_cli, ROBOT_PRIM_PATH, "cameras_room.yaml"

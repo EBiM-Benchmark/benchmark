@@ -15,7 +15,7 @@
 # The output_dir is relative to task3_isaacsim/.
 repo_name: task3_cleaning_bowl_pickup
 hub_namespace: ebim
-single_task: Pickup the bowl with beens together with the spoon.
+single_task: Pickup the tray with the cutlery.
 output_dir: dataset/
 robot_id: fr3duo_mobile_task3
 

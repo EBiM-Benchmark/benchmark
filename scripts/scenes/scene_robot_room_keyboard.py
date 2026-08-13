@@ -54,6 +54,7 @@ TASK3_HEAD_PLACEMENTS = {
     "H": ((-2.4, 2.2, 0.74659), (0.0, 0.0, 90.0)),
     "I": ((-2.8, 2.2, 0.74659), (0.0, 0.0, 90.0)),
 }
+
 INITIAL_VIEW_POSE = (
     (-8.12589, -3.29067, 2.79653),
     (73.13762, 0.0, -50.88313),
@@ -1229,7 +1230,7 @@ def configure_robot_room_stage(
             + ", ".join(removed_physics_scenes),
             flush=True,
         )
-    print("\n\n\n-----------------------------------”}")
+
 
     if (
         robot_path is not None
@@ -1263,11 +1264,15 @@ def configure_robot_room_stage(
             head_position,
             head_orientation,
         )
+
         bowl_prim_path = resolve_room_prim_path(
             stage,
             str(room_asset_prim.GetPath()),
             "bowl2",
         )
+
+
+
 
         add_coffee_beans(
             stage,
@@ -1342,6 +1347,7 @@ def build_stage(
         robot_rotation=robot_rotation,
         robot_yaw=robot_yaw,
         dynamic_beans=dynamic_beans,
+
     )
 
 
