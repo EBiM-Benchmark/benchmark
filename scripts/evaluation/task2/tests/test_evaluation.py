@@ -197,7 +197,9 @@ def test_both_thermalpad_dominant():
     )
 
 
-def test_sideways():
+def test_sideways_keeps_iou():
+    # 50/50 pixel split: neither pad dominates, but IoU stays real -- the
+    # orientation verdict (False) and the placement IoU are decoupled.
     msg = make_bbox_msg(
         [
             make_detection("liner", 150, 100, 250, 200),
@@ -208,8 +210,154 @@ def test_sideways():
     r = run_eval(msg, label_array=mask(liner_px=50, thermalpad_px=50))
     expect("sideways case", r["orientation_case"] == "sideways")
     expect("sideways wrong", r["is_orientation_correct"] is False)
-    expect("sideways iou==0", r["iou_thermalpad_vs_target_current"] == 0.0)
-    expect("sideways pad null", r["pad_bbox"] is None)
+    expect("sideways pad source", r["pad_source_label"] == "liner+thermalpad")
+    # Union of liner (150,100,250,200) and thermalpad (100,100,200,200).
+    union_bbox = {"x1": 100.0, "y1": 100.0, "x2": 250.0, "y2": 200.0}
+    expect("sideways pad bbox is union", r["pad_bbox"] == union_bbox)
+    # union area 150*100=15000; intersection with target (100,100,200,200)
+    # is 100*100=10000; iou = 10000 / (15000 + 10000 - 10000) = 2/3.
+    expect(
+        "sideways iou nonzero",
+        abs(r["iou_thermalpad_vs_target_current"] - (10000 / 15000)) < 1e-6,
+    )
+    expect(
+        "sideways confidence is max ratio",
+        abs(r["orientation_confidence"] - 0.5) < 1e-9,
+    )
+
+
+def test_sideways_threshold_edge():
+    # Same bbox for liner and thermalpad, so the union bbox equals either
+    # single bbox: only the pixel ratio moves across the 0.9 dominance
+    # boundary. Before the decoupling, ratio 0.899 forced IoU to 0.0
+    # while 0.901 kept the real IoU -- a measurement cliff right at the
+    # boundary. Now both sides report the identical nonzero IoU.
+    def eval_at(liner_px, thermalpad_px):
+        msg = make_bbox_msg(
+            [
+                make_detection("liner", 150, 100, 250, 200),
+                make_detection("thermalpad", 150, 100, 250, 200),
+                make_detection(*TARGET),
+            ]
+        )
+        return run_eval(
+            msg,
+            label_array=mask(liner_px=liner_px, thermalpad_px=thermalpad_px),
+        )
+
+    below = eval_at(899, 101)  # ratio 0.899, below the 0.9 threshold
+    above = eval_at(901, 99)  # ratio 0.901, above the 0.9 threshold
+
+    expect("edge below case", below["orientation_case"] == "sideways")
+    expect("edge below wrong", below["is_orientation_correct"] is False)
+    expect(
+        "edge above case",
+        above["orientation_case"] == "both_liner_dominant",
+    )
+    expect("edge above correct", above["is_orientation_correct"] is True)
+
+    expect(
+        "edge iou equal across the boundary",
+        below["iou_thermalpad_vs_target_current"]
+        == above["iou_thermalpad_vs_target_current"],
+    )
+    expect(
+        "edge iou nonzero",
+        below["iou_thermalpad_vs_target_current"] > 0.0,
+    )
+    expect("edge bboxes equal", below["pad_bbox"] == above["pad_bbox"])
+
+
+def test_both_present_no_mask_case():
+    msg = make_bbox_msg(
+        [
+            make_detection("liner", 150, 100, 250, 200),
+            make_detection("thermalpad", 100, 100, 200, 200),
+            make_detection(*TARGET),
+        ]
+    )
+    union_bbox = {"x1": 100.0, "y1": 100.0, "x2": 250.0, "y2": 200.0}
+
+    no_mask = run_eval(msg, label_array=None)
+    expect(
+        "no_mask case",
+        no_mask["orientation_case"] == "both_present_no_mask",
+    )
+    expect("no_mask wrong", no_mask["is_orientation_correct"] is False)
+    expect(
+        "no_mask pad source",
+        no_mask["pad_source_label"] == "liner+thermalpad",
+    )
+    expect("no_mask pad bbox is union", no_mask["pad_bbox"] == union_bbox)
+    expect(
+        "no_mask iou nonzero",
+        no_mask["iou_thermalpad_vs_target_current"] > 0.0,
+    )
+    expect("no_mask confidence", no_mask["orientation_confidence"] == 0.0)
+    expect("no_mask pixels none", no_mask["liner_pixels"] is None)
+    expect("no_mask ratio none", no_mask["liner_pixel_ratio"] is None)
+
+    # A mask that yields zero pixels for both labels lands in the same
+    # case: the ratio would be 0/0, undefined, not zero.
+    zero_mask = run_eval(msg, label_array=mask(liner_px=0, thermalpad_px=0))
+    expect(
+        "zero_mask case",
+        zero_mask["orientation_case"] == "both_present_no_mask",
+    )
+    expect("zero_mask pad bbox is union", zero_mask["pad_bbox"] == union_bbox)
+    expect(
+        "zero_mask iou matches no_mask iou",
+        zero_mask["iou_thermalpad_vs_target_current"]
+        == no_mask["iou_thermalpad_vs_target_current"],
+    )
+    expect("zero_mask pixels none", zero_mask["liner_pixels"] is None)
+
+
+def test_ratio_fields():
+    msg = make_bbox_msg(
+        [
+            make_detection("liner", 150, 100, 250, 200),
+            make_detection("thermalpad", 100, 100, 200, 200),
+            make_detection(*TARGET),
+        ]
+    )
+    r = run_eval(msg, label_array=mask(liner_px=60, thermalpad_px=40))
+    expect("ratio fields liner pixels", r["liner_pixels"] == 60)
+    expect("ratio fields thermalpad pixels", r["thermalpad_pixels"] == 40)
+    expect(
+        "ratio fields liner ratio value",
+        abs(r["liner_pixel_ratio"] - 0.6) < 1e-9,
+    )
+    expect(
+        "ratio fields thermalpad ratio value",
+        abs(r["thermalpad_pixel_ratio"] - 0.4) < 1e-9,
+    )
+    expect(
+        "ratio fields sum to one",
+        abs(r["liner_pixel_ratio"] + r["thermalpad_pixel_ratio"] - 1.0) < 1e-9,
+    )
+
+    liner_msg = make_bbox_msg(
+        [
+            make_detection("liner", 150, 100, 250, 200),
+            make_detection(*TARGET),
+        ]
+    )
+    lr = run_eval(liner_msg)
+    expect("liner_only pixels none", lr["liner_pixels"] is None)
+    expect(
+        "liner_only thermalpad pixels none",
+        lr["thermalpad_pixels"] is None,
+    )
+    expect("liner_only ratio none", lr["liner_pixel_ratio"] is None)
+    expect(
+        "liner_only thermalpad ratio none",
+        lr["thermalpad_pixel_ratio"] is None,
+    )
+    expect(
+        "liner_only confidence is 1.0",
+        lr["orientation_confidence"] == 1.0,
+    )
 
 
 def test_neither_pad_present():
@@ -237,6 +385,17 @@ def test_no_target_bbox():
     expect(
         "no_target_bbox iou==0", r["iou_thermalpad_vs_target_current"] == 0.0
     )
+
+
+def test_zero_results_carry_new_fields():
+    msg = make_bbox_msg([make_detection("liner", 150, 100, 250, 200)])
+    r = run_eval(msg)
+    expect("zero case", r["orientation_case"] == "no_target_bbox")
+    expect("zero confidence", r["orientation_confidence"] == 0.0)
+    expect("zero liner pixels none", r["liner_pixels"] is None)
+    expect("zero thermalpad pixels none", r["thermalpad_pixels"] is None)
+    expect("zero liner ratio none", r["liner_pixel_ratio"] is None)
+    expect("zero thermalpad ratio none", r["thermalpad_pixel_ratio"] is None)
 
 
 def test_hints_from_label_payload():
@@ -390,10 +549,14 @@ def main():
         test_thermalpad_only,
         test_both_liner_dominant,
         test_both_thermalpad_dominant,
-        test_sideways,
+        test_sideways_keeps_iou,
+        test_sideways_threshold_edge,
+        test_both_present_no_mask_case,
+        test_ratio_fields,
         test_neither_pad_present,
         test_no_target_label,
         test_no_target_bbox,
+        test_zero_results_carry_new_fields,
         test_hints_from_label_payload,
         test_target_from_loose_stream,
         test_tight_and_loose_schemes_are_independent,
