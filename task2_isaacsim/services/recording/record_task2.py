@@ -148,11 +148,6 @@ DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent / "recording.yaml"
 EVAL_MODULE_DIR = (
     Path(__file__).resolve().parents[3] / "scripts" / "evaluation" / "task2"
 )
-# stream_sync.EvalStreamSync's default tolerance_s, mirrored here because
-# eval_sync (below) is always constructed with tolerance_s left at that
-# default and the module exposes no public accessor to read it back for
-# the evaluate() diagnostics passthrough.
-EVAL_SYNC_TOLERANCE_S = 0.0167
 # Keys that only make sense per-invocation and are rejected in the YAML.
 CONFIG_CLI_ONLY_KEYS = {"help", "config", "resume", "resume_version"}
 
@@ -849,7 +844,7 @@ def suggest_success(eval_modules, node: Task2RecorderNode, timeout_s: float):
             target_labels_payload=target_labels_payload,
             stream_stamps=selection.stamps,
             sync_status=selection.status,
-            sync_tolerance_s=EVAL_SYNC_TOLERANCE_S,
+            sync_tolerance_s=node.eval_sync.tolerance_s,
             sync_anchor_stamp=selection.anchor_stamp,
             max_stamp_delta=selection.max_stamp_delta,
             label_provenance=label_provenance,

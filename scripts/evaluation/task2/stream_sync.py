@@ -230,6 +230,11 @@ class EvalStreamSync:
         self._ever_stamped = dict.fromkeys(ALL_STREAMS, False)
         self._ever_parsed = dict.fromkeys(ALL_STREAMS, False)
 
+    @property
+    def tolerance_s(self) -> float:
+        """Coherence tolerance this instance was constructed with."""
+        return self._tolerance_s
+
     def observe(
         self,
         stream: str,

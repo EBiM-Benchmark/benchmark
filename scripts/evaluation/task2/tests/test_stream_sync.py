@@ -358,6 +358,20 @@ def test_required_core_parameterization():
     )
 
 
+def test_tolerance_property():
+    default_sync = make_default_sync()
+    expect(
+        "tolerance property: default matches 0.0167",
+        default_sync.tolerance_s == 0.0167,
+    )
+
+    custom_sync = make_default_sync(tolerance_s=0.05)
+    expect(
+        "tolerance property: reflects a custom constructor value",
+        custom_sync.tolerance_s == 0.05,
+    )
+
+
 def test_parse_label_stamp():
     val = parse_label_stamp(LABEL_PAYLOAD_EXAMPLE)
     expect("parse stamp: not None", val is not None)
@@ -495,6 +509,7 @@ def main():
         test_unstamped_labels_degraded,
         test_loose_pair_both_or_neither,
         test_required_core_parameterization,
+        test_tolerance_property,
         test_parse_label_stamp,
         test_parse_label_payload_ok,
         test_stream_report_never_received,
