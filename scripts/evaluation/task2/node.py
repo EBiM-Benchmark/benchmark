@@ -612,7 +612,7 @@ class EvalCameraCaptureService(Node):
         # The raw mask IDs are assigned per session; derive them from
         # the selected segmentation label map. hints must never end
         # up None here -- evaluate_thermalpad_target_iou requires
-        # semantic_hints to be a dict -- so an absent or unparseable
+        # semantic_hints to be a dict -- so an absent or unparsable
         # live payload always falls back to the static hints; there
         # is no "trust the live table is just late" grace window.
         hints = None

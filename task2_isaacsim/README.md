@@ -255,6 +255,22 @@ stream details are documented in the
    cd task2_isaacsim && docker compose --profile record run --rm lerobot_recorder
    ```
 
+   The evaluation service and this recorder's success suggestion share the
+   same frame synchronization: both score only stamp-coherent eval-camera
+   snapshots with label tables bound to their own frame (never
+   latest-message stitching), and every result now carries sync /
+   provenance / evaluator-version diagnostics plus an additive,
+   ground-truth physical coverage audit — see [Frame synchronization](../scripts/evaluation/task2/README.md#frame-synchronization)
+   and [Physical coverage audit](../scripts/evaluation/task2/README.md#physical-coverage-audit)
+   in the Task 2 evaluation README. The recorder gained
+   `--success-sync-timeout-s` (default `2.0`s: how long to wait for a
+   coherent set before the suggestion goes `null` and the label falls back
+   to the console prompt or default `False`), and the stored
+   `success_suggestion` now also carries `orientation_confidence`, the
+   liner/thermalpad pixel ratios, and sync status. **The official score
+   composition — Pick Success × Placement Orientation Success × Placement
+   IoU — is unchanged.**
+
 ## Architecture
 
 Same five-stage pipeline as Task 1, only the last stage (the simulator

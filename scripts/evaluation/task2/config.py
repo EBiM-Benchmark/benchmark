@@ -91,9 +91,10 @@ def _looks_like_git_sha(text: str) -> bool:
 def _resolve_git_dir(repo_root: Path) -> Path | None:
     """Return the real git metadata dir for ``repo_root``, or ``None``.
 
-    Handles the common case (``.git`` is a directory) and the
-    worktree gitdir-pointer case (``.git`` is a file containing
-    ``gitdir: <path>``).
+    Handles the common case (``.git`` is a directory). For worktrees,
+    resolves only detached-HEAD checkouts (where ``.git`` is a file
+    containing ``gitdir: <path>``). Branch-checkout worktrees have refs
+    in the commondir and fall through to return ``None`` here.
     """
     git_path = repo_root / ".git"
     if git_path.is_dir():

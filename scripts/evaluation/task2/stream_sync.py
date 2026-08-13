@@ -372,6 +372,11 @@ class EvalStreamSync:
         if not candidate_stamps:
             return None, None
 
+        # A stale message delivered after a flush (late DDS arrival with a
+        # pre-reset stamp) can inflate this max and block selection until its
+        # stream publishes again — the next real message is a backward jump,
+        # which flushes globally and self-heals. Failure mode is a visible
+        # sync-failure report, never silent cross-epoch mixing.
         newest_required_stamp = max(candidate_stamps)
         for t in sorted(candidate_stamps, reverse=True):
             if newest_required_stamp - t > self._max_age_s:

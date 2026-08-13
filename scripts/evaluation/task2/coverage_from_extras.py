@@ -261,7 +261,7 @@ def load_episode_meta(extras_dir: Path) -> dict[int, dict[str, Any]]:
     """``{episode_index: parsed row}`` from ``episodes_task2.jsonl``.
 
     Empty (never raises) when the file is absent, unreadable, or holds
-    unparseable lines -- the join in ``run_cli`` is best-effort
+    unparsable lines -- the join in ``run_cli`` is best-effort
     correlation data, not required for the audit itself.
     """
     meta_path = extras_dir / "episodes_task2.jsonl"
