@@ -543,25 +543,26 @@ class EvalCameraCaptureService(Node):
             else snap.labels
         )
         # The raw mask IDs are assigned per session; derive them from
-        # the selected segmentation label map. The static map is only
-        # a safe fallback before this stream has ever parsed
-        # successfully this session -- once it has, a live table that
-        # is momentarily missing should not be silently papered over
-        # with a possibly-stale static guess. Note: hints can still
-        # end up None here (snap.labels is None while
-        # semantic_labels_ever_parsed() is True) right after a
-        # scene-reset rebase flush, for a bridge that has never
-        # stamped this stream and has not yet re-published post-reset
-        # -- evaluate_thermalpad_target_iou requires semantic_hints to
-        # be a dict, so that narrow window raises instead of
-        # degrading (accepted per spec; see the label_provenance
-        # scheme this function builds below).
+        # the selected segmentation label map. hints must never end
+        # up None here -- evaluate_thermalpad_target_iou requires
+        # semantic_hints to be a dict -- so an absent or unparseable
+        # live payload always falls back to the static hints; there
+        # is no "trust the live table is just late" grace window.
         hints = None
         if snap.labels is not None:
             hints = hints_from_label_payload(snap.labels.data)
-        semantic_source = "dynamic" if hints is not None else "static_hints"
-        if hints is None and not self._sync.semantic_labels_ever_parsed():
+        semantic_table_stamp = selection.stamps[STREAM_SEMANTIC_LABELS]
+        if hints is not None:
+            semantic_source = "dynamic"
+            semantic_table_binding = (
+                "stamp"
+                if semantic_table_stamp is not None
+                else "arrival_order"
+            )
+        else:
             hints = SEMANTIC_RAW_ID_NAME_HINTS
+            semantic_source = "static_hints"
+            semantic_table_binding = "static"
         # The target resolves through the loose annotator's own stream and
         # map when the scene publishes them; otherwise evaluate() falls
         # back to the tight stream (pre-loose scene).
@@ -572,13 +573,6 @@ class EvalCameraCaptureService(Node):
             else None
         )
 
-        semantic_table_stamp = selection.stamps[STREAM_SEMANTIC_LABELS]
-        if semantic_table_stamp is not None:
-            semantic_table_binding = "stamp"
-        elif snap.labels is not None:
-            semantic_table_binding = "arrival_order"
-        else:
-            semantic_table_binding = "static"
         label_provenance = {
             "semantic_table_source": semantic_source,
             "semantic_table_binding": semantic_table_binding,
