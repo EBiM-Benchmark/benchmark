@@ -357,10 +357,34 @@ one synchronized sample at the contract rate (`60 Hz`, normally every four
 tolerance. Start the simulator first, then run the recorder from a second host
 terminal:
 
+An example recording produced by this workflow is available in the public
+[Task 1 Isaac Sim Recordings dataset](https://huggingface.co/datasets/Shiqun/task1-isaacsim-recordings/tree/main)
+on Hugging Face. It contains a sample MCAP recording with the synchronized
+robot state, action, metadata, and compressed RGB topics described below.
+
 ```bash
-docker exec -it isaac-lab-ros2_jazzy bash -lc \
-  '/workspace/EBiM_Challenge/task1_isaacsim/scripts/record_task1_dataset.sh \
-   /workspace/EBiM_Challenge/task1_isaacsim/recordings/experiment_001'
+# Run these two commands on the host once to create a writable recording directory.
+docker exec -u root isaac-lab-ros2_jazzy \
+  mkdir -p /workspace/EBiM_Challenge/task1_isaacsim/recordings
+docker exec -u root isaac-lab-ros2_jazzy \
+  chown -R ubuntu:ubuntu \
+  /workspace/EBiM_Challenge/task1_isaacsim/recordings
+
+# Enter the Isaac Lab container.
+docker exec -it isaac-lab-ros2_jazzy bash
+```
+
+Inside the container, configure writable ROS log directories and start the
+recorder:
+
+```bash
+export HOME=/tmp/task1_recorder
+export ROS_LOG_DIR="$HOME/ros-log"
+mkdir -p "$ROS_LOG_DIR"
+
+cd /workspace/EBiM_Challenge
+task1_isaacsim/scripts/record_task1_dataset.sh \
+  task1_isaacsim/recordings/experiment_001
 ```
 
 The recorder stores the fields required by `data_contract.yaml` plus three
@@ -413,14 +437,44 @@ docker exec -it isaac-lab-ros2_jazzy bash -lc \
    /workspace/EBiM_Challenge/task1_isaacsim/recordings/experiment_001'
 ```
 
-If the container reports `Permission denied` while creating `recordings`,
-create the directory on the host and grant the container's UID 1000 access
-(no `sudo` is required when the repository belongs to the current user):
+To replay a recording and inspect one of its JPEG-compressed camera streams,
+open three terminals in the Isaac Lab container. In the first terminal, replay
+the bag in a loop:
 
 ```bash
-mkdir -p task1_isaacsim/recordings
-setfacl -m u:1000:rwx,d:u:1000:rwx task1_isaacsim/recordings
+ros2 bag play \
+  /workspace/EBiM_Challenge/task1_isaacsim/recordings/experiment_001 \
+  --loop
 ```
+
+In the second terminal, decode the selected JPEG stream into a raw image topic:
+
+```bash
+ros2 run image_transport republish \
+  --ros-args \
+  -p in_transport:=compressed \
+  -p out_transport:=raw \
+  --remap in/compressed:=/isaac/left_wrist_camera/image_compressed \
+  --remap out:=/isaac/left_wrist_camera/image_view
+```
+
+In the third terminal, start the image viewer:
+
+```bash
+ros2 run rqt_image_view rqt_image_view
+```
+
+Select `/isaac/left_wrist_camera/image_view` in `rqt_image_view`. To inspect a
+different camera, replace `left_wrist_camera` in both remappings with
+`right_wrist_camera` or `head_camera`. Source `/opt/ros/jazzy/setup.bash` first
+in any shell where the ROS 2 commands are not already available. Press
+`Ctrl+C` in the playback terminal to stop replaying the recording.
+
+The `docker exec -u root` commands above modify only the ownership of the
+bind-mounted `recordings` directory. They do not run the recorder as root.
+`HOME` and `ROS_LOG_DIR` prevent ROS 2 from trying to write logs under
+`/root`; these environment variables apply only to the current container
+shell and must be set again after opening a new shell.
 
 ## Cable World
 

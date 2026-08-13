@@ -13,7 +13,7 @@ scene:
 board:
   load: true
   load_visual_shapes: true
-  hide_collision_shapes: false
+  hide_collision_shapes: true
   visual_shapes_as_colliders: false
   friction: 3.0
   require_collision: false
@@ -71,10 +71,10 @@ shape:
   mu: 3.0
 cable:
   friction: 3.0
-  stretch_stiffness: 80000.0
-  stretch_damping: 0.1
-  bend_stiffness: 0.002
-  bend_damping: 1.0
+  stretch_stiffness: 800000.0
+  stretch_damping: 0.005
+  bend_stiffness: 0.02
+  bend_damping: 0.05
   dahl_friction:
     enabled: true
     eps_max: 0.5
