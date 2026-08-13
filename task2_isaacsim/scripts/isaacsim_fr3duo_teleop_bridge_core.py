@@ -100,6 +100,21 @@ ARM_READY_POSE = {
     "right_fr3v2_joint7": 0.7854,
 }
 
+# Grippers fully open (all driver + coupled joints at 0 rad), applied with
+# the ready pose so a scene reset reopens the grippers even when the
+# keyboard teleop (whose reset_targets() also reopens them) is not active,
+# e.g. policy-eval sessions. Names that do not exist on the robot USD are
+# skipped by _apply_ready_pose's resolver.
+GRIPPER_READY_POSE = dict.fromkeys(
+    (
+        LEFT_GRIPPER_DRIVER_JOINT,
+        RIGHT_GRIPPER_DRIVER_JOINT,
+        *LEFT_GRIPPER_COUPLED_JOINT_MULTIPLIERS,
+        *RIGHT_GRIPPER_COUPLED_JOINT_MULTIPLIERS,
+    ),
+    0.0,
+)
+
 
 # Dual-arm keyboard teleop (RMPflow) assets. The Lula descriptors, URDF, and
 # RMPflow configs are adapted from the archived dual_arm_rmp_widget demo and
@@ -1232,6 +1247,26 @@ class IsaacSimRosBridge(Node):
         self._latest_pedal_state = state or "NONE"
         self._latest_pedal_time_sec = self.get_clock().now().nanoseconds * 1e-9
 
+    def clear_commands(self):
+        """Forget every cached ROS command (scene-reset support).
+
+        Called by SceneResetController after world.reset(): the cached
+        pre-reset targets would otherwise be re-applied to the freshly
+        reset robot on the next loop iteration, and command messages
+        queued in DDS during the seconds-long reset (delivered only once
+        the loop spins again) would re-arm the --command-timeout
+        watchdog with pre-reset targets. The reset controller drains
+        those deliveries first, then calls this.
+        """
+        for command in self.latest_commands.values():
+            command.clear()
+        for label in self._latest_command_time_sec:
+            self._latest_command_time_sec[label] = None
+        for label in self._command_stale:
+            self._command_stale[label] = False
+        self._latest_pedal_state = "NONE"
+        self._latest_pedal_time_sec = None
+
     def pedal_base_twist(
         self,
         linear_speed_mps: float,
@@ -1518,7 +1553,10 @@ def _apply_ready_pose(
     actual_by_name = {name: idx for idx, name in enumerate(actual_names)}
     indices = []
     positions = []
-    for joint_name, position in ARM_READY_POSE.items():
+    for joint_name, position in {
+        **ARM_READY_POSE,
+        **GRIPPER_READY_POSE,
+    }.items():
         joint_index = _resolve_joint_index(joint_name, actual_by_name)
         if joint_index is None:
             continue

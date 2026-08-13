@@ -43,7 +43,11 @@ A per-group watchdog (`--command-timeout`, default 1 s, negative disables)
 stops re-applying a group's cached command once its topics go quiet — the
 drives hold the last applied target, so a dead publisher cannot stomp later
 state such as the post-reset ready pose. `/pedal/state` has its own
-`--pedal-timeout` (base twist forced to zero instead).
+`--pedal-timeout` (base twist forced to zero instead). A scene reset
+additionally drains the DDS-queued command messages and clears every
+cached command (`IsaacSimRosBridge.clear_commands`), so pre-reset targets
+delivered after the seconds-long reset cannot re-arm the watchdog and
+stomp the ready pose (which also reopens the grippers).
 
 ### Bridge state (60 Hz)
 

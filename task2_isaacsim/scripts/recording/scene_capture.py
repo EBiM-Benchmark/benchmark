@@ -22,6 +22,7 @@ import math
 import sys
 
 import numpy as np
+import rclpy
 from std_msgs.msg import Float32MultiArray, String
 
 from pxr import Gf, Usd, UsdGeom
@@ -243,6 +244,7 @@ class SceneResetController:
         self._yaw_jitter_deg = float(yaw_jitter_deg)
         self._rng = np.random.default_rng(seed)
         self._pending = False
+        self._node = None
         self._event_pub = None
         self._reset_count = 0
 
@@ -330,6 +332,7 @@ class SceneResetController:
             )
 
     def bind(self, node) -> None:
+        self._node = node
         self._event_pub = node.create_publisher(String, SCENE_RESET_TOPIC, 10)
         # Same effect as the '5' hotkey, but triggerable from the recorder
         # terminal (menu command 5). Runs on the bridge's spin_once, i.e.
@@ -486,6 +489,19 @@ class SceneResetController:
         self._world.reset()
 
         import isaacsim_fr3duo_teleop_bridge_core as core  # noqa: PLC0415
+
+        if self._node is not None:
+            # world.stop()/reset() blocks the main loop without spinning
+            # ROS for seconds, so pre-reset command messages (up to one
+            # queue depth per topic) are still waiting in DDS. Deliver
+            # them into the bridge caches now, then forget everything:
+            # the next loop iteration must not re-apply pre-reset
+            # targets to the freshly reset robot. The spine target is
+            # also stomped by drained messages; reset_target() below
+            # runs after this and rebases it from the live joint.
+            for _ in range(128):
+                rclpy.spin_once(self._node, timeout_sec=0.0)
+            self._node.clear_commands()
 
         core._apply_ready_pose(self._robot, list(self._robot.dof_names))
         if self._spine_controller is not None:

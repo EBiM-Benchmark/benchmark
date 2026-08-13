@@ -259,10 +259,16 @@ class Task2RecorderNode(Node):
         self.cmd_vel = (0.0, 0.0, 0.0)
         self.ee_poses = {"left": None, "right": None}
         self.images = {key: None for key in camera_keys}
+        # Wall time each camera's latest frame arrived: rendering pauses
+        # for the whole scene-reset stop/play window, so a cached frame
+        # can be the previous episode's last image. Episode start gates
+        # on frames newer than the last reset event.
+        self.image_walls = {key: -math.inf for key in camera_keys}
         self.depths = {key: None for key in camera_keys}
         self.object_poses_raw = None
         self.pad_points_raw = None
         self.reset_events = []
+        self.last_reset_wall = -math.inf
         # Eval-camera streams for the success suggestion (see
         # suggest_success): buffered and stamp-matched by EvalStreamSync
         # rather than cached as individual latest-message attributes.
@@ -417,6 +423,7 @@ class Task2RecorderNode(Node):
     def _on_image(self, key, msg):
         with self.lock:
             self.images[key] = msg
+            self.image_walls[key] = time.monotonic()
             self._count(f"image_{key}")
 
     def _on_depth(self, key, msg):
@@ -437,6 +444,7 @@ class Task2RecorderNode(Node):
     def _on_scene_reset(self, msg):
         with self.lock:
             self.reset_events.append(msg.data)
+            self.last_reset_wall = time.monotonic()
             self._count("scene_reset")
 
     def _on_eval_bbox(self, msg):
@@ -509,6 +517,20 @@ class Task2RecorderNode(Node):
         with self.lock:
             events, self.reset_events = self.reset_events, []
         return events
+
+    def last_reset_wall_time(self) -> float:
+        with self.lock:
+            return self.last_reset_wall
+
+    def stale_image_keys(self, camera_keys, after_wall: float) -> list:
+        """Cameras whose latest frame is not newer than after_wall
+        (never-received counts as stale)."""
+        with self.lock:
+            return [
+                key
+                for key in camera_keys
+                if self.image_walls.get(key, -math.inf) <= after_wall
+            ]
 
     def message_count(self, key: str) -> int:
         with self.lock:
@@ -1367,8 +1389,20 @@ def confirm_save_despite_drops(dropped, *, interactive) -> bool:
             return False
 
 
-def wait_for_streams(node: Task2RecorderNode, camera_keys, timeout_s):
-    """Block until /clock, states, commands, and all cameras are alive."""
+def wait_for_streams(
+    node: Task2RecorderNode,
+    camera_keys,
+    timeout_s,
+    images_after: float = -math.inf,
+):
+    """Block until /clock, states, commands, and all cameras are alive.
+
+    images_after: wall time each camera must have delivered a frame
+    after (pass the last scene-reset event's arrival so an episode never
+    starts on the previous episode's final frames — rendering pauses for
+    the whole reset stop/play window, mirroring the eval client's
+    streams_fresh_since gate).
+    """
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
         snap = node.snapshot()
@@ -1383,8 +1417,7 @@ def wait_for_streams(node: Task2RecorderNode, camera_keys, timeout_s):
             missing.append(ODOM_TOPIC)
         missing.extend(
             CAMERAS[key]["image_topic"]
-            for key in camera_keys
-            if snap["images"].get(key) is None
+            for key in node.stale_image_keys(camera_keys, images_after)
         )
         if not missing:
             return True
@@ -1741,7 +1774,10 @@ def run_recording(args):
 
             # -------------------------------------------------- episode ---
             if not wait_for_streams(
-                node, camera_keys, timeout_s=args.stream_timeout_s
+                node,
+                camera_keys,
+                timeout_s=args.stream_timeout_s,
+                images_after=node.last_reset_wall_time(),
             ):
                 continue
             if not wait_for_fresh_clock(node, timeout_s=args.stream_timeout_s):
