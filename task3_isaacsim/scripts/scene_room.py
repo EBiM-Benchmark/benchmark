@@ -216,40 +216,7 @@ def main() -> None:
         SimulationManager.is_ccd_enabled(physics_scene_path),
     )
 
-    #world.set_gpu_dynamics_enabled(True)
     stage = omni.usd.get_context().get_stage()
-    # for prim_path in OBJECT_PRIM_PATHS:
-    #     body_prim = stage.GetPrimAtPath(prim_path)
-    #     physx_rigid_body = PhysxSchema.PhysxRigidBodyAPI.Apply(body_prim)
-    #     physx_rigid_body.CreateEnableCCDAttr(True)
-
-    # body_prim = stage.GetPrimAtPath("/World/Environment/RobotRoom/Asset/simple_tray")
-    # physx_rigid_body = PhysxSchema.PhysxRigidBodyAPI.Apply(body_prim)
-    # physx_rigid_body.CreateEnableCCDAttr(True)
-
-    # physx_collision = PhysxSchema.PhysxCollisionAPI(body_prim)
-    # contact_attr = physx_collision.GetContactOffsetAttr()    
-    # if not contact_attr:
-    #     contact_attr = physx_collision.CreateContactOffsetAttr()
-    #     print( f" contact offset: {contact_attr.Get()}")
-    # contact_attr.Set(0.001)
-    # print( f" contact offset: {contact_attr.Get()}")
-
-
-    # spoon_prim= stage.GetPrimAtPath("/World/Environment/RobotRoom/Asset/spoon2")
-    # physx_rigid_body = PhysxSchema.PhysxRigidBodyAPI.Apply(spoon_prim)
-    # physx_rigid_body.CreateEnableCCDAttr(True)
-
-    # bowl_prim = stage.GetPrimAtPath("/World/Environment/RobotRoom/Asset/bowl2")
-    # physx_rb = PhysxSchema.PhysxRigidBodyAPI.Apply(bowl_prim)
-    # physx_rb.CreateSolverPositionIterationCountAttr().Set(32)
-    # physx_rb.CreateEnableCCDAttr(True)
-
-    tray_prim = stage.GetPrimAtPath("/World/Environment/RobotRoom/Asset/simple_tray")
-    bowl_prim = stage.GetPrimAtPath("/World/Environment/RobotRoom/Asset/bowl2")
-    spoon_prim = stage.GetPrimAtPath("/World/Environment/RobotRoom/Asset/spoon2")
-    cup_prim = stage.GetPrimAtPath("/World/Environment/RobotRoom/Asset/cup")
-    plate_prim = stage.GetPrimAtPath("/World/Environment/RobotRoom/Asset/plate2")
 
     recording.setup_recording_cameras(
         stage, args_cli, ROBOT_PRIM_PATH, "cameras_room.yaml"
