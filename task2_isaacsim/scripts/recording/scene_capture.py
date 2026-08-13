@@ -207,13 +207,14 @@ class SceneResetController:
     event on /isaac/task2/scene_reset so the recorder can log the applied
     randomization.
 
-    Randomization is split per group: with randomize_boards (default) the
-    target board is placed at a uniformly random one of the four board slots
-    (swapping spawn positions with the displaced board) and each board gets
-    an independent XY jitter about its assigned slot; with randomize_pad the
-    thermal pad and its sticker base are jittered as one group about the
-    sticker-base origin. A group whose flag is off is restored to its exact
-    spawn poses on every reset.
+    Randomization is split into three independent toggles: with
+    randomize_board_swap (default) the target board is placed at a
+    uniformly random one of the four board slots (swapping spawn positions
+    with the displaced board); with randomize_boards (default) each board
+    gets an independent XY jitter about its assigned slot; with
+    randomize_pad the thermal pad and its sticker base are jittered as one
+    group about the sticker-base origin. Objects not moved by any enabled
+    toggle are restored to their exact spawn poses on every reset.
     """
 
     def __init__(
@@ -227,6 +228,7 @@ class SceneResetController:
         arm_teleop=None,
         randomize: bool = False,
         randomize_boards: bool = True,
+        randomize_board_swap: bool = True,
         randomize_pad: bool = False,
         xy_jitter_m: float = 0.02,
         yaw_jitter_deg: float = 10.0,
@@ -239,6 +241,7 @@ class SceneResetController:
         self._arm_teleop = arm_teleop
         self._randomize = bool(randomize)
         self._randomize_boards = bool(randomize_boards)
+        self._randomize_board_swap = bool(randomize_board_swap)
         self._randomize_pad = bool(randomize_pad)
         self._xy_jitter_m = float(xy_jitter_m)
         self._yaw_jitter_deg = float(yaw_jitter_deg)
@@ -289,7 +292,7 @@ class SceneResetController:
             n for n in BOARD_SLOT_PRIM_NAMES if n not in self._spawn_poses
         ]
         if missing:
-            if self._randomize and self._randomize_boards:
+            if self._randomize and self._randomize_board_swap:
                 print(
                     "Warning: target-slot shuffle disabled: board prims "
                     f"without cached spawn poses: {missing}",
@@ -437,8 +440,10 @@ class SceneResetController:
             translate_op, orient_op = self._spawn_ops[name]
             offset = offsets.get(name)
             if offset is None:
-                # Group flag off: restore the exact spawn pose instead.
-                translate_op.Set(position)
+                # No jitter for this object (group flag off): place it at
+                # its base position — the swapped slot for the two boards
+                # in base_positions, the exact spawn pose otherwise.
+                translate_op.Set(base_positions.get(name, position))
                 orient_op.Set(orientation)
                 continue
             if name.startswith(PAD_GROUP_PREFIX) and pad_pivot is not None:
@@ -480,7 +485,7 @@ class SceneResetController:
         if self._spawn_ops:
             if self._randomize:
                 base_positions: dict[str, Gf.Vec3d] = {}
-                if self._randomize_boards:
+                if self._randomize_board_swap:
                     target_slot, base_positions = self._sample_target_slot()
                 offsets = self._sample_offsets()
                 self._apply_offsets(offsets, base_positions)
@@ -516,20 +521,21 @@ class SceneResetController:
                     "event": "scene_reset",
                     "reset_index": self._reset_count,
                     "sim_time": sim_time,
-                    "randomized": bool(offsets),
+                    "randomized": bool(offsets) or target_slot is not None,
                     "target_slot": target_slot,
                     "offsets": offsets,
                 }
             )
             self._event_pub.publish(msg)
+        randomized_parts = []
+        if offsets:
+            randomized_parts.append(f"jittered {len(offsets)} objects")
+        if target_slot:
+            randomized_parts.append(f"target slot {target_slot}")
         print(
             f"Scene reset #{self._reset_count} done"
             + (
-                f" (randomized {len(offsets)} objects"
-                + (f", target slot {target_slot}" if target_slot else "")
-                + ")"
-                if offsets
-                else ""
+                f" ({', '.join(randomized_parts)})" if randomized_parts else ""
             ),
             flush=True,
         )

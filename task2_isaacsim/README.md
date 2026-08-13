@@ -286,8 +286,13 @@ in descending table-x order; the target board's authored home is slot
 
 | Flag | Default | Effect on a randomized reset |
 |---|---|---|
-| `--randomize-boards` | on | The target board swaps into a uniformly random one of the four slots (the displaced board takes slot B), then every board gets an independent XY jitter about its assigned slot. |
-| `--randomize-pad` | off | The thermal pad and its sticker base move as one rigid group — a shared XY jitter, rotating together about the sticker-base origin. Off means the pad group is restored to its exact spawn pose. |
+| `--randomize-board-swap` | on | The target board swaps into a uniformly random one of the four slots. |
+| `--randomize-boards` | on | Every board gets an independent XY jitter about its assigned slot. |
+| `--randomize-pad` | off | The thermal pad and its sticker base move as one rigid group — a shared XY jitter, rotating together about the sticker-base origin. |
+
+The toggles are independent (e.g. `--no-randomize-boards` keeps the slot
+swap but drops the jitter); an object not moved by any enabled toggle is
+restored to its exact spawn pose.
 
 Jitter magnitudes are shared by both groups: `--randomize-xy-cm` bounds
 the ± XY offset (default 2 cm) and `--randomize-yaw-deg` the ± yaw

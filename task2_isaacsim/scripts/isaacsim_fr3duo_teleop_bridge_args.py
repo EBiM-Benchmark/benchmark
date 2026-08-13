@@ -244,14 +244,22 @@ def _add_recording_args(parser: argparse.ArgumentParser) -> None:
         action=argparse.BooleanOptionalAction,
         default=False,
         help="Randomize the task-object spawn poses on each scene reset; "
-        "see --randomize-boards and --randomize-pad for what moves.",
+        "see --randomize-board-swap, --randomize-boards, and "
+        "--randomize-pad for what moves.",
     )
     parser.add_argument(
         "--randomize-boards",
         action=argparse.BooleanOptionalAction,
         default=True,
-        help="With --randomize-objects: shuffle the target board among the "
-        "four board slots and jitter each board's XY independently.",
+        help="With --randomize-objects: jitter each board's XY "
+        "independently about its assigned slot.",
+    )
+    parser.add_argument(
+        "--randomize-board-swap",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="With --randomize-objects: place the target board at a random "
+        "one of the four board slots (swapping with the displaced board).",
     )
     parser.add_argument(
         "--randomize-pad",
