@@ -36,3 +36,25 @@ cameras:
     publish_semantic: true
     publish_bbox: true
     contract: eval
+
+  # Oblique RGB-only camera on the opposite (−Y) side of the table from the
+  # robot, looking NE across the thermal pad toward the approach corridor.
+  # Publishes /isaac/demo_cam/{image_raw,camera_info} for external eval
+  # logging; no contract key → not recorded into LeRobot datasets.
+  # Pose (world): SW of TASK2_TABLE_POSITION (2.05, 1.95, 0.75); tune by
+  # editing translation / rotation_xyz_deg (yaml wins over USD).
+  demo_cam:
+    prim_path: /World/Scene/demo_cam
+    namespace: /isaac/demo_cam
+    frame_id: demo_cam
+    translation: [1.25, 0.55, 1.70]
+    rotation_xyz_deg: [58.0, 0.0, 32.0]  # look +Y/NE, pitched down at table
+    focal_length: 20.0
+    focus_distance: 400.0
+    projection: perspective
+    render_resolution:
+      width: 1280
+      height: 720
+    publish_depth: false
+    publish_semantic: false
+    publish_bbox: false

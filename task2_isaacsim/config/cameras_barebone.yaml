@@ -34,3 +34,23 @@ cameras:
     publish_semantic: true
     publish_bbox: true
     contract: eval
+
+  # Room demo_cam offset from the table top, re-applied to the barebone
+  # default --objects-position (0.8, 0.0, 0.0). Room world pose was
+  # (1.25, 0.55, 1.70) vs table (2.05, 1.95, 0.75) → delta (-0.80, -1.40, 0.95).
+  # No contract: publishes RGB for external logging only.
+  demo_cam:
+    prim_path: /World/demo_cam
+    namespace: /isaac/demo_cam
+    frame_id: demo_cam
+    translation: [0.0, -1.40, 0.95]
+    rotation_xyz_deg: [58.0, 0.0, 32.0]
+    focal_length: 20.0
+    focus_distance: 400.0
+    projection: perspective
+    render_resolution:
+      width: 1280
+      height: 720
+    publish_depth: false
+    publish_semantic: false
+    publish_bbox: false
