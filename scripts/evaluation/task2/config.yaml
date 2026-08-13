@@ -29,3 +29,18 @@ liner_label: liner
 target_label: target
 
 bbox_json_top_per_class_only: false
+
+# EvalStreamSync tuning (see stream_sync.py). Default tolerance is ~one
+# render period at 60 Hz sim time.
+sync_tolerance_s: 0.0167
+sync_timeout_s: 5.0
+sync_max_age_s: 0.5
+sync_rebase_epsilon_s: 0.05
+sync_image_buffer_len: 12
+sync_buffer_len: 120
+
+# Audit topics exist only when the Isaac Sim scene runs with --record.
+audit_enabled: true
+audit_object_poses_topic: /isaac/task2/object_poses
+audit_pad_points_topic: /isaac/task2/pad_points
+audit_max_skew_s: 0.5

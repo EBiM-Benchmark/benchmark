@@ -28,6 +28,7 @@ services:
       # Build context is the repo root so the bind-mounted code matches the image layout.
       context: ../../..
       dockerfile: scripts/evaluation/task2/Dockerfile
+      args: { EVAL_VERSION: "${EVAL_VERSION:-unknown}" }
     image: eval-task2:ebim2026
     container_name: eval_task2
     profiles: ["eval"]

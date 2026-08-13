@@ -14,6 +14,7 @@ from typing import Any
 
 import numpy as np
 from image_utils import bbox_from_detection, iter_detection_classifications
+from stream_sync import ALL_STREAMS
 
 BBox = tuple[float, float, float, float]
 
@@ -199,6 +200,53 @@ def pixel_ratios(
 
 
 # --------------------------------------------------------------------------- #
+# Diagnostics passthrough
+# --------------------------------------------------------------------------- #
+def resolve_stream_stamps(
+    stream_stamps: dict[str, float | None] | None,
+) -> dict[str, float | None]:
+    """Project ``stream_stamps`` onto all nine ``ALL_STREAMS`` keys.
+
+    ``stream_stamps=None`` (or empty) returns all nine values as
+    ``None``. A partial dict leaves the streams it does not mention as
+    ``None``; keys outside ``ALL_STREAMS`` are ignored.
+    """
+    stamps: dict[str, float | None] = dict.fromkeys(ALL_STREAMS)
+    if stream_stamps:
+        for stream in ALL_STREAMS:
+            if stream in stream_stamps:
+                stamps[stream] = stream_stamps[stream]
+    return stamps
+
+
+def resolve_semantic_raw_ids(
+    semantic_hints: dict[int, str],
+    *,
+    liner_label: str,
+    thermalpad_label: str,
+    target_label: str,
+) -> dict[str, int | None]:
+    """Resolve raw semantic-mask IDs for liner/thermalpad/target.
+
+    Same first-win policy as :func:`hints_from_label_payload`: for
+    each of the three label names, returns the first ``raw_id`` in
+    ``semantic_hints`` whose value matches it, or ``None`` when no
+    entry matches.
+    """
+    wanted = {
+        "liner": liner_label,
+        "thermalpad": thermalpad_label,
+        "target": target_label,
+    }
+    resolved: dict[str, int | None] = dict.fromkeys(wanted, None)
+    for raw_id, name in semantic_hints.items():
+        for key, label_name in wanted.items():
+            if resolved[key] is None and name == label_name:
+                resolved[key] = raw_id
+    return resolved
+
+
+# --------------------------------------------------------------------------- #
 # Main evaluation
 # --------------------------------------------------------------------------- #
 def evaluate_thermalpad_target_iou(
@@ -214,6 +262,13 @@ def evaluate_thermalpad_target_iou(
     bbox_frame_stamp: str = "",
     target_bbox_msg=None,
     target_labels_payload: str | None = None,
+    stream_stamps: dict[str, float | None] | None = None,
+    sync_status: str = "",
+    sync_tolerance_s: float | None = None,
+    sync_anchor_stamp: float | None = None,
+    max_stamp_delta: float | None = None,
+    label_provenance: dict[str, Any] | None = None,
+    evaluator_version: str = "",
 ) -> dict[str, Any]:
     """Compute bbox IoU between the active pad (liner/thermalpad) and target.
 
@@ -240,6 +295,20 @@ def evaluate_thermalpad_target_iou(
     there is no measurement cliff between "just barely sideways" and
     "just barely dominant". Success gating (e.g. orientation correct
     AND iou above a minimum) is decided by the caller, not here.
+
+    ``stream_stamps`` / ``sync_status`` / ``sync_tolerance_s`` /
+    ``sync_anchor_stamp`` / ``max_stamp_delta`` are pure passthrough
+    diagnostics describing the caller's stream-sync selection (see
+    ``stream_sync.EvalStreamSync``) -- this module never computes sync
+    itself, only reshapes what it is given. ``stream_stamps`` may be
+    partial or ``None``; the result always carries all nine
+    ``stream_sync.ALL_STREAMS`` keys, missing ones as ``None``.
+    ``label_provenance`` is caller-supplied metadata merged with a
+    ``semantic_raw_ids`` map that this function resolves itself from
+    ``semantic_hints``. ``evaluator_version`` is an opaque passthrough
+    string. All default to empty/``None`` so callers using the
+    pre-diagnostics call shape still get null-but-present structure,
+    never missing keys.
     """
     if bbox_msg is None:
         raise ValueError(
@@ -268,6 +337,25 @@ def evaluate_thermalpad_target_iou(
         "target_label_id": int(target_id) if target_id is not None else None,
         "current_frame_stamp": current_frame_stamp,
         "bbox_frame_stamp": bbox_frame_stamp,
+        # Built here (not duplicated per return path) so _zero_result
+        # and the full result below cannot drift out of sync.
+        "sync": {
+            "status": sync_status,
+            "anchor_stamp": sync_anchor_stamp,
+            "tolerance_s": sync_tolerance_s,
+            "max_stamp_delta": max_stamp_delta,
+            "stamps": resolve_stream_stamps(stream_stamps),
+        },
+        "label_provenance": {
+            **(label_provenance or {}),
+            "semantic_raw_ids": resolve_semantic_raw_ids(
+                semantic_hints,
+                liner_label=liner_label,
+                thermalpad_label=thermalpad_label,
+                target_label=target_label,
+            ),
+        },
+        "evaluator_version": evaluator_version,
     }
 
     def _zero_result(

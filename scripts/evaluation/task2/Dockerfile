@@ -11,6 +11,9 @@ RUN apt-get update \
 
 WORKDIR /workspace
 
+ARG EVAL_VERSION=unknown
+ENV EVAL_TASK2_VERSION_BUILD=${EVAL_VERSION}
+
 # Keep the flat eval modules importable when the repo is bind-mounted.
 ENV PYTHONPATH=/workspace/scripts/evaluation/task2
 

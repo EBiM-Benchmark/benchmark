@@ -10,6 +10,7 @@ increasing priority): APP_DEFAULTS < config.yaml < CLI args.
 """
 
 import argparse
+import os
 from pathlib import Path
 from typing import Any
 
@@ -37,6 +38,20 @@ APP_DEFAULTS: dict[str, Any] = {
     "output_dir": "/output",
     "jpeg_quality": 95,
     "bbox_json_top_per_class_only": False,
+    # EvalStreamSync tuning (see stream_sync.py). Default tolerance is
+    # ~one render period at 60 Hz sim time.
+    "sync_tolerance_s": 0.0167,
+    "sync_timeout_s": 5.0,
+    "sync_max_age_s": 0.5,
+    "sync_rebase_epsilon_s": 0.05,
+    "sync_image_buffer_len": 12,
+    "sync_buffer_len": 120,
+    # Audit topics exist only when the Isaac Sim scene runs with
+    # --record.
+    "audit_enabled": True,
+    "audit_object_poses_topic": "/isaac/task2/object_poses",
+    "audit_pad_points_topic": "/isaac/task2/pad_points",
+    "audit_max_skew_s": 0.5,
 }
 
 # FALLBACK raw int32 semantic-mask pixel value -> class name. Isaac Sim
@@ -67,6 +82,120 @@ def coerce_bool(value: Any) -> bool:
         if text in {"0", "false", "no", "off"}:
             return False
     raise ValueError(f"Cannot parse boolean value: {value}")
+
+
+def _looks_like_git_sha(text: str) -> bool:
+    return len(text) == 40 and all(c in "0123456789abcdefABCDEF" for c in text)
+
+
+def _resolve_git_dir(repo_root: Path) -> Path | None:
+    """Return the real git metadata dir for ``repo_root``, or ``None``.
+
+    Handles the common case (``.git`` is a directory) and the
+    worktree gitdir-pointer case (``.git`` is a file containing
+    ``gitdir: <path>``).
+    """
+    git_path = repo_root / ".git"
+    if git_path.is_dir():
+        return git_path
+    if git_path.is_file():
+        content = git_path.read_text(encoding="utf-8").strip()
+        prefix = "gitdir:"
+        if content.startswith(prefix):
+            target = Path(content[len(prefix) :].strip())
+            if not target.is_absolute():
+                target = (repo_root / target).resolve()
+            if target.is_dir():
+                return target
+    return None
+
+
+def _sha_from_packed_refs(git_dir: Path, ref_path: str) -> str | None:
+    packed_refs = git_dir / "packed-refs"
+    if not packed_refs.is_file():
+        return None
+    with packed_refs.open("r", encoding="utf-8") as file_obj:
+        for raw_line in file_obj:
+            line = raw_line.strip()
+            if not line or line[0] in "#^":
+                continue
+            sha, _, path = line.partition(" ")
+            if path == ref_path and _looks_like_git_sha(sha):
+                return sha
+    return None
+
+
+def _read_git_commit_sha(repo_root: Path) -> str | None:
+    """Parse the current commit sha out of ``repo_root/.git``.
+
+    Pure Python, no ``git`` binary / subprocess. Returns ``None`` when
+    nothing resolves; callers are expected to wrap this in a broad
+    try/except since the many small filesystem reads here should
+    never be allowed to raise out to the caller.
+    """
+    git_dir = _resolve_git_dir(repo_root)
+    if git_dir is None:
+        return None
+
+    head_text = (git_dir / "HEAD").read_text(encoding="utf-8").strip()
+    if not head_text:
+        return None
+
+    if head_text.startswith("ref:"):
+        ref_path = head_text[len("ref:") :].strip()
+        loose_ref = git_dir / ref_path
+        if loose_ref.is_file():
+            sha = loose_ref.read_text(encoding="utf-8").strip()
+            if _looks_like_git_sha(sha):
+                return sha
+        return _sha_from_packed_refs(git_dir, ref_path)
+
+    if _looks_like_git_sha(head_text):
+        return head_text
+    return None
+
+
+def resolve_evaluator_version(repo_root: Path | None = None) -> str:
+    """Resolve a short version string identifying this evaluator build.
+
+    First hit wins:
+
+    1. The ``EVAL_TASK2_VERSION`` env var (manual override).
+    2. A pure-Python parse of ``<repo_root>/.git`` for the current
+       commit sha, truncated to 7 chars. No ``git`` binary and no
+       subprocess -- the eval container bind-mounts the repo but has
+       neither installed. ``repo_root`` defaults to the checkout this
+       file lives in (``<repo>/scripts/evaluation/task2/config.py``).
+    3. The ``EVAL_TASK2_VERSION_BUILD`` env var, baked into the image
+       at build time (see Dockerfile) -- covers running the image
+       standalone, without the repo bind-mounted over it.
+    4. ``"unknown"``.
+
+    Never raises: any IO/parse failure at a given source falls
+    through to the next one.
+    """
+    env_version = os.environ.get("EVAL_TASK2_VERSION", "").strip()
+    if env_version:
+        return env_version
+
+    if repo_root is None:
+        repo_root = Path(__file__).resolve().parents[3]
+
+    try:
+        sha = _read_git_commit_sha(repo_root)
+    except Exception:
+        # Best-effort diagnostics only: a missing/corrupt .git, an
+        # unexpected layout, or a permissions error must never break
+        # the caller -- fall through to the next version source.
+        sha = None
+    if sha:
+        return sha[:7]
+
+    build_version = os.environ.get("EVAL_TASK2_VERSION_BUILD", "").strip()
+    if build_version:
+        return build_version
+
+    return "unknown"
 
 
 def _default_config_path() -> Path:
@@ -171,6 +300,56 @@ def _build_arg_parser(defaults: dict[str, Any]) -> argparse.ArgumentParser:
         type=coerce_bool,
         default=coerce_bool(defaults["bbox_json_top_per_class_only"]),
     )
+    parser.add_argument(
+        "--sync-tolerance-s",
+        type=float,
+        default=float(defaults["sync_tolerance_s"]),
+    )
+    parser.add_argument(
+        "--sync-timeout-s",
+        type=float,
+        default=float(defaults["sync_timeout_s"]),
+    )
+    parser.add_argument(
+        "--sync-max-age-s",
+        type=float,
+        default=float(defaults["sync_max_age_s"]),
+    )
+    parser.add_argument(
+        "--sync-rebase-epsilon-s",
+        type=float,
+        default=float(defaults["sync_rebase_epsilon_s"]),
+    )
+    parser.add_argument(
+        "--sync-image-buffer-len",
+        type=int,
+        default=int(defaults["sync_image_buffer_len"]),
+    )
+    parser.add_argument(
+        "--sync-buffer-len",
+        type=int,
+        default=int(defaults["sync_buffer_len"]),
+    )
+    parser.add_argument(
+        "--audit-enabled",
+        type=coerce_bool,
+        default=coerce_bool(defaults["audit_enabled"]),
+    )
+    parser.add_argument(
+        "--audit-object-poses-topic",
+        type=str,
+        default=str(defaults["audit_object_poses_topic"]),
+    )
+    parser.add_argument(
+        "--audit-pad-points-topic",
+        type=str,
+        default=str(defaults["audit_pad_points_topic"]),
+    )
+    parser.add_argument(
+        "--audit-max-skew-s",
+        type=float,
+        default=float(defaults["audit_max_skew_s"]),
+    )
     return parser
 
 
@@ -209,4 +388,15 @@ def load_runtime_config(args=None) -> dict[str, Any]:
         "bbox_json_top_per_class_only": coerce_bool(
             parsed.bbox_json_top_per_class_only
         ),
+        "sync_tolerance_s": float(parsed.sync_tolerance_s),
+        "sync_timeout_s": float(parsed.sync_timeout_s),
+        "sync_max_age_s": float(parsed.sync_max_age_s),
+        "sync_rebase_epsilon_s": float(parsed.sync_rebase_epsilon_s),
+        "sync_image_buffer_len": int(parsed.sync_image_buffer_len),
+        "sync_buffer_len": int(parsed.sync_buffer_len),
+        "audit_enabled": coerce_bool(parsed.audit_enabled),
+        "audit_object_poses_topic": parsed.audit_object_poses_topic,
+        "audit_pad_points_topic": parsed.audit_pad_points_topic,
+        "audit_max_skew_s": float(parsed.audit_max_skew_s),
+        "evaluator_version": resolve_evaluator_version(),
     }

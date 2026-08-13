@@ -62,6 +62,7 @@ main() {
 
     case "$1" in
         up)
+            export EVAL_VERSION="$(git -C "${SCRIPT_DIR}/../../.." rev-parse --short HEAD 2>/dev/null || echo unknown)"
             docker_compose --profile eval up -d --build "${SERVICE_NAME}"
             if wait_for_service 30; then
                 echo "[PASS] ${SERVICE_NAME} is running"
