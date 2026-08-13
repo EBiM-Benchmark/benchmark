@@ -17,6 +17,7 @@ import json
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from threading import Lock
 from typing import Any
 
 import numpy as np
@@ -26,7 +27,7 @@ from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import CameraInfo, Image
-from std_msgs.msg import String
+from std_msgs.msg import Float32MultiArray, String
 from std_srvs.srv import Trigger
 
 try:
@@ -36,6 +37,11 @@ except Exception:  # pragma: no cover - depends on runtime image
 
 import image_utils
 from config import SEMANTIC_RAW_ID_NAME_HINTS, coerce_bool
+from coverage_metrics import (
+    coverage_metrics,
+    parse_object_poses_payload,
+    parse_pad_points_payload,
+)
 from evaluation import (
     evaluate_thermalpad_target_iou,
     hints_from_label_payload,
@@ -131,6 +137,23 @@ class EvalCameraCaptureService(Node):
         self._sync_rebase_epsilon_s = float(config["sync_rebase_epsilon_s"])
         self._evaluator_version = str(config.get("evaluator_version", ""))
 
+        # Best-effort ground-truth physical coverage/spill audit (see
+        # coverage_metrics.py). GT sim_time is the bridge main-loop
+        # clock sampled off the render tick -- an independent notion
+        # of "now" from the render-derived header.stamp values
+        # EvalStreamSync anchors on -- so the two latest-parsed GT
+        # payloads are cached under their own small lock rather than
+        # folded into stream sync.
+        self._audit_enabled = coerce_bool(config["audit_enabled"])
+        self._audit_object_poses_topic = str(
+            config["audit_object_poses_topic"]
+        )
+        self._audit_pad_points_topic = str(config["audit_pad_points_topic"])
+        self._audit_max_skew_s = float(config["audit_max_skew_s"])
+        self._audit_lock = Lock()
+        self._audit_latest_object_poses = (None, None)
+        self._audit_latest_pad_points = (None, None)
+
         # Subscriptions and the service run in separate
         # MutuallyExclusiveCallbackGroups on a MultiThreadedExecutor
         # (see run()) -- the service handler can then block in
@@ -224,6 +247,26 @@ class EvalCameraCaptureService(Node):
                 "vision_msgs is not available; bbox overlays/evaluation "
                 "are disabled. "
                 "Install ros-jazzy-vision-msgs in the runtime image."
+            )
+
+        # Ground-truth audit topics exist only when the Isaac Sim scene
+        # runs with --record; publishers are RELIABLE default (not
+        # BEST_EFFORT), so this uses default QoS depth 10, not
+        # qos_profile_sensor_data.
+        if self._audit_enabled:
+            self.create_subscription(
+                String,
+                self._audit_object_poses_topic,
+                self._on_audit_object_poses,
+                10,
+                callback_group=self._sub_group,
+            )
+            self.create_subscription(
+                Float32MultiArray,
+                self._audit_pad_points_topic,
+                self._on_audit_pad_points,
+                10,
+                callback_group=self._sub_group,
             )
 
         self.create_service(
@@ -325,6 +368,20 @@ class EvalCameraCaptureService(Node):
                 msg.header.stamp.sec, msg.header.stamp.nanosec
             ),
         )
+
+    def _on_audit_object_poses(self, msg):
+        # Not part of stream sync -- see the audit-state comment in
+        # __init__. Every message overwrites the cached latest, parse
+        # failure included: a garbled single message degrades the
+        # audit for one evaluation rather than serving stale data.
+        parsed = parse_object_poses_payload(msg.data)
+        with self._audit_lock:
+            self._audit_latest_object_poses = parsed
+
+    def _on_audit_pad_points(self, msg):
+        parsed = parse_pad_points_payload(msg.data)
+        with self._audit_lock:
+            self._audit_latest_pad_points = parsed
 
     # ------------------------------------------------------------------ #
     # Service handler
@@ -619,12 +676,76 @@ class EvalCameraCaptureService(Node):
             )
         except ValueError as exc:
             raise ValueError(f"Evaluation failed: {exc}") from exc
+        # Best-effort ground-truth audit: never affects eval_result's
+        # official fields, the response, or the failure path above (it
+        # only runs once evaluation has already succeeded).
+        self._apply_physical_audit(eval_result)
         eval_path = _artifact_path(out, "iou", ts, "json")
         eval_path.write_text(
             json.dumps(eval_result, indent=2), encoding="utf-8"
         )
         saved.append(eval_path)
         return eval_result
+
+    def _apply_physical_audit(self, eval_result: dict[str, Any]) -> None:
+        """Fill in ``eval_result["physical_audit"]`` (or a reason why not).
+
+        Purely additive and best-effort: wraps the whole computation
+        in a broad try/except so an unexpected failure here can never
+        propagate into ``_save_eval``/``_on_save_request`` and affect
+        the official fields, the response, or the failure path --
+        it only ever mutates ``eval_result`` in place, adding
+        ``physical_audit`` (a ``coverage_metrics()`` dict plus the two
+        GT sim_time stamps used, on success) and, when unavailable,
+        ``physical_audit_unavailable_reason`` (one of
+        ``audit_disabled``, ``no_object_poses``, ``no_pad_points``,
+        ``board_target_missing``, ``stale_skew``, ``audit_error``).
+        """
+        try:
+            if not self._audit_enabled:
+                eval_result["physical_audit"] = None
+                eval_result["physical_audit_unavailable_reason"] = (
+                    "audit_disabled"
+                )
+                return
+
+            with self._audit_lock:
+                t_poses, poses = self._audit_latest_object_poses
+                t_pad, pad_points = self._audit_latest_pad_points
+
+            if t_poses is None or poses is None:
+                eval_result["physical_audit"] = None
+                eval_result["physical_audit_unavailable_reason"] = (
+                    "no_object_poses"
+                )
+                return
+            if t_pad is None or pad_points is None:
+                eval_result["physical_audit"] = None
+                eval_result["physical_audit_unavailable_reason"] = (
+                    "no_pad_points"
+                )
+                return
+            if "board_target" not in poses:
+                eval_result["physical_audit"] = None
+                eval_result["physical_audit_unavailable_reason"] = (
+                    "board_target_missing"
+                )
+                return
+            if abs(t_poses - t_pad) > self._audit_max_skew_s:
+                eval_result["physical_audit"] = None
+                eval_result["physical_audit_unavailable_reason"] = "stale_skew"
+                return
+
+            metrics = coverage_metrics(pad_points, poses["board_target"])
+            eval_result["physical_audit"] = {
+                **metrics,
+                "object_poses_sim_time": t_poses,
+                "pad_points_sim_time": t_pad,
+            }
+        except Exception as exc:  # noqa: BLE001 - audit is best-effort only
+            eval_result["physical_audit"] = None
+            eval_result["physical_audit_unavailable_reason"] = "audit_error"
+            self.get_logger().warn(f"Physical audit failed: {exc}")
 
     def _save_bbox_artifacts(
         self, out, ts, name: str, bbox_msg, rgb_bgr, saved: list[Path]
