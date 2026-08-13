@@ -36,15 +36,15 @@ cameras:
     contract: eval
 
   # Room demo_cam offset from the table top, re-applied to the barebone
-  # default --objects-position (0.8, 0.0, 0.0). Room world pose was
-  # (1.25, 0.55, 1.70) vs table (2.05, 1.95, 0.75) → delta (-0.80, -1.40, 0.95).
+  # default --objects-position (0.8, 0.0, 0.0). Room world pose
+  # (1.20, 0.40, 1.80) vs table (2.05, 1.95, 0.75) → delta (-0.85, -1.55, 1.05).
   # No contract: publishes RGB for external logging only.
   demo_cam:
     prim_path: /World/demo_cam
     namespace: /isaac/demo_cam
     frame_id: demo_cam
-    translation: [0.0, -1.40, 0.95]
-    rotation_xyz_deg: [58.0, 0.0, 32.0]
+    translation: [-0.05, -1.55, 1.05]
+    rotation_xyz_deg: [70.3, 0.0, -34.7]
     focal_length: 20.0
     focus_distance: 400.0
     projection: perspective

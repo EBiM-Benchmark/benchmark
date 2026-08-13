@@ -41,14 +41,15 @@ cameras:
   # robot, looking NE across the thermal pad toward the approach corridor.
   # Publishes /isaac/demo_cam/{image_raw,camera_info} for external eval
   # logging; no contract key → not recorded into LeRobot datasets.
-  # Pose (world): SW of TASK2_TABLE_POSITION (2.05, 1.95, 0.75); tune by
-  # editing translation / rotation_xyz_deg (yaml wins over USD).
+  # Pose (world): SW of TASK2_TABLE_POSITION (2.05, 1.95, 0.75). USD
+  # rotateXYZ is R=Rz·Ry·Rx with the camera looking along local −Z — yaw
+  # must be negative here to face +X/+Y (NE). Aim point ~(2.55, 2.35, 0.95).
   demo_cam:
     prim_path: /World/Scene/demo_cam
     namespace: /isaac/demo_cam
     frame_id: demo_cam
-    translation: [1.25, 0.55, 1.70]
-    rotation_xyz_deg: [58.0, 0.0, 32.0]  # look +Y/NE, pitched down at table
+    translation: [1.20, 0.40, 1.80]
+    rotation_xyz_deg: [70.3, 0.0, -34.7]
     focal_length: 20.0
     focus_distance: 400.0
     projection: perspective
