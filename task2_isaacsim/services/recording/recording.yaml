@@ -56,6 +56,11 @@ prompt_success: true
 # accepts any overlap; raise it once you have enough recorded episodes to
 # calibrate against. The raw IoU is stored either way.
 success_min_iou: 0.0
+# Seconds to wait for a stamp-coherent eval-camera snapshot (all eval
+# streams agreeing within one sim render tick) when computing the
+# auto-suggested success label. Past this the suggestion is null; the
+# label still falls back to the console prompt or default False.
+success_sync_timeout_s: 2.0
 
 # Episode limits.
 max_episode_time_s: 300.0
