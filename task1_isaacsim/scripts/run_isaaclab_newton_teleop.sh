@@ -16,6 +16,7 @@ EMBODIMENT="${EMBODIMENT:-fr3duo_mobile}"
 USD_PATH="${USD_PATH:-assets/Robotiq_2f_85_with_d405_mobile_fr3_duo_v0_2.usd}"
 CONTROLLER_MODE="${CONTROLLER_MODE:-position}"
 WITH_GELLO_PEDAL_TELEOP=false
+WITH_DUAL_PEDAL_TELEOP=false
 WITH_KEYBOARD_TELEOP=false
 WITH_BROWSER=true
 WITH_REPUBLISHER=true
@@ -36,6 +37,7 @@ Options:
   --usd-path PATH            USD path relative to task1_isaacsim or absolute
   --controller-mode MODE     none|position (default: position)
   --with-gello-pedal-teleop  Start GELLO arm teleop and pedal base teleop together
+  --with-dual-pedal-teleop   Start GELLO with two pedals providing six base motions
   --with-keyboard-teleop     Control both arm TCPs/grippers from the Isaac Sim keyboard
   --no-browser               Do not start browser_controller
   --no-republisher           Do not start ros_republisher
@@ -63,6 +65,11 @@ while [[ $# -gt 0 ]]; do
       ;;
     --with-gello-pedal-teleop)
       WITH_GELLO_PEDAL_TELEOP=true
+      shift
+      ;;
+    --with-dual-pedal-teleop)
+      WITH_GELLO_PEDAL_TELEOP=true
+      WITH_DUAL_PEDAL_TELEOP=true
       shift
       ;;
     --with-keyboard-teleop)
@@ -123,6 +130,7 @@ echo "Embodiment: ${EMBODIMENT}"
 echo "USD: ${HOST_USD}"
 echo "Controller mode: ${CONTROLLER_MODE}"
 echo "GELLO + pedal teleop: ${WITH_GELLO_PEDAL_TELEOP}"
+echo "Dual-pedal six-motion mode: ${WITH_DUAL_PEDAL_TELEOP}"
 echo "Keyboard arm teleop: ${WITH_KEYBOARD_TELEOP}"
 echo "Cable VBD: always enabled"
 
@@ -162,9 +170,14 @@ fi
 
 if ${WITH_GELLO_PEDAL_TELEOP}; then
   echo "Starting task1_gello_pedal_teleop without old isaac-sim dependency..."
-  (cd "${TASK1_ROOT}" && docker compose --profile teleop up -d --no-deps gello_pedal_teleop)
-  echo "Pedal publisher (run in a second terminal):"
-  echo "  docker exec -it task1_gello_pedal_teleop bash -lc 'source /opt/ros/jazzy/setup.bash && source /tmp/task1_teleop_install/setup.bash && ros2 run pedal_state_publisher pedal_state_publisher'"
+  if ${WITH_DUAL_PEDAL_TELEOP}; then
+    (cd "${TASK1_ROOT}" && PEDAL_MODE=dual docker compose --profile teleop up -d --no-deps gello_pedal_teleop)
+    echo "Dual-pedal publisher started automatically in task1_gello_pedal_teleop."
+  else
+    (cd "${TASK1_ROOT}" && PEDAL_MODE=manual docker compose --profile teleop up -d --no-deps gello_pedal_teleop)
+    echo "Pedal publisher (run in a second terminal):"
+    echo "  docker exec -it task1_gello_pedal_teleop bash -lc 'source /opt/ros/jazzy/setup.bash && source /tmp/task1_teleop_install/setup.bash && ros2 run pedal_state_publisher pedal_state_publisher'"
+  fi
 fi
 
 if ${WITH_KEYBOARD_TELEOP} && ! ${WITH_GELLO_PEDAL_TELEOP}; then

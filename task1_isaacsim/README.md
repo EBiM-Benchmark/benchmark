@@ -291,6 +291,36 @@ docker exec -it task1_gello_pedal_teleop bash -lc \
    ros2 run pedal_state_publisher pedal_state_publisher'
 ```
 
+To use two three-button pedals for all six planar base motions, launch with:
+
+```bash
+EMBODIMENT=fr3duo_mobile \
+bash task1_isaacsim/scripts/run_isaaclab_newton_teleop.sh \
+  --with-dual-pedal-teleop \
+  --no-browser
+```
+
+The dual-pedal publisher starts automatically and uses this mapping:
+
+| Device | Left button | Middle button | Right button |
+|---|---|---|---|
+| Pedal 1 | Forward | Backward | Translate left |
+| Pedal 2 | Translate right | Rotate counterclockwise | Rotate clockwise |
+
+It auto-detects exactly two `PCsensor FootSwitch Keyboard` devices through
+`/dev/input/by-path`. Because these pedals expose the same USB ID and no unique
+serial number, set stable port paths in `task1_isaacsim/.env` when their order
+needs to be explicit:
+
+```bash
+PEDAL_ONE_DEVICE=/dev/input/by-path/<first-pedal>-event-kbd
+PEDAL_TWO_DEVICE=/dev/input/by-path/<second-pedal>-event-kbd
+```
+
+The input devices are grabbed exclusively in dual mode, which prevents their
+`a`/`b`/`c` keystrokes from also reaching a focused terminal. Pressing more
+than one pedal button at once publishes `STOP`.
+
 ### Browser control
 
 The browser service starts by default and is available at:

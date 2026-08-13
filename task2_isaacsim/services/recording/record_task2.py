@@ -110,6 +110,13 @@ PAD_POINTS_TOPIC = _TOPICS["ground_truth"]["pad_points"]
 SCENE_RESET_TOPIC = _TOPICS["ground_truth"]["scene_reset"]
 SCENE_RESET_REQUEST_TOPIC = _TOPICS["ground_truth"]["scene_reset_request"]
 EVAL_BBOX_TOPIC = _TOPICS["cameras"]["eval"]["bbox_2d_tight"]
+# Three distinct id->label maps; see config/topics.yaml. bbox_tight_labels
+# resolves bbox_2d_tight class_ids, bbox_loose_labels resolves
+# bbox_2d_loose class_ids, semantic_labels resolves the raw mask pixel
+# values (per-session IDs).
+EVAL_BBOX_LABELS_TOPIC = _TOPICS["cameras"]["eval"]["bbox_tight_labels"]
+EVAL_BBOX_LOOSE_TOPIC = _TOPICS["cameras"]["eval"]["bbox_2d_loose"]
+EVAL_BBOX_LOOSE_LABELS_TOPIC = _TOPICS["cameras"]["eval"]["bbox_loose_labels"]
 EVAL_LABELS_TOPIC = _TOPICS["cameras"]["eval"]["semantic_labels"]
 EVAL_SEGMENTATION_TOPIC = _TOPICS["cameras"]["eval"]["semantic_segmentation"]
 
@@ -252,6 +259,9 @@ class Task2RecorderNode(Node):
         self.pad_points_raw = None
         self.reset_events = []
         self.eval_bbox = None
+        self.eval_bbox_labels = None
+        self.eval_bbox_loose = None
+        self.eval_bbox_loose_labels = None
         self.eval_labels = None
         self.eval_segmentation = None
         self.message_counts = {}
@@ -307,6 +317,24 @@ class Task2RecorderNode(Node):
                 Detection2DArray,
                 EVAL_BBOX_TOPIC,
                 self._on_eval_bbox,
+                qos_depth,
+            )
+            self.create_subscription(
+                String,
+                EVAL_BBOX_LABELS_TOPIC,
+                self._on_eval_bbox_labels,
+                qos_depth,
+            )
+            self.create_subscription(
+                Detection2DArray,
+                EVAL_BBOX_LOOSE_TOPIC,
+                self._on_eval_bbox_loose,
+                qos_depth,
+            )
+            self.create_subscription(
+                String,
+                EVAL_BBOX_LOOSE_LABELS_TOPIC,
+                self._on_eval_bbox_loose_labels,
                 qos_depth,
             )
             self.create_subscription(
@@ -403,6 +431,21 @@ class Task2RecorderNode(Node):
             self.eval_bbox = msg
             self._count("eval_bbox")
 
+    def _on_eval_bbox_labels(self, msg):
+        with self.lock:
+            self.eval_bbox_labels = msg
+            self._count("eval_bbox_labels")
+
+    def _on_eval_bbox_loose(self, msg):
+        with self.lock:
+            self.eval_bbox_loose = msg
+            self._count("eval_bbox_loose")
+
+    def _on_eval_bbox_loose_labels(self, msg):
+        with self.lock:
+            self.eval_bbox_loose_labels = msg
+            self._count("eval_bbox_loose_labels")
+
     def _on_eval_labels(self, msg):
         with self.lock:
             self.eval_labels = msg
@@ -442,7 +485,14 @@ class Task2RecorderNode(Node):
 
     def eval_snapshot(self) -> tuple:
         with self.lock:
-            return self.eval_bbox, self.eval_labels, self.eval_segmentation
+            return (
+                self.eval_bbox,
+                self.eval_bbox_labels,
+                self.eval_bbox_loose,
+                self.eval_bbox_loose_labels,
+                self.eval_labels,
+                self.eval_segmentation,
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -641,6 +691,7 @@ def load_eval_modules(eval_dir: Path):
         return {
             "evaluate": evaluation.evaluate_thermalpad_target_iou,
             "to_label_array": image_utils.ros_image_to_label_array,
+            "hints_from_payload": evaluation.hints_from_label_payload,
             "hints": SEMANTIC_RAW_ID_NAME_HINTS,
         }
     except Exception as exc:  # noqa: BLE001 - suggestion is best-effort
@@ -653,7 +704,18 @@ def load_eval_modules(eval_dir: Path):
 def suggest_success(eval_modules, node: Task2RecorderNode):
     if eval_modules is None:
         return None
-    bbox, labels, segmentation = node.eval_snapshot()
+    (
+        bbox,
+        bbox_labels,
+        bbox_loose,
+        bbox_loose_labels,
+        seg_labels,
+        segmentation,
+    ) = node.eval_snapshot()
+    # bbox class_ids resolve through the bbox annotator's own label map;
+    # fall back to the legacy shared topic when the scene predates the
+    # split (racy, but no worse than before).
+    labels = bbox_labels if bbox_labels is not None else seg_labels
     if bbox is None or labels is None:
         return None
     label_array = None
@@ -662,6 +724,13 @@ def suggest_success(eval_modules, node: Task2RecorderNode):
             label_array = eval_modules["to_label_array"](segmentation)
         except Exception:  # noqa: BLE001
             label_array = None
+    # The raw mask IDs are assigned per session; derive them from the live
+    # segmentation label map and only fall back to the static hints.
+    hints = None
+    if seg_labels is not None:
+        hints = eval_modules["hints_from_payload"](seg_labels.data)
+    if hints is None:
+        hints = eval_modules["hints"]
     try:
         return eval_modules["evaluate"](
             bbox,
@@ -669,8 +738,14 @@ def suggest_success(eval_modules, node: Task2RecorderNode):
             thermalpad_label="thermalpad",
             liner_label="liner",
             target_label="target",
-            semantic_hints=eval_modules["hints"],
+            semantic_hints=hints,
             label_array=label_array,
+            target_bbox_msg=bbox_loose,
+            target_labels_payload=(
+                bbox_loose_labels.data
+                if bbox_loose_labels is not None
+                else None
+            ),
         )
     except Exception as exc:  # noqa: BLE001
         logging.warning("Success suggestion failed: %s", exc)
@@ -1123,16 +1198,17 @@ class KeyInput:
 CONSOLE = KeyInput()
 
 
-def prompt_success(suggestion) -> bool:
+def prompt_success(suggestion, min_iou: float = 0.0) -> bool:
     default = None
     if suggestion is not None:
         iou = suggestion.get("iou_thermalpad_vs_target_current", 0.0)
         orientation_ok = suggestion.get("is_orientation_correct", False)
         case = suggestion.get("orientation_case", "")
-        default = bool(orientation_ok and iou > 0.0)
+        default = bool(orientation_ok and iou > min_iou)
         print(
             f"   Auto-suggested success: {default} "
-            f"(IoU={iou:.3f}, orientation_ok={orientation_ok}, case={case})"
+            f"(IoU={iou:.3f} > {min_iou:.3f}, "
+            f"orientation_ok={orientation_ok}, case={case})"
         )
     while True:
         hint = f"[Enter={default}, y, n]" if default is not None else "[y, n]"
@@ -1406,13 +1482,15 @@ def save_episode_with_metadata(
     """Label success, save the buffered episode, and append its extras
     sidecar metadata line."""
     suggestion = suggest_success(eval_modules, node)
+    min_iou = float(getattr(args, "success_min_iou", 0.0))
     success = (
-        prompt_success(suggestion)
+        prompt_success(suggestion, min_iou)
         if args.prompt_success
         else bool(
             suggestion
             and suggestion.get("is_orientation_correct")
-            and suggestion.get("iou_thermalpad_vs_target_current", 0.0) > 0.0
+            and suggestion.get("iou_thermalpad_vs_target_current", 0.0)
+            > min_iou
         )
     )
     episode_index = dataset.num_episodes
@@ -1435,12 +1513,15 @@ def save_episode_with_metadata(
             for event in (pre_reset_events + node.drain_reset_events())
         ],
         "success_suggestion": {
-            key: suggestion[key]
-            for key in (
-                "iou_thermalpad_vs_target_current",
-                "is_orientation_correct",
-                "orientation_case",
-            )
+            **{
+                key: suggestion[key]
+                for key in (
+                    "iou_thermalpad_vs_target_current",
+                    "is_orientation_correct",
+                    "orientation_case",
+                )
+            },
+            "min_iou": min_iou,
         }
         if suggestion
         else None,
@@ -1852,6 +1933,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=True,
         help="Confirm the success label on the console at episode save "
         "(otherwise the suggestion is stored directly).",
+    )
+    parser.add_argument(
+        "--success-min-iou",
+        type=float,
+        default=0.0,
+        help="Minimum pad-vs-target IoU for the auto-suggested success "
+        "label (the orientation must also be correct). 0.0 accepts any "
+        "overlap at all.",
     )
     parser.add_argument("--max_episode_time_s", type=float, default=300.0)
     parser.add_argument("--max_episodes", type=int, default=200)

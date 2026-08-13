@@ -108,9 +108,25 @@ cameras:
       shape: [480, 848, 3]
   # Static room camera published by the room scene (recorder key
   # "eval_camera"); the extra streams feed --suggest-success.
+  # Three id->name maps, three incompatible ID schemes — never resolve one
+  # stream's IDs through another's map:
+  #   semantic_labels   raw mask pixel values; 0=BACKGROUND, 1=UNLABELLED,
+  #                     scene classes from 2, ORDER ASSIGNED PER SESSION.
+  #   bbox_tight_labels tight-annotator class IDs, counted from 0 over the
+  #                     classes VISIBLE in the frame.
+  #   bbox_loose_labels loose-annotator class IDs, counted from 0 over ALL
+  #                     labelled classes.
+  # Tight bboxes are cropped to visible pixels and dropped entirely when an
+  # object is fully occluded; loose bboxes are published regardless of
+  # occlusion. A correctly placed thermal pad occludes the target decal
+  # exactly (identical 0.12 x 0.02 footprints), so the evaluator takes the
+  # target from the loose stream and everything else from the tight one.
   eval:
     namespace: /isaac/eval_camera
     shape: [720, 1280, 3]
     bbox_2d_tight: /isaac/eval_camera/bbox_2d_tight
+    bbox_tight_labels: /isaac/eval_camera/bbox_2d_tight_labels
+    bbox_2d_loose: /isaac/eval_camera/bbox_2d_loose
+    bbox_loose_labels: /isaac/eval_camera/bbox_2d_loose_labels
     semantic_labels: /isaac/eval_camera/semantic_labels
     semantic_segmentation: /isaac/eval_camera/semantic_segmentation

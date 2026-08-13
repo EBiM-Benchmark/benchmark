@@ -74,4 +74,13 @@ repos:
 # paths (tested: the hook then reports Skipped).
 # LICENSES/README.md covers the Isaac Lab case in detail; the Newton-headered
 # files are Apache-2.0, same as this repo's root LICENSE.
-exclude: ^(scripts/deprecated/|scripts/manual_tests/|scripts/newton_examples/|assets/|DEMO/|docker/|.vscode/|.github/|task1_isaacsim/|task1_mujoco/)
+# task3_mujoco/assets/ is excluded for the same reason as the root assets/:
+# it is mesh and texture data, not source. Wavefront .obj is ASCII, so without
+# this the whitespace hooks rewrite every mesh file on each run. Only the assets
+# subtree is excluded — task3_mujoco's Python, XML, and shell files stay covered
+# by the file-safety hooks. That directory is ported from an upstream repo but
+# was contributed under Apache-2.0 (see NOTICE), so insert-license DOES stamp
+# its single .py file; it is excluded from Ruff only, via extend-exclude in
+# pyproject.toml, because reformatting to line-length 79 would churn tuned
+# control code.
+exclude: ^(scripts/deprecated/|scripts/manual_tests/|scripts/newton_examples/|assets/|DEMO/|docker/|.vscode/|.github/|task1_isaacsim/|task1_mujoco/|task3_mujoco/assets/)

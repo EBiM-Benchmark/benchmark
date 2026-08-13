@@ -222,26 +222,37 @@ def _setup_single_camera_graph(
         ("CameraInfoPublish.inputs:nodeNamespace", namespace),
         ("CameraInfoPublish.inputs:resetSimulationTimeOnStop", True),
     ]
-    # (node name, helper type, topic, enabled, needs semantic labels)
+    # (node name, helper type, topic, enabled, semantic labels topic).
+    # Each annotator publishes its OWN id->label map with its own ID scheme
+    # (mask pixel IDs vs bbox class IDs), so the labels topics must be
+    # distinct — with the bridge's shared default ("semantic_labels") the
+    # two publishers interleave incompatible maps on one topic.
     helper_streams = [
-        ("RGBPublish", "rgb", subtopics["image"], True, False),
-        ("DepthPublish", "depth", subtopics["depth"], publish_depth, False),
+        ("RGBPublish", "rgb", subtopics["image"], True, None),
+        ("DepthPublish", "depth", subtopics["depth"], publish_depth, None),
         (
             "SemanticPublish",
             "semantic_segmentation",
             "semantic_segmentation",
             publish_semantic,
-            True,
+            "semantic_labels",
         ),
         (
             "Bbox2dTightPublish",
             "bbox_2d_tight",
             "bbox_2d_tight",
             publish_bbox,
-            True,
+            "bbox_2d_tight_labels",
+        ),
+        (
+            "Bbox2dLoosePublish",
+            "bbox_2d_loose",
+            "bbox_2d_loose",
+            publish_bbox,
+            "bbox_2d_loose_labels",
         ),
     ]
-    for name, helper_type, topic, enabled, semantic_labels in helper_streams:
+    for name, helper_type, topic, enabled, labels_topic in helper_streams:
         if not enabled:
             continue
         create_nodes.append((name, "isaacsim.ros2.bridge.ROS2CameraHelper"))
@@ -264,8 +275,16 @@ def _setup_single_camera_graph(
                 (f"{name}.inputs:resetSimulationTimeOnStop", True),
             ]
         )
-        if semantic_labels:
-            set_values.append((f"{name}.inputs:enableSemanticLabels", True))
+        if labels_topic is not None:
+            set_values.extend(
+                [
+                    (f"{name}.inputs:enableSemanticLabels", True),
+                    (
+                        f"{name}.inputs:semanticLabelsTopicName",
+                        labels_topic,
+                    ),
+                ]
+            )
 
     keys = og.Controller.Keys
     og.Controller.edit(

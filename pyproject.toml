@@ -15,6 +15,10 @@ extend-exclude = [
     "_*",
     ".git",
     "task1_isaacsim",  # ported franka_isaacSim task; large-line/vendored code
+    # Ported Mujoco_Genisis_Model task; tracked upstream, so reformatting to
+    # line-length 79 would churn tuned physics/control code and make future
+    # syncs from that repo conflict-prone. See task3_mujoco/README.md.
+    "task3_mujoco",
 ]
 
 [tool.ruff.lint]

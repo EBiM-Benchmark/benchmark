@@ -78,7 +78,12 @@ state such as the post-reset ready pose. `/pedal/state` has its own
 | `/isaac/clock` | `rosgraph_msgs/Clock` | bridge node, from `world.current_time` (recorder paces on sim time; rebases to 0 on scene reset) |
 | `<namespace>/image_raw`, `<namespace>/camera_info`, `<namespace>/depth` | `sensor_msgs/Image`, `sensor_msgs/CameraInfo` | per-camera OmniGraph; namespaces `/isaac/head_camera` (1280×720), `/isaac/{left,right}_wrist_camera` (848×480); depth only with `--robot-camera-depth` |
 | `/isaac/eval_camera/{image_raw,depth,camera_info}` | `sensor_msgs/*` | scene camera (1280×720 static top-down camera) from `config/cameras_<scene>.yaml`, both scenes with `--enable-scene-cameras` (implied by `--record`) |
-| `/isaac/eval_camera/{bbox_2d_tight,semantic_labels,semantic_segmentation}` | `vision_msgs/Detection2DArray`, `std_msgs/String`, `sensor_msgs/Image` | scene camera `publish_bbox`/`publish_semantic` flags; feeds the recorder's `--suggest-success` IoU suggestion |
+| `/isaac/eval_camera/{semantic_segmentation,semantic_labels}` | `sensor_msgs/Image`, `std_msgs/String` | segmentation annotator (`publish_semantic`); `semantic_labels` is its raw-mask id→label map, order assigned per session |
+| `/isaac/eval_camera/{bbox_2d_tight,bbox_2d_tight_labels}` | `vision_msgs/Detection2DArray`, `std_msgs/String` | tight-bbox annotator (`publish_bbox`), occlusion-cropped — dropped if fully occluded; feeds pad presence/orientation for the recorder's `--suggest-success` and the Task 2 evaluation service |
+| `/isaac/eval_camera/{bbox_2d_loose,bbox_2d_loose_labels}` | `vision_msgs/Detection2DArray`, `std_msgs/String` | loose-bbox annotator (`publish_bbox`), published regardless of occlusion; feeds the target bbox for the same two consumers — see [Task 2 evaluation](../scripts/evaluation/task2/README.md#three-label-topics-three-id-schemes) for why |
+
+Three annotators, three mutually incompatible `idToLabels` schemes, one per
+labels topic above — never resolve one stream's IDs through another's map.
 
 ### Coupled values (renaming in topics.yaml is NOT enough)
 
@@ -187,7 +192,7 @@ files, per-index feature tables, extras sidecar):
 | `observation.state` (37, float32) | link8 EE poses left+right, xyz+quat (0–13) · arm joints (14–27) · spine height (28) · gripper open-fractions (29–30) · base odom x,y,yaw (31–33) · base velocity vx,vy,wz (34–36) |
 | `observation.images.{head,wrist_left,wrist_right,eval_camera}` | RGB video at the shapes in `config/topics.yaml`; extra contracted cameras selected via `--cameras` appear the same way as `observation.images.<key>` |
 | `task2_extras/episode_*.npz` | per-frame object world poses, deformed pad vertices (~10 Hz), optional float16 depth, sim/wall timestamps |
-| `task2_extras/episodes_task2.jsonl` | per-episode success label (operator-confirmed, IoU auto-suggestion), scene-randomization offsets, frame counts |
+| `task2_extras/episodes_task2.jsonl` | per-episode success label (operator-confirmed, IoU auto-suggestion gated by `success_min_iou`), scene-randomization offsets, frame counts |
 
 Mechanics:
 

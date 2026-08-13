@@ -1010,6 +1010,10 @@ def setup_deformable_camera(
                     "Bbox2dTightPublish",
                     "isaacsim.ros2.bridge.ROS2CameraHelper",
                 ),
+                (
+                    "Bbox2dLoosePublish",
+                    "isaacsim.ros2.bridge.ROS2CameraHelper",
+                ),
             ],
             keys.CONNECT: [
                 ("OnPlaybackTick.outputs:tick", "RunOnce.inputs:execIn"),
@@ -1060,6 +1064,18 @@ def setup_deformable_camera(
                     "Context.outputs:context",
                     "Bbox2dTightPublish.inputs:context",
                 ),
+                (
+                    "RenderProduct.outputs:execOut",
+                    "Bbox2dLoosePublish.inputs:execIn",
+                ),
+                (
+                    "RenderProduct.outputs:renderProductPath",
+                    "Bbox2dLoosePublish.inputs:renderProductPath",
+                ),
+                (
+                    "Context.outputs:context",
+                    "Bbox2dLoosePublish.inputs:context",
+                ),
             ],
             keys.SET_VALUES: [
                 # Render Product
@@ -1086,12 +1102,20 @@ def setup_deformable_camera(
                 ("DepthPublish.inputs:topicName", "depth"),
                 ("DepthPublish.inputs:frameId", ROS_TOPIC_FRAMEID),
                 ("DepthPublish.inputs:resetSimulationTimeOnStop", True),
-                # Publisher: Semantic Segmentation
+                # Publisher: Semantic Segmentation.
+                # Each annotator publishes its own id->label map with its
+                # own ID scheme (raw mask pixel IDs here, bbox class IDs
+                # below); the labels topics must stay distinct or the two
+                # publishers interleave incompatible maps on one topic.
                 ("SemanticPublish.inputs:topicName", "semantic_segmentation"),
                 ("SemanticPublish.inputs:type", "semantic_segmentation"),
                 ("SemanticPublish.inputs:frameId", ROS_TOPIC_FRAMEID),
                 ("SemanticPublish.inputs:nodeNamespace", ROS_TOPIC_NAMESPACE),
                 ("SemanticPublish.inputs:enableSemanticLabels", True),
+                (
+                    "SemanticPublish.inputs:semanticLabelsTopicName",
+                    "semantic_labels",
+                ),
                 ("SemanticPublish.inputs:resetSimulationTimeOnStop", True),
                 # Publisher: 2D Bounding Box Tight
                 ("Bbox2dTightPublish.inputs:topicName", "bbox_2d_tight"),
@@ -1103,6 +1127,28 @@ def setup_deformable_camera(
                     ROS_TOPIC_NAMESPACE,
                 ),
                 ("Bbox2dTightPublish.inputs:enableSemanticLabels", True),
+                (
+                    "Bbox2dTightPublish.inputs:semanticLabelsTopicName",
+                    "bbox_2d_tight_labels",
+                ),
+                # Publisher: 2D Bounding Box Loose. Loose bboxes are
+                # published regardless of occlusion; tight ones are cropped
+                # to visible pixels and dropped when fully occluded. The
+                # evaluator takes the target from here because a correct
+                # pad placement occludes the target decal exactly.
+                ("Bbox2dLoosePublish.inputs:topicName", "bbox_2d_loose"),
+                ("Bbox2dLoosePublish.inputs:type", "bbox_2d_loose"),
+                ("Bbox2dLoosePublish.inputs:resetSimulationTimeOnStop", True),
+                ("Bbox2dLoosePublish.inputs:frameId", ROS_TOPIC_FRAMEID),
+                (
+                    "Bbox2dLoosePublish.inputs:nodeNamespace",
+                    ROS_TOPIC_NAMESPACE,
+                ),
+                ("Bbox2dLoosePublish.inputs:enableSemanticLabels", True),
+                (
+                    "Bbox2dLoosePublish.inputs:semanticLabelsTopicName",
+                    "bbox_2d_loose_labels",
+                ),
             ],
         },
     )
@@ -1222,7 +1268,6 @@ def configure_robot_room_stage(
             str(room_asset_prim.GetPath()),
             "bowl2",
         )
-        print("Resolved bowl prim path:", bowl_prim_path)
 
         add_coffee_beans(
             stage,

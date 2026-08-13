@@ -7,8 +7,15 @@
 image_topic: /isaac/eval_camera/image_raw
 depth_topic: /isaac/eval_camera/depth
 semantic_segmentation_topic: /isaac/eval_camera/semantic_segmentation
+# Three id->label maps, three incompatible ID schemes (see
+# task2_isaacsim/config/topics.yaml). semantic_labels: raw mask pixel IDs.
+# bbox_tight_labels: tight-annotator class IDs. bbox_loose_labels:
+# loose-annotator class IDs. Never point two of them at the same topic.
 semantic_labels_topic: /isaac/eval_camera/semantic_labels
 bbox_2d_tight_topic: /isaac/eval_camera/bbox_2d_tight
+bbox_tight_labels_topic: /isaac/eval_camera/bbox_2d_tight_labels
+bbox_2d_loose_topic: /isaac/eval_camera/bbox_2d_loose
+bbox_loose_labels_topic: /isaac/eval_camera/bbox_2d_loose_labels
 camera_info_topic: /isaac/eval_camera/camera_info
 
 evaluate_service_name: /isaac/eval_camera/evaluate

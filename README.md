@@ -8,7 +8,7 @@
 |---|---|---|---|
 | Task 1 — Cable Routing & Plugging | Isaac Sim, MuJoCo | [`task1_isaacsim/`](task1_isaacsim/), [`task1_mujoco/`](task1_mujoco/) | see [STATUS.md](STATUS.md) |
 | Task 2 — Deformable Material Handling (Thermal Pad Placement) | Isaac Sim (Genesis committed) | [`task2_isaacsim/`](task2_isaacsim/), [`assets/task2_objects/`](assets/task2_objects/), [`scripts/evaluation/task2/`](scripts/evaluation/task2/) | see [STATUS.md](STATUS.md) |
-| Task 3 — Assisted Living & Feeding | Isaac Sim (MuJoCo committed) | [`task3_isaacsim/`](task3_isaacsim/), [`scripts/evaluation/task3/`](scripts/evaluation/task3/) | see [STATUS.md](STATUS.md) |
+| Task 3 — Assisted Living & Feeding | Isaac Sim, MuJoCo | [`task3_isaacsim/`](task3_isaacsim/), [`task3_mujoco/`](task3_mujoco/), [`scripts/evaluation/task3/`](scripts/evaluation/task3/) | see [STATUS.md](STATUS.md) |
 
 Full rules and official scoring are on the competition page: https://ebim-benchmark.github.io/competition.html#tasks . The evaluation code in this repository is a development facilitator; official scoring follows the rules published there.
 
@@ -98,6 +98,32 @@ bash task3_isaacsim/scripts/run_isaacsim_teleop.sh --gripper robotiq
 See [`task3_isaacsim/README.md`](task3_isaacsim/README.md) for Docker setup,
 no-hardware browser control, GELLO/pedal commands, and current limitations.
 
+## Task 3 — Assisted Living & Feeding (MuJoCo)
+
+[`task3_mujoco/`](task3_mujoco/README.md) contains the MuJoCo implementation of
+Task 3: the mobile dual-FR3 with Robotiq 2F-85 grippers, a bowl of coffee beans,
+a spoon, a plate, a cup, and an IKEA scale station, in 100- and 300-bean scene
+variants. It runs natively — no Docker, no GPU container, no ROS — and is driven
+entirely by [`task3_mujoco/config.json`](task3_mujoco/config.json): motion
+frames, initial robot and object poses, contact-force gripper limits, the scale
+sensor, and optional head/wrist camera windows.
+
+Twenty-one visual meshes and textures exceed the repository's 2 MB per-file limit
+and are hosted on OneDrive, the same flow Task 1 uses, so fetching them is a
+required first step (see the task README for the manual fallback if OneDrive
+refuses the direct download):
+
+```bash
+python -m pip install -r task3_mujoco/requirements.txt
+task3_mujoco/scripts/download_large_assets.sh
+cd task3_mujoco && ./run.sh
+```
+
+Keyboard control matches [`task1_mujoco/`](task1_mujoco/README.md) — same
+`7`/`8`/`9` selection, arrow cluster, `R`, `G`, `V`/`Space`. See
+[`task3_mujoco/README.md`](task3_mujoco/README.md) for the full control tables,
+configuration reference, provenance, and verification status.
+
 ## Repository Layout
 
 ```text
@@ -106,8 +132,8 @@ benchmark/
 ├── task1_mujoco/                # Task 1: cable-management teleoperation + eval (MuJoCo)
 ├── task2_isaacsim/              # Task 2: thermal-pad teleoperation (Isaac Sim 5.1.0 / PhysX)
 ├── task3_isaacsim/              # Task 3: assisted-living teleoperation (Isaac Sim 5.1.0)
+├── task3_mujoco/                # Task 3: assisted-living bean scooping (MuJoCo, native)
 ├── assets/                      # USD assets and generated scene files
-│   └── tabletop_task_scene_DEMO # Scene with Commandable via ROS mobile_Fr3_duo
 ├── docker/                      # Docker Compose runtimes for Isaac Sim and Isaac Lab
 ├── docs/                        # Images and supporting documentation assets
 ├── newton/                      # Newton physics engine submodule
@@ -429,105 +455,13 @@ If GUI applications fail to open:
 - `scripts/deprecated/launch_random_heads_scene.py` — older tabletop head randomization launcher.
 - `scripts/deprecated/create_wall_room.py` — older wall-room USD generator. The current base room is `assets/robot_room.usd`.
 - `scripts/deprecated/compose_scene_usd.py` — deprecated tabletop scene composer kept for reference. Active task scene composition is documented in each task folder.
+- `assets/tabletop_task_scene_DEMO.usd` — older tabletop demo scene whose keyboard teleoperation is baked into the USD Action Graph. Only `scripts/deprecated/launch_random_heads_scene.py` still opens it; the supported keyboard teleoperation is documented in each task folder.
 
 </details>
 
 ### Manual Validation Scenes
 - `scripts/manual_tests/test_table_cutlery.py` — validate table plus cutlery placement.
 - `scripts/manual_tests/test_table_letter.py` — validate table plus letter placement.
-
-### Keyboard Teleoperation  tabletop_task_scene_DEMO
-
-All keyboard teleoperation logic is fully integrated into the Action Graph within the USD file. You can control the robotic arms, grippers, and the waist vertical joint directly through your keyboard simply by switching to the viewpoint:
-
-Instant Activation: Click the viewpoint in the viewport to immediately enable keyboard control.
-
-Unified Control: No external terminal scripts are required; the Action Graph handles all key mappings internally for seamless bimanual and chassis coordination.
-
-#### 1.1 Control the TMR Chassis Motion
-
-Run the keyboard teleop node to control the movement of the TMR omnidirectional chassis:
-
-```bash
-ros2 run teleop_twist_keyboard teleop_twist_keyboard --ros-args -p holonomic:=true
-
-```
-
-
-#### 2.1 Grpper joints Control
-
-Numpad 1 & 2: Control the right arm gripper (Open / Close).
-
-Numpad 3 & 4: Control the left arm gripper (Open / Close).
-
-#### 2.2 Waist Vertical Control
-
-Numpad 5: Raises the waist vertical joint by 0.1m (adjustable range: 0.0m to 0.85m).
-
-
-
-#### 2.2 Arm Joint Control
-
-##### Right Arm Control (Viewed on the Left Side)
-* **Translation (X, Y):** Press `W` / `A` / `S` / `D` to move along the X and Y axes.
-* **Translation (Z):** Press `Q` / `E` to move up and down along the Z axis.
-* **Rotation:** Hold `Left Shift` + `W` / `A` / `S` / `D` / `Q` / `E` to rotate the end-effector around the respective axes.
-
-##### Left Arm Control (Viewed on the Right Side)
-* **Translation (X, Y):** Press `I` / `J` / `K` / `L` to move along the X and Y axes.
-* **Translation (Z):** Press `U` / `O` to move up and down along the Z axis.
-* **Rotation:** Hold `Left Shift` + `I` / `J` / `K` / `L` / `U` / `O` to rotate the end-effector around the respective axes.
-
-## LeRobot dataset recording
-The `DEMO/record.py` script automatically subscribes to the corresponding ROS 2 topics, synchronizes the multi-modal streams, and aggregates them into the structured dataset:
-
-* **State Data (States):**
-  * **Manipulators:** 14 joint positions and velocities across both arms (14 joints total).
-  * **End-Effectors:** Gripper poses for both left and right grippers.
-  * **Mobile Base:** Linear velocity and angular velocity of the chassis.
-* **Camera Views (Visual Inputs):**
-  * `camera_left`: Wrist camera mounted on the left gripper.
-  * `camera_right`: Wrist camera mounted on the right gripper.
-  * `camera_head`: Head-mounted camera.
-  * `camera_front`: Static observer/front camera.
-###  Environment Setup
-
-Before recording, you must set up the required virtual environment. Please follow the detailed installation guidelines available at:
-
-🔗 [lerobot_ros2 Environment Setup Guide](https://github.com/fiveages-sim/lerobot_ros2/tree/main)
-###  Dataset Recording Steps
-
-1. Ensure your virtual environment is activated and the required ROS 2 topics are active and publishing data.
-2. Navigate to the `DEMO` directory:
-   ```bash
-   cd IROS_Workshop/DEMO
-3. Execute the recording script:
-      ```bash
-   python record.py
-
- Recording Control via Terminal:
-  *  Enter `2`: Start recording the dataset.
-  *  Enter `3`: Stop recording and automatically save the episode.
-###  Dataset Visualization
-Once the recording is complete, you can inspect and replay the collected dataset using the visualize_dataset tool from LeRobot.
-#### Base Command
-   ```bash
-PYTHONPATH=submodules/lerobot/src python -m lerobot.scripts.visualize_dataset
-```
-#### Argument Descriptions:
-
-You can append the following arguments to specify the target dataset and subset:
-
-* `--repo-id`: The unique identifier/name of the dataset repository.
-* `--root`: The root directory path where your local datasets are stored.
-* `--episode-index`: Specifies which episode to visualize (e.g., `--episode-index 0` loads the first recorded episode).
-
-#### Complete Example:
-
-```bash
-PYTHONPATH=submodules/lerobot/src python -m lerobot.scripts.visualize_dataset --root ./data --repo-id mobile_dual_arm_test --episode-index 0
-```
-
 
 ## Running Scripts
 
@@ -696,7 +630,7 @@ Run them across the repository before pushing:
 pre-commit run --all-files
 ```
 
-CI runs the same command on every pull request (`.github/workflows/pre-commit.yaml`), and `pre-commit` is the required status check on `main`, so a pull request cannot merge while it is red. The hooks cover Ruff (lint and format), codespell, license headers, and a set of file checks. Their configuration lives in `.pre-commit-config.yaml`, with Ruff's rules in `pyproject.toml`; several directories are excluded, listed under `exclude` at the end of `.pre-commit-config.yaml`. Not all of those exclusions are cosmetic. Three of them — `.vscode/`, `scripts/newton_examples/`, and `task1_isaacsim/` — hold files carrying third-party copyright headers (Isaac Lab's in `.vscode/tools/setup_vscode.py`, the Newton Developers' in the other two), and the exclusion is the only thing stopping the license-header hook from stamping an EBiM copyright on top of someone else's. To narrow the list, add a per-hook `exclude:` to `insert-license` covering those paths first; [LICENSES/README.md](LICENSES/README.md) covers the Isaac Lab case in detail.
+CI runs the same command on every pull request (`.github/workflows/pre-commit.yaml`), and `pre-commit` is the required status check on `main`, so a pull request cannot merge while it is red. The hooks cover Ruff (lint and format), codespell, license headers, and a set of file checks. Their configuration lives in `.pre-commit-config.yaml`, with Ruff's rules in `pyproject.toml`; several directories are excluded, listed under `exclude` at the end of `.pre-commit-config.yaml`. Not all of those exclusions are cosmetic. Three of them — `.vscode/`, `scripts/newton_examples/`, and `task1_isaacsim/` — hold files carrying third-party copyright headers (Isaac Lab's in `.vscode/tools/setup_vscode.py`, the Newton Developers' in the other two), and the exclusion is the only thing stopping the license-header hook from stamping an EBiM copyright on top of someone else's. To narrow the list, add a per-hook `exclude:` to `insert-license` covering those paths first; [LICENSES/README.md](LICENSES/README.md) covers the Isaac Lab case in detail. `task3_mujoco/` is a narrower case and needs no such protection: it is ported from an upstream repository, but the code was contributed under Apache-2.0 (see [NOTICE](NOTICE)), so the license-header hook stamps it normally. It is excluded from Ruff alone, via `extend-exclude` in `pyproject.toml`, because reformatting its tuned control code to line-length 79 would churn it and make upstream syncs conflict-prone. Its `assets/` subtree is in the `exclude` list for the same reason as the root `assets/` — mesh and texture data, not source. Every other hook, including the 2 MB `check-added-large-files` guard, applies to it.
 
 `pyproject.toml` here holds tool configuration only — this repository is not a pip-installable package, so there is no `pip install -e .` step.
 

@@ -2,4 +2,11 @@
 * @Ju6276 @ShangQingLiu @ebim-benchmark/core
 
 # Task 1 Isaac Sim implementation (adapted from the franka_isaacSim prototype).
-/task1_isaacsim/ @QGSQ @2houyuhang
+# @QGSQ and @2houyuhang are the domain owners. @ShangQingLiu and @Ju6276 are listed as
+# fallbacks so the gate can still be cleared when the domain owners are unavailable —
+# GitHub does not let an author approve their own PR, so without them a PR authored by
+# a domain owner has only one person who can satisfy this rule.
+# Note: GitHub treats all four as equal owners — any one approval satisfies this rule,
+# including one from a fallback with no domain owner involved. The domain/fallback
+# distinction is a convention for reviewers, not something CODEOWNERS enforces.
+/task1_isaacsim/ @QGSQ @2houyuhang @ShangQingLiu @Ju6276

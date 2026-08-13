@@ -47,6 +47,13 @@ from path_utils import asset_path  # noqa: E402
 
 STAGE_NAMES = ("stage1", "stage2", "stage3", "stage4")
 IDENTITY_QUAT = (1.0, 0.0, 0.0, 0.0)
+# Bean spawn jitter comes from
+# scene_robot_room_keyboard.bean_spawn_positions_in_bounds, which draws from
+# the stdlib global RNG. Seed before the scene is built, not inside a stage:
+# by the time a stage runs the beans are already placed, so a seed there is
+# a no-op. This also makes stage1's beans_in_dining reproducible for the
+# first time.
+BEAN_LAYOUT_SEED = 3
 
 
 def parse_args() -> argparse.Namespace:
@@ -139,6 +146,7 @@ def create_task3_stage(
     if stage is None:
         raise RuntimeError("Could not create Isaac Sim stage.")
 
+    random.seed(BEAN_LAYOUT_SEED)
     scene.configure_robot_room_stage(
         app,
         stage,

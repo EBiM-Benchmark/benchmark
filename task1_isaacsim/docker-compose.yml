@@ -99,6 +99,9 @@ services:
       - FASTDDS_BUILTIN_TRANSPORTS=UDPv4
       - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
       - GELLO_CONFIG_FILE=${GELLO_CONFIG_FILE:-franka_gello_duo.yaml}
+      - PEDAL_MODE=${PEDAL_MODE:-manual}
+      - PEDAL_ONE_DEVICE=${PEDAL_ONE_DEVICE:-}
+      - PEDAL_TWO_DEVICE=${PEDAL_TWO_DEVICE:-}
     volumes:
       - .:/workspace/task1_isaacsim
       - ${TELEOPERATION_ROOT:-../../teleoperation}:/workspace/teleoperation

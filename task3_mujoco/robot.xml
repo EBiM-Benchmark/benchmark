@@ -1,0 +1,370 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<mujoco_include>
+  <body name="base_link" pos="-0.8310855164 -1.2734728738 0.35" quat="0.7071068 0 0 0.7071068">
+    <joint name="base_planar_x" type="slide" axis="1 0 0" damping="0.25" armature="0.02" actuatorfrcrange="-50000 50000"/>
+    <joint name="base_planar_y" type="slide" axis="0 1 0" damping="0.25" armature="0.02" actuatorfrcrange="-50000 50000"/>
+    <joint name="base_yaw" type="hinge" axis="0 0 1" damping="0.20" armature="0.02" actuatorfrcrange="-50000 50000"/>
+    <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" material="mat_tmr_base" mesh="tmr_white_shell"/>
+    <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" material="mat_tmr_black" mesh="tmr_black_belt"/>
+    <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" material="mat_tmr_motor" mesh="tmr_red_motor"/>
+    <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" material="mat_tmr_yellow" mesh="tmr_yellow_detail"/>
+    <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" material="mat_tmr_grey" mesh="tmr_grey_part"/>
+    <geom type="mesh" group="3" rgba="1 1 1 1" mesh="robots_tmrv0_2_collision_tmrv0_2" contype="2" conaffinity="0"/>
+    <body name="base_inertia">
+      <inertial pos="0.006619 -0.00221 0.184355" quat="2.93233e-05 0.6886 -0.0048197 0.725125" mass="88.9542" diaginertia="5.84851 4.16234 3.23852"/>
+    </body>
+    <body name="caster_front_left_fixed_link" pos="0.3 0.2 0.08">
+      <inertial pos="-0.02365 5e-05 -0.03651" quat="0.611471 -0.283001 -0.248575 0.695862" mass="0.3" diaginertia="0.000704326 0.000699183 0.000280606"/>
+      <geom size="0.02 0.015 0.0015" pos="0 0 -0.0015" type="box" contype="0" conaffinity="0" group="1" density="0" rgba="0.3 0.3 0.3 1" friction="0 0 0"/>
+      <geom size="0.02 0.015 0.0015" pos="0 0 -0.0015" type="box" rgba="0.3 0.3 0.3 1" contype="0" conaffinity="0" friction="0 0 0"/>
+      <body name="caster_front_left_steering_link">
+        <inertial pos="0 0 0" mass="0.2" diaginertia="0.0001 0.0001 0.0001"/>
+        <joint name="caster_front_left_steering_joint" pos="0 0 0" axis="0 0 1" actuatorfrcrange="-500 500" damping="0" frictionloss="0"/>
+        <body name="caster_front_left_link" pos="-0.035 0 -0.05">
+          <inertial pos="0 0 0" mass="0.2" diaginertia="0.0001 0.0001 0.0001"/>
+          <joint name="caster_front_left_joint" pos="0 0 0" axis="0 1 0" actuatorfrcrange="-500 500" damping="0" frictionloss="0"/>
+          <geom size="0.03 0.0075" quat="0.707107 0.707107 0 0" type="cylinder" contype="0" conaffinity="0" group="1" density="0" rgba="1 0.5 0 1" friction="0 0 0"/>
+          <geom size="0.03 0.0075" quat="0.707107 0.707107 0 0" type="cylinder" rgba="1 0.5 0 1" contype="0" conaffinity="0" friction="0 0 0" condim="3"/>
+        </body>
+      </body>
+    </body>
+    <body name="argo_drive_front_fixed_link" pos="0.3 -0.2 0.05">
+      <inertial pos="-0.00019 0.04522 0.02947" quat="0.511876 0.485802 -0.491273 0.510519" mass="7" diaginertia="0.0893767 0.0706064 0.0342234"/>
+      <geom size="0.085 0.125 0.0385" pos="0 0.04 0.0345" type="box" contype="0" conaffinity="0" group="1" density="0" rgba="0.3 0.3 0.3 1" friction="0 0 0"/>
+      <geom size="0.085 0.125 0.0385" pos="0 0.04 0.0345" type="box" rgba="0.3 0.3 0.3 1" contype="0" conaffinity="0" friction="0 0 0"/>
+      <body name="argo_drive_front_steering_link">
+        <inertial pos="0 0 0" mass="2" diaginertia="0.001 0.001 0.001"/>
+        <joint name="tmrv0_2_joint_0" pos="0 0 0" axis="0 0 1" actuatorfrcrange="-500 500" damping="0" frictionloss="0"/>
+        <body name="argo_drive_front_link">
+          <inertial pos="0 0 0" quat="0.5 0.5 -0.5 0.5" mass="2.5" diaginertia="0.003125 0.00189583 0.00189583"/>
+          <joint name="tmrv0_2_joint_1" pos="0 0 0" axis="0 1 0" actuatorfrcrange="-500 500" damping="0" frictionloss="0"/>
+          <geom size="0.05 0.02" quat="0.707107 0.707107 0 0" type="cylinder" contype="0" conaffinity="0" group="1" density="0" rgba="0.8 0.6 0.2 1" friction="0 0 0"/>
+          <geom size="0.05 0.02" quat="0.707107 0.707107 0 0" type="cylinder" rgba="0.8 0.6 0.2 1" contype="0" conaffinity="0" friction="0 0 0" condim="3"/>
+        </body>
+      </body>
+    </body>
+    <body name="rocker_arm_link" pos="-0.3 0 0.0845">
+      <inertial pos="-0.000344 -0.021232 0.038239" quat="0.530264 0.46893 -0.468899 0.52826" mass="5.18397" diaginertia="0.0820159 0.0670876 0.0222455"/>
+      <joint name="rocker_arm_joint" pos="0 0 0" axis="1 0 0" range="-0.16 0.18" actuatorfrcrange="-500 500" damping="0.003"/>
+      <geom size="0.015 0.01125" quat="0.5 0.5 0.5 0.5" type="cylinder" contype="0" conaffinity="0" group="1" density="0" rgba="0.3 0.3 0.3 1"/>
+      <body name="caster_rear_right_fixed_link" pos="0 -0.2 -0.0045">
+        <inertial pos="-0.02365 5e-05 -0.03651" quat="0.611471 -0.283001 -0.248575 0.695862" mass="0.3" diaginertia="0.000704326 0.000699183 0.000280606"/>
+        <geom size="0.02 0.015 0.0015" pos="0 0 -0.0015" type="box" contype="0" conaffinity="0" group="1" density="0" rgba="0.3 0.3 0.3 1" friction="0 0 0"/>
+        <geom size="0.02 0.015 0.0015" pos="0 0 -0.0015" type="box" rgba="0.3 0.3 0.3 1" contype="0" conaffinity="0" friction="0 0 0"/>
+        <body name="caster_rear_right_steering_link">
+          <inertial pos="0 0 0" mass="0.2" diaginertia="0.0001 0.0001 0.0001"/>
+          <joint name="caster_rear_right_steering_joint" pos="0 0 0" axis="0 0 1" actuatorfrcrange="-500 500" damping="0" frictionloss="0"/>
+          <body name="caster_rear_right_link" pos="-0.035 0 -0.05">
+            <inertial pos="0 0 0" mass="0.2" diaginertia="0.0001 0.0001 0.0001"/>
+            <joint name="caster_rear_right_joint" pos="0 0 0" axis="0 1 0" actuatorfrcrange="-500 500" damping="0" frictionloss="0"/>
+            <geom size="0.03 0.0075" quat="0.707107 0.707107 0 0" type="cylinder" contype="0" conaffinity="0" group="1" density="0" rgba="1 0.5 0 1" friction="0 0 0"/>
+            <geom size="0.03 0.0075" quat="0.707107 0.707107 0 0" type="cylinder" rgba="1 0.5 0 1" contype="0" conaffinity="0" friction="0 0 0" condim="3"/>
+          </body>
+        </body>
+      </body>
+      <body name="argo_drive_rear_fixed_link" pos="0 0.2 -0.0345">
+        <inertial pos="-0.00019 -0.04522 0.02947" quat="0.491273 0.510519 -0.511876 0.485802" mass="7" diaginertia="0.0893767 0.0706064 0.0342234"/>
+        <geom size="0.085 0.125 0.0385" pos="0 -0.04 0.0345" type="box" contype="0" conaffinity="0" group="1" density="0" rgba="0.3 0.3 0.3 1" friction="0 0 0"/>
+        <geom size="0.085 0.125 0.0385" pos="0 -0.04 0.0345" type="box" rgba="0.3 0.3 0.3 1" contype="0" conaffinity="0" friction="0 0 0"/>
+        <body name="argo_drive_rear_steering_link">
+          <inertial pos="0 0 0" mass="2" diaginertia="0.001 0.001 0.001"/>
+          <joint name="tmrv0_2_joint_2" pos="0 0 0" axis="0 0 1" actuatorfrcrange="-500 500" damping="0" frictionloss="0"/>
+          <body name="argo_drive_rear_link">
+            <inertial pos="0 0 0" quat="0.5 0.5 -0.5 0.5" mass="2.5" diaginertia="0.003125 0.00189583 0.00189583"/>
+            <joint name="tmrv0_2_joint_3" pos="0 0 0" axis="0 1 0" actuatorfrcrange="-500 500" damping="0" frictionloss="0"/>
+            <geom size="0.05 0.02" quat="0.707107 0.707107 0 0" type="cylinder" contype="0" conaffinity="0" group="1" density="0" rgba="0.8 0.6 0.2 1" friction="0 0 0"/>
+            <geom size="0.05 0.02" quat="0.707107 0.707107 0 0" type="cylinder" rgba="0.8 0.6 0.2 1" contype="0" conaffinity="0" friction="0 0 0" condim="3"/>
+          </body>
+        </body>
+      </body>
+    </body>
+    <body name="imu_mounting_point" pos="0.26 0 0.1478" quat="0 1 0 0"/>
+    <body name="front_mounting_point" pos="0.380705 0 0.2345" quat="0 1 0 0"/>
+    <body name="rear_mounting_point" pos="-0.380705 0 0.2345" quat="0 0 1 0"/>
+    <body name="right_mounting_point" pos="0 -0.272712 0.1145" quat="0 0.707107 -0.707107 0"/>
+    <body name="left_mounting_point" pos="0 0.272712 0.1145" quat="0 0.707107 0.707107 0"/>
+    <body name="lidar_front_mounting_point" pos="0.3275 0.2175 0.19065" quat="0 -0.92388 0.382683 0"/>
+    <body name="lidar_rear_mounting_point" pos="-0.3275 -0.2175 0.19065" quat="0 -0.382683 -0.92388 0"/>
+    <body name="franka_spine" pos="0.138289 0 0.35">
+      <inertial pos="0.042358 0.000378 0.495198" quat="0.998751 -0.000119517 -0.0484248 -0.0123402" mass="21.9091" diaginertia="3.36815 3.32454 0.252332"/>
+      <geom name="franka_spine_white" type="mesh" contype="0" conaffinity="0" group="1" density="0" material="mat_fr3_spine" mesh="franka_spine_white"/>
+      <geom name="franka_spine_grey" type="mesh" contype="0" conaffinity="0" group="1" density="0" material="mat_fr3_mount" mesh="franka_spine_grey"/>
+      <geom name="franka_spine_black" type="mesh" contype="0" conaffinity="0" group="1" density="0" material="mat_tmr_black" mesh="franka_spine_black"/>
+      <geom name="franka_spine_collision" type="mesh" group="3" mesh="accessories_franka_spine_v0_1_collision_franka_spine" contype="2" conaffinity="0"/>
+      <body name="franka_spine_mounting_point" pos="0.266711 0 0.1">
+        <inertial pos="0 0 0" mass="0.01" diaginertia="0.0001 0.0001 0.0001"/>
+        <joint name="franka_spine_vertical_joint" pos="0 0 0" axis="0 0 1" type="slide" range="0 0.85" actuatorfrclimited="true" actuatorfrcrange="-10000 10000" armature="1.0"/>
+        <body name="fr3_duo_mount_mounting_point">
+          <inertial pos="-0.011817 -5e-05 0.044431" quat="0.666904 0.66701 0.234963 -0.234796" mass="4.09385" diaginertia="0.0236957 0.0204768 0.0164193"/>
+          <geom type="mesh" contype="0" conaffinity="0" group="2" density="0" material="mat_fr3_mount" mesh="accessories_fr3_duo_mount_v0_3_visual_fr3_duo_mount"/>
+          <geom pos="0 0 0.068" quat="1 0 0 0" type="mesh" contype="0" conaffinity="0" group="2" density="0" material="mat_fr3_arm" mesh="accessories_fr3_duo_mount_v0_3_visual_fr3_duo_cover"/>
+          <geom type="mesh" group="3" mesh="accessories_fr3_duo_mount_v0_3_collision_fr3_duo_mount" contype="2" conaffinity="0"/>
+          <geom pos="0 0 0.068" quat="1 0 0 0" type="mesh" group="3" mesh="accessories_fr3_duo_mount_v0_3_collision_fr3_duo_cover" contype="2" conaffinity="0"/>
+          <body name="fr3_duo_mount_origin" pos="0.037 0 0.05">
+            <body name="fr3_duo_mount_left" pos="0 0.05018 0" quat="0.867337 -0.435079 0.0231688 -0.240615">
+              <body name="left_base">
+                <body name="left_fr3v2_1_link0">
+                  <inertial pos="-0.0172 0.0004 0.0745" quat="0.661377 -0.250161 -0.250161 0.661377" mass="2.3966" diaginertia="0.0115 0.0107656 0.00673444"/>
+                  <geom name="left_fr3v2_1_link0_visual" type="mesh" contype="0" conaffinity="0" group="1" density="0" material="mat_fr3_arm" mesh="robots_fr3v2_1_visual_link0"/>
+                  <geom name="left_fr3v2_1_link0_collision" type="mesh" group="3" mesh="robots_fr3v2_1_collision_link0" contype="2" conaffinity="0"/>
+                  <body name="left_fr3v2_1_link0_accelerometer_top" pos="-0.017402 -0.007872 0.04715" quat="-3.67321e-06 1 0 0"/>
+                  <body name="left_fr3v2_1_link0_accelerometer_bottom" pos="-0.019739 0.0015506 0.05075" quat="0.707105 0 0 -0.707108"/>
+                  <body name="left_fr3v2_1_link1" pos="0 0 0.333">
+                    <inertial pos="-0.00458 0.027016 -0.0618" quat="0.989811 0.110789 0.00992127 0.0888923" mass="2.4377" diaginertia="0.0233003 0.0222611 0.00463865"/>
+                    <joint name="left_fr3v2_1_joint1" pos="0 0 0" axis="0 0 1" range="-2.90074 2.90074" actuatorfrcrange="-500 500" damping="0.003" frictionloss="0.2" armature="0.1"/>
+                    <geom name="left_fr3v2_1_link1_visual" type="mesh" contype="0" conaffinity="0" group="1" density="0" material="mat_fr3_arm" mesh="robots_fr3v2_1_visual_link1"/>
+                    <geom name="left_fr3v2_1_link1_collision" type="mesh" group="3" mesh="robots_fr3v2_1_collision_link1" contype="2" conaffinity="0"/>
+                    <body name="left_fr3v2_1_link1_accelerometer_top" pos="0.017402 -0.093352 -0.00787" quat="-2.59734e-06 2.59735e-06 -0.707108 0.707105"/>
+                    <body name="left_fr3v2_1_link1_accelerometer_bottom" pos="0.01974 -0.08975 0.00155" quat="0.499998 -0.5 0.5 0.500002"/>
+                    <body name="left_fr3v2_1_link2" quat="0.707107 -0.707107 0 0">
+                      <inertial pos="-0.01063 -0.184739 -0.010479" quat="0.644329 0.758803 -0.0323054 0.0895283" mass="2.2375" diaginertia="0.0192001 0.0173406 0.0052593"/>
+                      <joint name="left_fr3v2_1_joint2" pos="0 0 0" axis="0 0 1" range="-1.83609 1.83609" actuatorfrcrange="-500 500" damping="0.003" frictionloss="0.2" armature="0.1"/>
+                      <geom name="left_fr3v2_1_link2_visual" type="mesh" contype="0" conaffinity="0" group="1" density="0" material="mat_fr3_arm" mesh="robots_fr3v2_1_visual_link2"/>
+                      <geom name="left_fr3v2_1_link2_collision" type="mesh" group="3" mesh="robots_fr3v2_1_collision_link2" contype="2" conaffinity="0"/>
+                      <body name="left_fr3v2_1_link2_accelerometer_top" pos="0.017403 -0.11515 0.00787" quat="-2.59734e-06 -2.59735e-06 0.707108 0.707105"/>
+                      <body name="left_fr3v2_1_link2_accelerometer_bottom" pos="0.019737 -0.11875 -0.00155" quat="0.499998 0.5 -0.5 0.500002"/>
+                      <body name="left_fr3v2_1_link3" pos="0 -0.316 0" quat="0.707107 0.707107 0 0">
+                        <inertial pos="0.091995 0.023003 0.047348" quat="0.877348 -0.0280595 -0.265819 0.398514" mass="2.19638" diaginertia="0.0146052 0.0104212 0.00447362"/>
+                        <joint name="left_fr3v2_1_joint3" pos="0 0 0" axis="0 0 1" range="-2.90074 2.90074" actuatorfrcrange="-500 500" damping="0.003" frictionloss="0.2" armature="0.1"/>
+                        <geom name="left_fr3v2_1_link3_visual" type="mesh" contype="0" conaffinity="0" group="1" density="0" material="mat_fr3_arm" mesh="robots_fr3v2_1_visual_link3"/>
+                        <geom name="left_fr3v2_1_link3_collision" type="mesh" group="3" mesh="robots_fr3v2_1_collision_link3" contype="2" conaffinity="0"/>
+                        <body name="left_fr3v2_1_link3_accelerometer_top" pos="0.065099 0.077352 -0.00787" quat="0.707105 -0.707108 0 0"/>
+                        <body name="left_fr3v2_1_link3_accelerometer_bottom" pos="0.062769 0.073756 0.00155" quat="0.499998 0.5 0.5 -0.500002"/>
+                        <body name="left_fr3v2_1_link4" pos="0.0825 0 0" quat="0.707107 0.707107 0 0">
+                          <inertial pos="-0.084334 0.096836 0.006248" quat="0.725019 0.567552 -0.379628 -0.0900828" mass="2.18642" diaginertia="0.0126388 0.00973606 0.00442618"/>
+                          <joint name="left_fr3v2_1_joint4" pos="0 0 0" axis="0 0 1" range="-3.07702 -0.116937" actuatorfrcrange="-500 500" damping="0.003" frictionloss="0.2" armature="0.1"/>
+                          <geom name="left_fr3v2_1_link4_visual" type="mesh" contype="0" conaffinity="0" group="1" density="0" material="mat_fr3_arm" mesh="robots_fr3v2_1_visual_link4"/>
+                          <geom name="left_fr3v2_1_link4_collision" type="mesh" group="3" mesh="robots_fr3v2_1_collision_link4" contype="2" conaffinity="0"/>
+                          <body name="left_fr3v2_1_link4_accelerometer_top" pos="-0.0651 0.046152 -0.00787" quat="-2.59734e-06 2.59735e-06 0.707108 -0.707105"/>
+                          <body name="left_fr3v2_1_link4_accelerometer_bottom" pos="-0.062775 0.049753 0.00155" quat="0.499998 -0.5 0.5 0.500002"/>
+                          <body name="left_fr3v2_1_link5" pos="-0.0825 0.384 0" quat="0.707107 -0.707107 0 0">
+                            <inertial pos="3.9e-05 0.011821 -0.054936" quat="0.993747 -0.0901363 0.0101557 0.0651102" mass="2.19078" diaginertia="0.0318998 0.0305191 0.0038801"/>
+                            <joint name="left_fr3v2_1_joint5" pos="0 0 0" axis="0 0 1" range="-2.8763 2.8763" actuatorfrcrange="-500 500" damping="0.003" frictionloss="0.2" armature="0.1"/>
+                            <geom name="left_fr3v2_1_link5_visual" type="mesh" contype="0" conaffinity="0" group="1" density="0" material="mat_fr3_arm" mesh="robots_fr3v2_1_visual_link5"/>
+                            <geom name="left_fr3v2_1_link5_collision" type="mesh" group="3" mesh="robots_fr3v2_1_collision_link5" contype="2" conaffinity="0"/>
+                            <body name="left_fr3v2_1_link5_accelerometer_top" pos="-0.017363 0.085872 -0.00795" quat="0.707105 -0.707108 0 0"/>
+                            <body name="left_fr3v2_1_link5_accelerometer_bottom" pos="-0.019742 0.082275 0.00146" quat="0.499998 0.5 0.5 -0.500002"/>
+                            <body name="left_fr3v2_1_link6" quat="0.707107 0.707107 0 0">
+                              <inertial pos="0.069627 -0.016716 -0.037235" quat="-0.141552 0.574736 0.130817 0.795317" mass="1.58358" diaginertia="0.0047496 0.0041461 0.0024043"/>
+                              <joint name="left_fr3v2_1_joint6" pos="0 0 0" axis="0 0 1" range="0.439823 4.62163" actuatorfrcrange="-500 500" damping="0.003" frictionloss="0.2" armature="0.1"/>
+                              <geom name="left_fr3v2_1_link6_visual" type="mesh" contype="0" conaffinity="0" group="1" density="0" material="mat_fr3_arm" mesh="robots_fr3v2_1_visual_link6"/>
+                              <geom name="left_fr3v2_1_link6_collision" type="mesh" group="3" mesh="robots_fr3v2_1_collision_link6" contype="2" conaffinity="0"/>
+                              <body name="left_fr3v2_1_link7" pos="0.088 0 0" quat="0.707107 0.707107 0 0">
+                                <inertial pos="-0.014555 0.00923 0.065858" quat="0.70836 0.00347393 0.0424735 0.704564" mass="0.698686" diaginertia="0.00110022 0.000899844 0.000699938"/>
+                                <joint name="left_fr3v2_1_joint7" pos="0 0 0" axis="0 0 1" range="-3.05083 3.05083" actuatorfrcrange="-500 500" damping="0.003" frictionloss="0.2" armature="0.1"/>
+                                <geom name="left_fr3v2_1_link7_visual" type="mesh" contype="0" conaffinity="0" group="1" density="0" material="mat_fr3_arm" mesh="robots_fr3v2_1_visual_link7"/>
+                                <geom name="left_fr3v2_1_link7_collision" type="mesh" group="3" mesh="robots_fr3v2_1_collision_link7" contype="2" conaffinity="0"/>
+                                <body name="left_fr3v2_1_link8" pos="0 0 0.107">
+                                  <body name="left_arm_control_tcp" pos="-0.000265165 -0.000265165 0.163052783" quat="0.92388 0 0 -0.382683">
+                                    <site name="left_arm_control_tcp_pivot" type="sphere" size="0.004" rgba="0.05 0.9 1.0 0.75" group="4"/>
+                                  </body>
+                                </body>
+                              </body>
+                            </body>
+                          </body>
+                        </body>
+                      </body>
+                    </body>
+                  </body>
+                </body>
+              </body>
+            </body>
+            <body name="fr3_duo_mount_right" pos="0 -0.05018 0" quat="0.867337 0.435079 0.0231688 0.240615">
+              <body name="right_base">
+                <body name="right_fr3v2_1_link0">
+                  <inertial pos="-0.0172 0.0004 0.0745" quat="0.661377 -0.250161 -0.250161 0.661377" mass="2.3966" diaginertia="0.0115 0.0107656 0.00673444"/>
+                  <geom name="right_fr3v2_1_link0_visual" type="mesh" contype="0" conaffinity="0" group="1" density="0" material="mat_fr3_arm" mesh="robots_fr3v2_1_visual_link0"/>
+                  <geom name="right_fr3v2_1_link0_collision" type="mesh" group="3" mesh="robots_fr3v2_1_collision_link0" contype="2" conaffinity="0"/>
+                  <body name="right_fr3v2_1_link0_accelerometer_top" pos="-0.017402 -0.007872 0.04715" quat="-3.67321e-06 1 0 0"/>
+                  <body name="right_fr3v2_1_link0_accelerometer_bottom" pos="-0.019739 0.0015506 0.05075" quat="0.707105 0 0 -0.707108"/>
+                  <body name="right_fr3v2_1_link1" pos="0 0 0.333">
+                    <inertial pos="-0.00458 0.027016 -0.0618" quat="0.989811 0.110789 0.00992127 0.0888923" mass="2.4377" diaginertia="0.0233003 0.0222611 0.00463865"/>
+                    <joint name="right_fr3v2_1_joint1" pos="0 0 0" axis="0 0 1" range="-2.90074 2.90074" actuatorfrcrange="-500 500" damping="0.003" frictionloss="0.2" armature="0.1"/>
+                    <geom name="right_fr3v2_1_link1_visual" type="mesh" contype="0" conaffinity="0" group="1" density="0" material="mat_fr3_arm" mesh="robots_fr3v2_1_visual_link1"/>
+                    <geom name="right_fr3v2_1_link1_collision" type="mesh" group="3" mesh="robots_fr3v2_1_collision_link1" contype="2" conaffinity="0"/>
+                    <body name="right_fr3v2_1_link1_accelerometer_top" pos="0.017402 -0.093352 -0.00787" quat="-2.59734e-06 2.59735e-06 -0.707108 0.707105"/>
+                    <body name="right_fr3v2_1_link1_accelerometer_bottom" pos="0.01974 -0.08975 0.00155" quat="0.499998 -0.5 0.5 0.500002"/>
+                    <body name="right_fr3v2_1_link2" quat="0.707107 -0.707107 0 0">
+                      <inertial pos="-0.01063 -0.184739 -0.010479" quat="0.644329 0.758803 -0.0323054 0.0895283" mass="2.2375" diaginertia="0.0192001 0.0173406 0.0052593"/>
+                      <joint name="right_fr3v2_1_joint2" pos="0 0 0" axis="0 0 1" range="-1.83609 1.83609" actuatorfrcrange="-500 500" damping="0.003" frictionloss="0.2" armature="0.1"/>
+                      <geom name="right_fr3v2_1_link2_visual" type="mesh" contype="0" conaffinity="0" group="1" density="0" material="mat_fr3_arm" mesh="robots_fr3v2_1_visual_link2"/>
+                      <geom name="right_fr3v2_1_link2_collision" type="mesh" group="3" mesh="robots_fr3v2_1_collision_link2" contype="2" conaffinity="0"/>
+                      <body name="right_fr3v2_1_link2_accelerometer_top" pos="0.017403 -0.11515 0.00787" quat="-2.59734e-06 -2.59735e-06 0.707108 0.707105"/>
+                      <body name="right_fr3v2_1_link2_accelerometer_bottom" pos="0.019737 -0.11875 -0.00155" quat="0.499998 0.5 -0.5 0.500002"/>
+                      <body name="right_fr3v2_1_link3" pos="0 -0.316 0" quat="0.707107 0.707107 0 0">
+                        <inertial pos="0.091995 0.023003 0.047348" quat="0.877348 -0.0280595 -0.265819 0.398514" mass="2.19638" diaginertia="0.0146052 0.0104212 0.00447362"/>
+                        <joint name="right_fr3v2_1_joint3" pos="0 0 0" axis="0 0 1" range="-2.90074 2.90074" actuatorfrcrange="-500 500" damping="0.003" frictionloss="0.2" armature="0.1"/>
+                        <geom name="right_fr3v2_1_link3_visual" type="mesh" contype="0" conaffinity="0" group="1" density="0" material="mat_fr3_arm" mesh="robots_fr3v2_1_visual_link3"/>
+                        <geom name="right_fr3v2_1_link3_collision" type="mesh" group="3" mesh="robots_fr3v2_1_collision_link3" contype="2" conaffinity="0"/>
+                        <body name="right_fr3v2_1_link3_accelerometer_top" pos="0.065099 0.077352 -0.00787" quat="0.707105 -0.707108 0 0"/>
+                        <body name="right_fr3v2_1_link3_accelerometer_bottom" pos="0.062769 0.073756 0.00155" quat="0.499998 0.5 0.5 -0.500002"/>
+                        <body name="right_fr3v2_1_link4" pos="0.0825 0 0" quat="0.707107 0.707107 0 0">
+                          <inertial pos="-0.084334 0.096836 0.006248" quat="0.725019 0.567552 -0.379628 -0.0900828" mass="2.18642" diaginertia="0.0126388 0.00973606 0.00442618"/>
+                          <joint name="right_fr3v2_1_joint4" pos="0 0 0" axis="0 0 1" range="-3.07702 -0.116937" actuatorfrcrange="-500 500" damping="0.003" frictionloss="0.2" armature="0.1"/>
+                          <geom name="right_fr3v2_1_link4_visual" type="mesh" contype="0" conaffinity="0" group="1" density="0" material="mat_fr3_arm" mesh="robots_fr3v2_1_visual_link4"/>
+                          <geom name="right_fr3v2_1_link4_collision" type="mesh" group="3" mesh="robots_fr3v2_1_collision_link4" contype="2" conaffinity="0"/>
+                          <body name="right_fr3v2_1_link4_accelerometer_top" pos="-0.0651 0.046152 -0.00787" quat="-2.59734e-06 2.59735e-06 0.707108 -0.707105"/>
+                          <body name="right_fr3v2_1_link4_accelerometer_bottom" pos="-0.062775 0.049753 0.00155" quat="0.499998 -0.5 0.5 0.500002"/>
+                          <body name="right_fr3v2_1_link5" pos="-0.0825 0.384 0" quat="0.707107 -0.707107 0 0">
+                            <inertial pos="3.9e-05 0.011821 -0.054936" quat="0.993747 -0.0901363 0.0101557 0.0651102" mass="2.19078" diaginertia="0.0318998 0.0305191 0.0038801"/>
+                            <joint name="right_fr3v2_1_joint5" pos="0 0 0" axis="0 0 1" range="-2.8763 2.8763" actuatorfrcrange="-500 500" damping="0.003" frictionloss="0.2" armature="0.1"/>
+                            <geom name="right_fr3v2_1_link5_visual" type="mesh" contype="0" conaffinity="0" group="1" density="0" material="mat_fr3_arm" mesh="robots_fr3v2_1_visual_link5"/>
+                            <geom name="right_fr3v2_1_link5_collision" type="mesh" group="3" mesh="robots_fr3v2_1_collision_link5" contype="2" conaffinity="0"/>
+                            <body name="right_fr3v2_1_link5_accelerometer_top" pos="-0.017363 0.085872 -0.00795" quat="0.707105 -0.707108 0 0"/>
+                            <body name="right_fr3v2_1_link5_accelerometer_bottom" pos="-0.019742 0.082275 0.00146" quat="0.499998 0.5 0.5 -0.500002"/>
+                            <body name="right_fr3v2_1_link6" quat="0.707107 0.707107 0 0">
+                              <inertial pos="0.069627 -0.016716 -0.037235" quat="-0.141552 0.574736 0.130817 0.795317" mass="1.58358" diaginertia="0.0047496 0.0041461 0.0024043"/>
+                              <joint name="right_fr3v2_1_joint6" pos="0 0 0" axis="0 0 1" range="0.439823 4.62163" actuatorfrcrange="-500 500" damping="0.003" frictionloss="0.2" armature="0.1"/>
+                              <geom name="right_fr3v2_1_link6_visual" type="mesh" contype="0" conaffinity="0" group="1" density="0" material="mat_fr3_arm" mesh="robots_fr3v2_1_visual_link6"/>
+                              <geom name="right_fr3v2_1_link6_collision" type="mesh" group="3" mesh="robots_fr3v2_1_collision_link6" contype="2" conaffinity="0"/>
+                              <body name="right_fr3v2_1_link7" pos="0.088 0 0" quat="0.707107 0.707107 0 0">
+                                <inertial pos="-0.014555 0.00923 0.065858" quat="0.70836 0.00347393 0.0424735 0.704564" mass="0.698686" diaginertia="0.00110022 0.000899844 0.000699938"/>
+                                <joint name="right_fr3v2_1_joint7" pos="0 0 0" axis="0 0 1" range="-3.05083 3.05083" actuatorfrcrange="-500 500" damping="0.003" frictionloss="0.2" armature="0.1"/>
+                                <geom name="right_fr3v2_1_link7_visual" type="mesh" contype="0" conaffinity="0" group="1" density="0" material="mat_fr3_arm" mesh="robots_fr3v2_1_visual_link7"/>
+                                <geom name="right_fr3v2_1_link7_collision" type="mesh" group="3" mesh="robots_fr3v2_1_collision_link7" contype="2" conaffinity="0"/>
+                                <body name="right_fr3v2_1_link8" pos="0 0 0.107">
+                                  <body name="right_arm_control_tcp" pos="-0.000265165 -0.000265165 0.163052783" quat="0.92388 0 0 -0.382683">
+                                    <site name="right_arm_control_tcp_pivot" type="sphere" size="0.004" rgba="0.2 1.0 0.05 0.75" group="4"/>
+                                  </body>
+                                </body>
+                              </body>
+                            </body>
+                          </body>
+                        </body>
+                      </body>
+                    </body>
+                  </body>
+                </body>
+              </body>
+            </body>
+          </body>
+          <body name="head_link" pos="0 0 0.167">
+            <inertial pos="0 0 0" quat="0.528325 -0.0289488 -0.0065557 0.848523" mass="0.350865" diaginertia="0.00308057 0.00301706 0.000150319"/>
+            <geom type="mesh" contype="0" conaffinity="0" group="2" density="0" material="mat_fr3_arm" mesh="accessories_franka_head_v0_2_visual_franka_head"/>
+            <geom type="mesh" mesh="accessories_franka_head_v0_2_collision_franka_head" contype="2" conaffinity="0"/>
+            <body name="head_camera_mounting_point" pos="0.0498 -0.02 0.2345" quat="0.93667 0 0.350214 0">
+              <inertial pos="0 0 0" mass="0.001" diaginertia="1e-07 1e-07 1e-07"/>
+              <camera name="head_cam" pos="0 0 0" quat="0.274 0.635 -0.652 -0.312" fovy="58"/>
+            </body>
+          </body>
+        </body>
+      </body>
+    </body>
+  </body>
+  <body name="left_fr3v2_1_robotiq_85_base_link" quat="0.05327849496533 0.00005879431839 0.9983351152913 -0.02209968537706" pos="-1.704420108982 -0.570482396608 1.011735144571">
+    <freejoint name="left_gripper_attachment_freejoint"/>
+    <inertial pos="0 2.274e-05 0.0323229" quat="0.707251 -0.000590537 0.000590296 0.706962" mass="0.663202" diaginertia="0.000588023 0.000516178 0.000394627"/>
+    <camera name="left_wrist_cam" pos="0 0 0.04" xyaxes="1 0 0 0 -1 0" fovy="58"/>
+    <geom name="left_actual_robotiq_base_visual" mesh="robot_ee_robotiq_arg85_visual_robotiq_base" type="mesh" contype="0" conaffinity="0" group="1" density="0" material="mat_gripper_dark"/>
+    <geom name="left_actual_robotiq_base_environment_collision" contype="4" conaffinity="8" condim="4" friction="1.0 0.01 0.001" density="0" group="3" solref="0.008 1" solimp="0.96 0.995 0.001 0.5 2" type="mesh" mesh="robot_ee_robotiq_arg85_collision_robotiq_base"/>
+    <body name="left_fr3v2_1_robotiq_arg85_tcp" pos="0 0 0.1034"/>
+    <body name="left_fr3v2_1_robotiq_85_left_knuckle_link" pos="0.0306011 0 0.0549045">
+      <inertial pos="0.012132 0.0002 -0.00058647" quat="0.484217 0.5153 0.5153 0.484217" mass="0.0138477" diaginertia="2.31944e-06 2.23867e-06 3.45008e-07"/>
+      <joint name="left_fr3v2_1_robotiq_85_left_knuckle_joint" axis="0 -1 0" range="0 0.8" actuatorfrcrange="-100 100" armature="0.01" damping="1.0" frictionloss="0.1"/>
+      <geom name="left_actual_left_knuckle_visual" mesh="robot_ee_robotiq_arg85_visual_left_knuckle" type="mesh" contype="0" conaffinity="0" group="1" density="0" material="mat_gripper_mid"/>
+      <geom name="left_actual_left_knuckle_environment_collision" contype="4" conaffinity="8" condim="4" friction="1.0 0.01 0.001" density="0" group="3" solref="0.008 1" solimp="0.96 0.995 0.001 0.5 2" type="mesh" mesh="robot_ee_robotiq_arg85_collision_left_knuckle"/>
+      <body name="left_fr3v2_1_robotiq_85_left_finger_link" pos="0.0315262 0 -0.00376347">
+        <inertial pos="0.00346899 -0.00079447 0.0186712" quat="0.99325 0 0.115989 0" mass="0.0426038" diaginertia="1.43724e-05 1.18321e-05 4.68228e-06"/>
+        <geom name="left_actual_left_finger_visual" mesh="robot_ee_robotiq_arg85_visual_left_finger" type="mesh" contype="0" conaffinity="0" group="1" density="0" material="mat_gripper_mid"/>
+        <geom name="left_actual_left_finger_environment_collision" contype="4" conaffinity="8" condim="4" friction="1.0 0.01 0.001" density="0" group="3" solref="0.008 1" solimp="0.96 0.995 0.001 0.5 2" type="mesh" mesh="robot_ee_robotiq_arg85_collision_left_finger"/>
+        <body name="left_fr3v2_1_robotiq_85_left_finger_tip_link" pos="0.00563134 0 0.0471852">
+          <inertial pos="-0.0145671 -0.0008 0.016497" quat="0.977773 0 -0.209665 0" mass="0.0426859" diaginertia="1.20653e-05 1.19789e-05 2.64405e-06"/>
+          <joint name="left_fr3v2_1_robotiq_85_left_finger_tip_joint" axis="0 -1 0" range="-0.8 0" actuatorfrcrange="-100 100" armature="0.01" damping="1.0" frictionloss="0.1"/>
+          <geom name="left_actual_left_finger_tip_visual" mesh="robot_ee_robotiq_arg85_visual_left_finger_tip" type="mesh" contype="0" conaffinity="0" group="1" density="0" material="mat_gripper_mid"/>
+          <geom name="left_actual_left_tip_environment_collision" contype="4" conaffinity="8" condim="4" friction="1.0 0.01 0.001" density="0" group="3" solref="0.008 1" solimp="0.96 0.995 0.001 0.5 2" type="mesh" mesh="robot_ee_robotiq_arg85_collision_left_finger_tip"/>
+          <geom contype="16" conaffinity="0" condim="6" friction="2.5 0.10 0.03" priority="2" margin="0.00025" gap="0" solref="0.010 1" solimp="0.95 0.99 0.001 0.5 2" density="0" group="3" type="mesh" rgba="0.92 0.18 0.08 0.34" name="left_grasp_left_main" mesh="robot_ee_robotiq_arg85_collision_left_finger_tip"/>
+          <site name="left_actual_left_inner_face_site" pos="-0.0215 0 0.02" size="0.002" rgba="1 0 1 0.8" group="4"/>
+        </body>
+      </body>
+    </body>
+    <body name="left_fr3v2_1_robotiq_85_right_knuckle_link" pos="-0.0306011 0 0.0549045">
+      <inertial pos="-0.012132 0.0002 -0.00058647" quat="0.5153 0.484217 0.484217 0.5153" mass="0.0138477" diaginertia="2.31944e-06 2.23867e-06 3.45008e-07"/>
+      <joint name="left_fr3v2_1_robotiq_85_right_knuckle_joint" axis="0 -1 0" range="-0.8 0" actuatorfrcrange="-100 100" armature="0.01" damping="1.0" frictionloss="0.1"/>
+      <geom name="left_actual_right_knuckle_visual" mesh="robot_ee_robotiq_arg85_visual_right_knuckle" type="mesh" contype="0" conaffinity="0" group="1" density="0" material="mat_gripper_mid"/>
+      <geom name="left_actual_right_knuckle_environment_collision" contype="4" conaffinity="8" condim="4" friction="1.0 0.01 0.001" density="0" group="3" solref="0.008 1" solimp="0.96 0.995 0.001 0.5 2" type="mesh" mesh="robot_ee_robotiq_arg85_collision_right_knuckle"/>
+      <body name="left_fr3v2_1_robotiq_85_right_finger_link" pos="-0.0315262 0 -0.00376347">
+        <inertial pos="-0.00346899 -5.53e-06 0.0186712" quat="0.99325 0 -0.115989 0" mass="0.0426038" diaginertia="1.43724e-05 1.18321e-05 4.68228e-06"/>
+        <geom name="left_actual_right_finger_visual" mesh="robot_ee_robotiq_arg85_visual_right_finger" type="mesh" contype="0" conaffinity="0" group="1" density="0" material="mat_gripper_mid"/>
+        <geom name="left_actual_right_finger_environment_collision" contype="4" conaffinity="8" condim="4" friction="1.0 0.01 0.001" density="0" group="3" solref="0.008 1" solimp="0.96 0.995 0.001 0.5 2" type="mesh" mesh="robot_ee_robotiq_arg85_collision_right_finger"/>
+        <body name="left_fr3v2_1_robotiq_85_right_finger_tip_link" pos="-0.00563134 0 0.0471852">
+          <inertial pos="0.0145671 5e-05 0.016497" quat="0.977773 0 0.209665 0" mass="0.0426859" diaginertia="1.20653e-05 1.19789e-05 2.64405e-06"/>
+          <joint name="left_fr3v2_1_robotiq_85_right_finger_tip_joint" axis="0 -1 0" range="0 0.8" actuatorfrcrange="-100 100" armature="0.01" damping="1.0" frictionloss="0.1"/>
+          <geom name="left_actual_right_finger_tip_visual" mesh="robot_ee_robotiq_arg85_visual_right_finger_tip" type="mesh" contype="0" conaffinity="0" group="1" density="0" material="mat_gripper_mid"/>
+          <geom name="left_actual_right_tip_environment_collision" contype="4" conaffinity="8" condim="4" friction="1.0 0.01 0.001" density="0" group="3" solref="0.008 1" solimp="0.96 0.995 0.001 0.5 2" type="mesh" mesh="robot_ee_robotiq_arg85_collision_right_finger_tip"/>
+          <geom contype="16" conaffinity="0" condim="6" friction="2.5 0.10 0.03" priority="2" margin="0.00025" gap="0" solref="0.010 1" solimp="0.95 0.99 0.001 0.5 2" density="0" group="3" type="mesh" rgba="0.92 0.18 0.08 0.34" name="left_grasp_right_main" mesh="robot_ee_robotiq_arg85_collision_right_finger_tip"/>
+          <site name="left_actual_right_inner_face_site" pos="0.0215 0 0.02" size="0.002" rgba="1 0 1 0.8" group="4"/>
+        </body>
+      </body>
+    </body>
+    <body name="left_fr3v2_1_robotiq_85_left_inner_knuckle_link" pos="0.0127 0 0.06142">
+      <inertial pos="0.018977 0.00015001 0.022471" quat="0.939613 0 0.342237 0" mass="0.0296938" diaginertia="1.28757e-05 8.69056e-06 4.88712e-06"/>
+      <joint name="left_fr3v2_1_robotiq_85_left_inner_knuckle_joint" axis="0 -1 0" range="0 0.8" actuatorfrcrange="-100 100" armature="0.01" damping="1.0" frictionloss="0.1"/>
+      <geom name="left_actual_left_inner_knuckle_visual" mesh="robot_ee_robotiq_arg85_visual_left_inner_knuckle" type="mesh" contype="0" conaffinity="0" group="1" density="0" material="mat_gripper_mid"/>
+      <geom name="left_actual_left_inner_knuckle_environment_collision" contype="4" conaffinity="8" condim="4" friction="1.0 0.01 0.001" density="0" group="3" solref="0.008 1" solimp="0.96 0.995 0.001 0.5 2" type="mesh" mesh="robot_ee_robotiq_arg85_collision_left_inner_knuckle"/>
+    </body>
+    <body name="left_fr3v2_1_robotiq_85_right_inner_knuckle_link" pos="-0.0127 0 0.06142">
+      <inertial pos="-0.0192682 5.001e-05 0.0222218" quat="0.936371 0 -0.351012 0" mass="0.0296938" diaginertia="1.2882e-05 8.69056e-06 4.88076e-06"/>
+      <joint name="left_fr3v2_1_robotiq_85_right_inner_knuckle_joint" axis="0 -1 0" range="-0.8 0" actuatorfrcrange="-100 100" armature="0.01" damping="1.0" frictionloss="0.1"/>
+      <geom name="left_actual_right_inner_knuckle_visual" mesh="robot_ee_robotiq_arg85_visual_right_inner_knuckle" type="mesh" contype="0" conaffinity="0" group="1" density="0" material="mat_gripper_mid"/>
+      <geom name="left_actual_right_inner_knuckle_environment_collision" contype="4" conaffinity="8" condim="4" friction="1.0 0.01 0.001" density="0" group="3" solref="0.008 1" solimp="0.96 0.995 0.001 0.5 2" type="mesh" mesh="robot_ee_robotiq_arg85_collision_right_inner_knuckle"/>
+    </body>
+  </body>
+  <body name="right_fr3v2_1_robotiq_85_base_link" quat="-5.54206953e-06 0.707106079 0.707107483 3.83171344e-06" pos="-0.70273948 -0.01994115 1.26766986">
+    <freejoint name="right_gripper_attachment_freejoint"/>
+    <inertial pos="0 2.274e-05 0.0323229" quat="0.707251 -0.000590537 0.000590296 0.706962" mass="0.663202" diaginertia="0.000588023 0.000516178 0.000394627"/>
+    <camera name="right_wrist_cam" pos="0 0 0.04" xyaxes="1 0 0 0 -1 0" fovy="58"/>
+    <geom name="right_actual_robotiq_base_visual" mesh="robot_ee_robotiq_arg85_visual_robotiq_base" type="mesh" contype="0" conaffinity="0" group="1" density="0" material="mat_gripper_dark"/>
+    <geom name="right_actual_robotiq_base_environment_collision" contype="4" conaffinity="8" condim="4" friction="1.0 0.01 0.001" density="0" group="3" solref="0.008 1" solimp="0.96 0.995 0.001 0.5 2" type="mesh" mesh="robot_ee_robotiq_arg85_collision_robotiq_base"/>
+    <body name="right_fr3v2_1_robotiq_arg85_tcp" pos="0 0 0.1034"/>
+    <body name="right_fr3v2_1_robotiq_85_left_knuckle_link" pos="0.0306011 0 0.0549045">
+      <inertial pos="0.012132 0.0002 -0.00058647" quat="0.484217 0.5153 0.5153 0.484217" mass="0.0138477" diaginertia="2.31944e-06 2.23867e-06 3.45008e-07"/>
+      <joint name="right_fr3v2_1_robotiq_85_left_knuckle_joint" axis="0 -1 0" range="0 0.8" actuatorfrcrange="-100 100" armature="0.01" damping="1.0" frictionloss="0.1"/>
+      <geom name="right_actual_left_knuckle_visual" mesh="robot_ee_robotiq_arg85_visual_left_knuckle" type="mesh" contype="0" conaffinity="0" group="1" density="0" material="mat_gripper_mid"/>
+      <geom name="right_actual_left_knuckle_environment_collision" contype="4" conaffinity="8" condim="4" friction="1.0 0.01 0.001" density="0" group="3" solref="0.008 1" solimp="0.96 0.995 0.001 0.5 2" type="mesh" mesh="robot_ee_robotiq_arg85_collision_left_knuckle"/>
+      <body name="right_fr3v2_1_robotiq_85_left_finger_link" pos="0.0315262 0 -0.00376347">
+        <inertial pos="0.00346899 -0.00079447 0.0186712" quat="0.99325 0 0.115989 0" mass="0.0426038" diaginertia="1.43724e-05 1.18321e-05 4.68228e-06"/>
+        <geom name="right_actual_left_finger_visual" mesh="robot_ee_robotiq_arg85_visual_left_finger" type="mesh" contype="0" conaffinity="0" group="1" density="0" material="mat_gripper_mid"/>
+        <geom name="right_actual_left_finger_environment_collision" contype="4" conaffinity="8" condim="4" friction="1.0 0.01 0.001" density="0" group="3" solref="0.008 1" solimp="0.96 0.995 0.001 0.5 2" type="mesh" mesh="robot_ee_robotiq_arg85_collision_left_finger"/>
+        <body name="right_fr3v2_1_robotiq_85_left_finger_tip_link" pos="0.00563134 0 0.0471852">
+          <inertial pos="-0.0145671 -0.0008 0.016497" quat="0.977773 0 -0.209665 0" mass="0.0426859" diaginertia="1.20653e-05 1.19789e-05 2.64405e-06"/>
+          <joint name="right_fr3v2_1_robotiq_85_left_finger_tip_joint" axis="0 -1 0" range="-0.8 0" actuatorfrcrange="-100 100" armature="0.01" damping="1.0" frictionloss="0.1"/>
+          <geom name="right_actual_left_finger_tip_visual" mesh="robot_ee_robotiq_arg85_visual_left_finger_tip" type="mesh" contype="0" conaffinity="0" group="1" density="0" material="mat_gripper_mid"/>
+          <geom name="right_actual_left_tip_environment_collision" contype="4" conaffinity="8" condim="4" friction="1.0 0.01 0.001" density="0" group="3" solref="0.008 1" solimp="0.96 0.995 0.001 0.5 2" type="mesh" mesh="robot_ee_robotiq_arg85_collision_left_finger_tip"/>
+          <geom contype="16" conaffinity="0" condim="6" friction="2.5 0.10 0.03" priority="2" margin="0.00025" gap="0" solref="0.010 1" solimp="0.95 0.99 0.001 0.5 2" density="0" group="3" type="mesh" rgba="0.92 0.18 0.08 0.34" name="right_grasp_left_main" mesh="robot_ee_robotiq_arg85_collision_left_finger_tip"/>
+          <site name="right_actual_left_inner_face_site" pos="-0.0215 0 0.02" size="0.002" rgba="1 0 1 0.8" group="4"/>
+        </body>
+      </body>
+    </body>
+    <body name="right_fr3v2_1_robotiq_85_right_knuckle_link" pos="-0.0306011 0 0.0549045">
+      <inertial pos="-0.012132 0.0002 -0.00058647" quat="0.5153 0.484217 0.484217 0.5153" mass="0.0138477" diaginertia="2.31944e-06 2.23867e-06 3.45008e-07"/>
+      <joint name="right_fr3v2_1_robotiq_85_right_knuckle_joint" axis="0 -1 0" range="-0.8 0" actuatorfrcrange="-100 100" armature="0.01" damping="1.0" frictionloss="0.1"/>
+      <geom name="right_actual_right_knuckle_visual" mesh="robot_ee_robotiq_arg85_visual_right_knuckle" type="mesh" contype="0" conaffinity="0" group="1" density="0" material="mat_gripper_mid"/>
+      <geom name="right_actual_right_knuckle_environment_collision" contype="4" conaffinity="8" condim="4" friction="1.0 0.01 0.001" density="0" group="3" solref="0.008 1" solimp="0.96 0.995 0.001 0.5 2" type="mesh" mesh="robot_ee_robotiq_arg85_collision_right_knuckle"/>
+      <body name="right_fr3v2_1_robotiq_85_right_finger_link" pos="-0.0315262 0 -0.00376347">
+        <inertial pos="-0.00346899 -5.53e-06 0.0186712" quat="0.99325 0 -0.115989 0" mass="0.0426038" diaginertia="1.43724e-05 1.18321e-05 4.68228e-06"/>
+        <geom name="right_actual_right_finger_visual" mesh="robot_ee_robotiq_arg85_visual_right_finger" type="mesh" contype="0" conaffinity="0" group="1" density="0" material="mat_gripper_mid"/>
+        <geom name="right_actual_right_finger_environment_collision" contype="4" conaffinity="8" condim="4" friction="1.0 0.01 0.001" density="0" group="3" solref="0.008 1" solimp="0.96 0.995 0.001 0.5 2" type="mesh" mesh="robot_ee_robotiq_arg85_collision_right_finger"/>
+        <body name="right_fr3v2_1_robotiq_85_right_finger_tip_link" pos="-0.00563134 0 0.0471852">
+          <inertial pos="0.0145671 5e-05 0.016497" quat="0.977773 0 0.209665 0" mass="0.0426859" diaginertia="1.20653e-05 1.19789e-05 2.64405e-06"/>
+          <joint name="right_fr3v2_1_robotiq_85_right_finger_tip_joint" axis="0 -1 0" range="0 0.8" actuatorfrcrange="-100 100" armature="0.01" damping="1.0" frictionloss="0.1"/>
+          <geom name="right_actual_right_finger_tip_visual" mesh="robot_ee_robotiq_arg85_visual_right_finger_tip" type="mesh" contype="0" conaffinity="0" group="1" density="0" material="mat_gripper_mid"/>
+          <geom name="right_actual_right_tip_environment_collision" contype="4" conaffinity="8" condim="4" friction="1.0 0.01 0.001" density="0" group="3" solref="0.008 1" solimp="0.96 0.995 0.001 0.5 2" type="mesh" mesh="robot_ee_robotiq_arg85_collision_right_finger_tip"/>
+          <geom contype="16" conaffinity="0" condim="6" friction="2.5 0.10 0.03" priority="2" margin="0.00025" gap="0" solref="0.010 1" solimp="0.95 0.99 0.001 0.5 2" density="0" group="3" type="mesh" rgba="0.92 0.18 0.08 0.34" name="right_grasp_right_main" mesh="robot_ee_robotiq_arg85_collision_right_finger_tip"/>
+          <site name="right_actual_right_inner_face_site" pos="0.0215 0 0.02" size="0.002" rgba="1 0 1 0.8" group="4"/>
+        </body>
+      </body>
+    </body>
+    <body name="right_fr3v2_1_robotiq_85_left_inner_knuckle_link" pos="0.0127 0 0.06142">
+      <inertial pos="0.018977 0.00015001 0.022471" quat="0.939613 0 0.342237 0" mass="0.0296938" diaginertia="1.28757e-05 8.69056e-06 4.88712e-06"/>
+      <joint name="right_fr3v2_1_robotiq_85_left_inner_knuckle_joint" axis="0 -1 0" range="0 0.8" actuatorfrcrange="-100 100" armature="0.01" damping="1.0" frictionloss="0.1"/>
+      <geom name="right_actual_left_inner_knuckle_visual" mesh="robot_ee_robotiq_arg85_visual_left_inner_knuckle" type="mesh" contype="0" conaffinity="0" group="1" density="0" material="mat_gripper_mid"/>
+      <geom name="right_actual_left_inner_knuckle_environment_collision" contype="4" conaffinity="8" condim="4" friction="1.0 0.01 0.001" density="0" group="3" solref="0.008 1" solimp="0.96 0.995 0.001 0.5 2" type="mesh" mesh="robot_ee_robotiq_arg85_collision_left_inner_knuckle"/>
+    </body>
+    <body name="right_fr3v2_1_robotiq_85_right_inner_knuckle_link" pos="-0.0127 0 0.06142">
+      <inertial pos="-0.0192682 5.001e-05 0.0222218" quat="0.936371 0 -0.351012 0" mass="0.0296938" diaginertia="1.2882e-05 8.69056e-06 4.88076e-06"/>
+      <joint name="right_fr3v2_1_robotiq_85_right_inner_knuckle_joint" axis="0 -1 0" range="-0.8 0" actuatorfrcrange="-100 100" armature="0.01" damping="1.0" frictionloss="0.1"/>
+      <geom name="right_actual_right_inner_knuckle_visual" mesh="robot_ee_robotiq_arg85_visual_right_inner_knuckle" type="mesh" contype="0" conaffinity="0" group="1" density="0" material="mat_gripper_mid"/>
+      <geom name="right_actual_right_inner_knuckle_environment_collision" contype="4" conaffinity="8" condim="4" friction="1.0 0.01 0.001" density="0" group="3" solref="0.008 1" solimp="0.96 0.995 0.001 0.5 2" type="mesh" mesh="robot_ee_robotiq_arg85_collision_right_inner_knuckle"/>
+    </body>
+  </body>
+</mujoco_include>

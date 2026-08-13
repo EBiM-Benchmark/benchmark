@@ -54,6 +54,33 @@ task1_isaacsim/assets/Robotiq_2f_85_with_d405_mobile_fr3_duo_v0_2.usd
 task1_isaacsim/cable_world/assets/table_board_fixture/Assets/board_segment.usd
 task1_isaacsim/cable_world/assets/table_board_fixture/Assets/board_segment_upper_right.usd
 
+# Task 3 MuJoCo large visual assets — not tracked in git; download separately.
+# Listed one by one on purpose: a glob over *.obj/*.png would also swallow the
+# small collision STLs, source USD/GLB, and textures that ARE tracked. These 21
+# files are every scene-referenced asset above the 2 MB pre-commit limit (~173 MB
+# raw). See task3_mujoco/README.md and task3_mujoco/scripts/download_large_assets.sh
+task3_mujoco/assets/ikea_exact/ikea_scale_texture.png
+task3_mujoco/assets/robot/accessories_fr3_duo_mount_v0_3_visual_fr3_duo_cover.obj
+task3_mujoco/assets/robot/accessories_fr3_duo_mount_v0_3_visual_fr3_duo_mount.obj
+task3_mujoco/assets/robot/accessories_franka_head_v0_2_visual_franka_head.obj
+task3_mujoco/assets/robot/robots_fr3v2_1_visual_link0.obj
+task3_mujoco/assets/robot/robots_fr3v2_1_visual_link6.obj
+task3_mujoco/assets/robot/robots_tmrv0_2_visual_tmrv0_2.obj
+task3_mujoco/assets/robot/tmr_base_black_belt.obj
+task3_mujoco/assets/robot/tmr_base_red_motor.obj
+task3_mujoco/assets/robot/tmr_base_white_shell.obj
+task3_mujoco/assets/robot/tmr_base_yellow_detail.obj
+task3_mujoco/assets/scene_v2/mesh_scene_v2_Mat3d66_1698082_33_8822.obj
+task3_mujoco/assets/scene_v2/mesh_scene_v2_Mat3d66_1698082_34_7025.obj
+task3_mujoco/assets/scene_v2/mesh_scene_v2_Mat3d66_1698082_5_2827.obj
+task3_mujoco/assets/scene_v2/mesh_scene_v2_Mat3d66_1698082_90_17.obj
+task3_mujoco/assets/scene_v2/mesh_scene_v2_Mat3d66_8455843_11_98565.obj
+task3_mujoco/assets/scene_v2/mesh_scene_v2_Mat3d66_8455843_12_76457.obj
+task3_mujoco/assets/scene_v2/mesh_scene_v2_Material_33.obj
+task3_mujoco/assets/scene_v2/mesh_scene_v2_USD_Default_Grey.obj
+task3_mujoco/assets/scene_v2/textures/3d66Model-1698082-files-57.png
+task3_mujoco/assets/scene_v2/textures/3d66Model-9313820-files-3.png
+
 # agent
 .claude/
 .codex

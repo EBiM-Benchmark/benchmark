@@ -23,3 +23,9 @@ attribution and terms; that text is not duplicated here.
 The task1_mujoco/ directory vendors the ManipulationNet client
 (https://manipulation-net.org), distributed under the Apache License,
 Version 2.0; see task1_mujoco/mnet_client-ros_2/LICENSE.
+
+The task3_mujoco/ directory is ported from the Mujoco_Genisis_Model
+repository by Ahmed Shokry, contributed to this repository under the
+Apache License, Version 2.0 with the author's agreement. The upstream
+repository carries no LICENSE file of its own, so this paragraph and
+task3_mujoco/README.md record the terms. See CONTRIBUTORS.md.
