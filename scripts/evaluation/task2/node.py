@@ -449,9 +449,19 @@ class EvalCameraCaptureService(Node):
         failure_path = _artifact_path(
             self._evaluate_output_dir, "sync_failure", ts, "json"
         )
-        failure_path.write_text(
-            json.dumps(payload, indent=2), encoding="utf-8"
-        )
+        try:
+            failure_path.write_text(
+                json.dumps(payload, indent=2), encoding="utf-8"
+            )
+            artifact_note = f"See {failure_path}"
+        except OSError as exc:
+            # Graceful degrade: a disk-full/permission/missing-dir
+            # failure writing the diagnostic artifact must not
+            # prevent a controlled (success=False) response -- that
+            # would defeat the point of this whole failure path.
+            artifact_note = (
+                f"Failed to write diagnostic artifact {failure_path}: {exc}"
+            )
 
         stream_texts = (
             _stream_status_text(stream, report[stream])
@@ -461,7 +471,7 @@ class EvalCameraCaptureService(Node):
         response.message = (
             f"Sync failed after {self._sync_timeout_s:.1f}s "
             f"(tolerance {self._sync_tolerance_s:.3f}s): "
-            f"{'; '.join(stream_texts)}. See {failure_path}"
+            f"{'; '.join(stream_texts)}. {artifact_note}"
         )
         return response
 
