@@ -308,6 +308,19 @@ task3_isaacsim/
 The shared room remains at `assets/robot_room.usd`. The Task 3 ROS runtime
 reuses the Task 2 plain-Isaac-Sim bridge and Task 1 device adapters rather than
 duplicating those implementations.
+## Recording For Task 3
+For recording use the `task3_issacsim/scripts/run_recording.sh`.sh script. Prior to execution the recording container has to be build with:
+```bash
+bash task3_issacsim/scripts/run_recording.sh build
+```
+To start the container the `--record` flag has to be passed to the startup script like in the following example:
+
+```bash
+bash task3_isaacsim/scripts/run_isaacsim_teleop.sh   --gripper robotiq   --with-gello-pedal-teleop   --no-browser --with-keyboard-teleop -- --record --start-at-cutlet-pickup --render-hz 30 --physics-hz 240
+```
+
+To modify the recording config the file in `task3_issacsim/services/recording/recording.yaml` can be modified.
+Another useful utility is the `--start-at-cutlet-pickup` flag to start infront of the cutlery table.
 
 ## Current limitations
 
