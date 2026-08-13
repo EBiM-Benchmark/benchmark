@@ -68,7 +68,7 @@ state such as the post-reset ready pose. `/pedal/state` has its own
 |---|---|---|
 | `/isaac/task2/object_poses` | `std_msgs/String` (JSON) | `{"sim_time", "objects": {name: [x,y,z,qw,qx,qy,qz]}}` |
 | `/isaac/task2/pad_points` | `std_msgs/Float32MultiArray` | `[sim_time, n_points, x0,y0,z0,...]` deformed pad vertices (~10 Hz) |
-| `/isaac/task2/scene_reset` | `std_msgs/String` (JSON) | reset/randomize event, published after the reset completes |
+| `/isaac/task2/scene_reset` | `std_msgs/String` (JSON) | reset/randomize event, published after the reset completes; includes `target_slot` (A–D) and per-board jitter `offsets` when randomized |
 | `/isaac/task2/scene_reset_request` | `std_msgs/String` | any message triggers a scene reset (recorder menu keys `1` reset+record and `5` reset; same effect as the sim-window `5` hotkey) |
 
 ### Clock and cameras

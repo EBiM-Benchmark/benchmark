@@ -160,7 +160,7 @@ LeRobot tooling ignores this directory.
 | `encoder_dropped_frames` | Streaming-encoder drops (`null` when streaming encoding is off) |
 | `fps_sim` | Recording rate in sim time (30) |
 | `sim_time_start`, `sim_time_end`, `wall_time_saved` | Episode timing |
-| `scene_reset_events` | Scene resets during the episode, with `sim_time`, `randomized`, and randomization `offsets` |
+| `scene_reset_events` | Scene resets during the episode, with `sim_time`, `randomized`, `target_slot` (board slot A–D in descending x, B = authored home; `null` when not randomized), and jitter `offsets` for the randomized groups (per-board by default; the thermal pad group appears only with `--randomize-pad`, moving as one unit) |
 | `extras_file` | The npz file for this episode |
 | `pad_snapshots` | Number of pad mesh snapshots (`S`) |
 | `depth_frames` | Per-camera depth frame counts (empty when depth recording is off) |

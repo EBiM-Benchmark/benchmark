@@ -41,9 +41,18 @@ PAD_POINTS_TOPIC = _GROUND_TRUTH_TOPICS["pad_points"]
 SCENE_RESET_TOPIC = _GROUND_TRUTH_TOPICS["scene_reset"]
 SCENE_RESET_REQUEST_TOPIC = _GROUND_TRUTH_TOPICS["scene_reset_request"]
 
-# Objects whose names start with this prefix are jittered as one rigid group
-# (the deformable pad is attached to the sticker base).
+# Objects whose names start with this prefix form the thermal-pad group
+# (the deformable pad is attached to the sticker base, so the pair moves as
+# one rigid unit). Jittered only with --randomize-pad; otherwise restored to
+# the authored spawn pose on every reset.
 PAD_GROUP_PREFIX = "thermalpad"
+
+# The four RAM-board prims whose spawn positions define the slot row on the
+# table. Slots are labelled A-D in descending x order (A=+0.2 ... D=-0.1
+# relative to the table), so the authored target home slot is "B".
+BOARD_SLOT_PRIM_NAMES = ("board_0", "board_1", "board_2", "board_target")
+TARGET_BOARD_NAME = "board_target"
+BOARD_SLOT_LABELS = "ABCD"
 
 
 def _quat_wxyz(rotation: Gf.Quatd) -> list[float]:
@@ -197,8 +206,13 @@ class SceneResetController:
     event on /isaac/task2/scene_reset so the recorder can log the applied
     randomization.
 
-    The thermal pad and its sticker base are jittered as one group about the
-    sticker-base origin; boards and the target are jittered independently.
+    Randomization is split per group: with randomize_boards (default) the
+    target board is placed at a uniformly random one of the four board slots
+    (swapping spawn positions with the displaced board) and each board gets
+    an independent XY jitter about its assigned slot; with randomize_pad the
+    thermal pad and its sticker base are jittered as one group about the
+    sticker-base origin. A group whose flag is off is restored to its exact
+    spawn poses on every reset.
     """
 
     def __init__(
@@ -211,6 +225,8 @@ class SceneResetController:
         spine_controller=None,
         arm_teleop=None,
         randomize: bool = False,
+        randomize_boards: bool = True,
+        randomize_pad: bool = False,
         xy_jitter_m: float = 0.02,
         yaw_jitter_deg: float = 10.0,
         seed: int | None = None,
@@ -221,6 +237,8 @@ class SceneResetController:
         self._spine_controller = spine_controller
         self._arm_teleop = arm_teleop
         self._randomize = bool(randomize)
+        self._randomize_boards = bool(randomize_boards)
+        self._randomize_pad = bool(randomize_pad)
         self._xy_jitter_m = float(xy_jitter_m)
         self._yaw_jitter_deg = float(yaw_jitter_deg)
         self._rng = np.random.default_rng(seed)
@@ -259,6 +277,28 @@ class SceneResetController:
                 Gf.Vec3d(translate_op.Get()),
                 Gf.Quatf(orient_op.Get()),
             )
+
+        # Target-slot shuffle: label the four board spawn positions A-D in
+        # descending x order. Disabled if any board prim was not cached
+        # above (e.g. the barebone scene, whose objects are one combined
+        # USD without per-board root Xforms).
+        self._board_slots: list[tuple[str, str]] = []  # (label, home board)
+        missing = [
+            n for n in BOARD_SLOT_PRIM_NAMES if n not in self._spawn_poses
+        ]
+        if missing:
+            if self._randomize and self._randomize_boards:
+                print(
+                    "Warning: target-slot shuffle disabled: board prims "
+                    f"without cached spawn poses: {missing}",
+                    file=sys.stderr,
+                )
+        else:
+            by_descending_x = sorted(
+                BOARD_SLOT_PRIM_NAMES,
+                key=lambda n: -float(self._spawn_poses[n][0][0]),
+            )
+            self._board_slots = list(zip(BOARD_SLOT_LABELS, by_descending_x))
 
         self._keyboard_subscription = None
         try:
@@ -318,14 +358,46 @@ class SceneResetController:
             self._pending = True
         return True
 
+    def _sample_target_slot(
+        self,
+    ) -> tuple[str | None, dict[str, Gf.Vec3d]]:
+        """Pick a uniform random board slot for the target board.
+
+        Returns (slot_label, base_positions) where base_positions overrides
+        the spawn positions of the two swapped boards (empty when the
+        chosen slot is the target's home slot, or when the shuffle is
+        disabled because the board prims were not found).
+        """
+        if not self._board_slots:
+            return None, {}
+        label, home_name = self._board_slots[
+            int(self._rng.integers(len(self._board_slots)))
+        ]
+        if home_name == TARGET_BOARD_NAME:
+            return label, {}
+        return label, {
+            TARGET_BOARD_NAME: self._spawn_poses[home_name][0],
+            home_name: self._spawn_poses[TARGET_BOARD_NAME][0],
+        }
+
     def _sample_offsets(self) -> dict[str, dict[str, float]]:
-        """One xy/yaw offset per jitter group, keyed by object name."""
+        """One xy/yaw offset per jitter group, keyed by object name.
+
+        The pad group shares one offset (randomize_pad); every other
+        object gets its own (randomize_boards). Objects whose group flag
+        is off get no entry and are restored to spawn by _apply_offsets.
+        """
         offsets: dict[str, dict[str, float]] = {}
         group_offsets: dict[str, dict[str, float]] = {}
         for name in self._spawn_poses:
-            group = (
-                PAD_GROUP_PREFIX if name.startswith(PAD_GROUP_PREFIX) else name
-            )
+            if name.startswith(PAD_GROUP_PREFIX):
+                if not self._randomize_pad:
+                    continue
+                group = PAD_GROUP_PREFIX
+            else:
+                if not self._randomize_boards:
+                    continue
+                group = name
             if group not in group_offsets:
                 group_offsets[group] = {
                     "dx": float(
@@ -347,7 +419,11 @@ class SceneResetController:
             offsets[name] = group_offsets[group]
         return offsets
 
-    def _apply_offsets(self, offsets: dict[str, dict[str, float]]) -> None:
+    def _apply_offsets(
+        self,
+        offsets: dict[str, dict[str, float]],
+        base_positions: dict[str, Gf.Vec3d],
+    ) -> None:
         # Pivot of the pad group: the sticker base spawn position, so pad
         # and base rotate together instead of about their own origins.
         pad_pivot = None
@@ -355,22 +431,27 @@ class SceneResetController:
             if name.startswith(PAD_GROUP_PREFIX) and name.endswith("_base"):
                 pad_pivot = position
         for name, (position, orientation) in self._spawn_poses.items():
-            offset = offsets[name]
-            yaw_rad = math.radians(offset["dyaw_deg"])
-            rotation = Gf.Rotation(Gf.Vec3d(0.0, 0.0, 1.0), offset["dyaw_deg"])
-            pivot = (
-                pad_pivot
-                if name.startswith(PAD_GROUP_PREFIX) and pad_pivot is not None
-                else position
-            )
-            new_position = (
-                rotation.TransformDir(position - pivot)
-                + pivot
-                + Gf.Vec3d(offset["dx"], offset["dy"], 0.0)
-            )
-            half = 0.5 * yaw_rad
-            yaw_quat = Gf.Quatf(math.cos(half), 0.0, 0.0, math.sin(half))
             translate_op, orient_op = self._spawn_ops[name]
+            offset = offsets.get(name)
+            if offset is None:
+                # Group flag off: restore the exact spawn pose instead.
+                translate_op.Set(position)
+                orient_op.Set(orientation)
+                continue
+            if name.startswith(PAD_GROUP_PREFIX) and pad_pivot is not None:
+                rotation = Gf.Rotation(
+                    Gf.Vec3d(0.0, 0.0, 1.0), offset["dyaw_deg"]
+                )
+                new_position = (
+                    rotation.TransformDir(position - pad_pivot)
+                    + pad_pivot
+                    + Gf.Vec3d(offset["dx"], offset["dy"], 0.0)
+                )
+            else:
+                base = base_positions.get(name, position)
+                new_position = base + Gf.Vec3d(offset["dx"], offset["dy"], 0.0)
+            half = 0.5 * math.radians(offset["dyaw_deg"])
+            yaw_quat = Gf.Quatf(math.cos(half), 0.0, 0.0, math.sin(half))
             translate_op.Set(Gf.Vec3d(new_position))
             orient_op.Set(yaw_quat * orientation)
 
@@ -392,10 +473,14 @@ class SceneResetController:
         )
         self._world.stop()
         offsets: dict[str, dict[str, float]] = {}
+        target_slot: str | None = None
         if self._spawn_ops:
             if self._randomize:
+                base_positions: dict[str, Gf.Vec3d] = {}
+                if self._randomize_boards:
+                    target_slot, base_positions = self._sample_target_slot()
                 offsets = self._sample_offsets()
-                self._apply_offsets(offsets)
+                self._apply_offsets(offsets, base_positions)
             else:
                 self._restore_spawn_poses()
         self._world.reset()
@@ -416,12 +501,19 @@ class SceneResetController:
                     "reset_index": self._reset_count,
                     "sim_time": sim_time,
                     "randomized": bool(offsets),
+                    "target_slot": target_slot,
                     "offsets": offsets,
                 }
             )
             self._event_pub.publish(msg)
         print(
             f"Scene reset #{self._reset_count} done"
-            + (f" (randomized {len(offsets)} objects)" if offsets else ""),
+            + (
+                f" (randomized {len(offsets)} objects"
+                + (f", target slot {target_slot}" if target_slot else "")
+                + ")"
+                if offsets
+                else ""
+            ),
             flush=True,
         )
