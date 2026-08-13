@@ -82,3 +82,41 @@ services:
     restart: unless-stopped
     tty: true
     stdin_open: true
+
+  lerobot_recorder:
+    build:
+      context: services/recording
+      dockerfile: Dockerfile
+    image: task3-lerobot-recorder
+    container_name: task3_lerobot_recorder
+    # Run as the host user so datasets land on the bind mount with the
+    # caller's ownership instead of root. scripts/run_recorder.sh exports
+    # HOST_UID/HOST_GID automatically; export them yourself first if
+    # invoking `docker compose --profile record` directly.
+    #user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    network_mode: host
+    ipc: host
+    working_dir: /repo/task3_isaacsim
+    privileged: true
+    command: >
+      bash -lc "source /opt/ros/jazzy/setup.bash &&
+      python3 services/recording/record_task3.py
+      --config ${RECORDER_CONFIG:-services/recording/recording.yaml}
+      ${RECORDER_ARGS:-}"
+    environment:
+      - ROS_DISTRO=jazzy
+      - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+      - FASTDDS_BUILTIN_TRANSPORTS=UDPv4
+      # The host uid has no passwd entry in the container; give HF/rerun
+      # caches a writable HOME.
+      - HOME=/tmp
+      - HOST_UID=${HOST_UID:-1000}
+      - HOST_GID=${HOST_GID:-1000}
+      - DISPLAY=$DISPLAY 
+    volumes:
+      - ..:/repo
+      - $HOME/.Xauthority:/root/.Xauthority 
+    stdin_open: true
+    tty: true
+    profiles:
+      - record

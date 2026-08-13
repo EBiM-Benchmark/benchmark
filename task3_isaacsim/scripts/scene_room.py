@@ -9,6 +9,8 @@ import argparse
 import sys
 from pathlib import Path
 
+
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SHARED_SCENES_DIR = REPO_ROOT / "scripts" / "scenes"
 TASK2_SCRIPTS_DIR = REPO_ROOT / "task2_isaacsim" / "scripts"
@@ -25,6 +27,7 @@ from gripper_profiles import (  # noqa: E402
 )
 from isaacsim_fr3duo_teleop_bridge_args import (  # noqa: E402
     add_common_bridge_args,
+    resolve_recording_flags,
 )
 
 
@@ -48,10 +51,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=None,
         help="Override the robot USD selected by --gripper.",
     )
-    parser.add_argument("--robot-x", type=float, default=None)
-    parser.add_argument("--robot-y", type=float, default=None)
-    parser.add_argument("--robot-z", type=float, default=None)
-    parser.add_argument("--robot-yaw", type=float, default=None)
+    parser.add_argument("--robot-x", type=float, default=-4.6)
+    parser.add_argument("--robot-y", type=float, default=2.7)
+    parser.add_argument("--robot-z", type=float, default=0.0)
+    parser.add_argument("--robot-yaw", type=float, default=-90.0)
     parser.add_argument(
         "--head-placement",
         type=room_scene.head_placement_arg,
@@ -69,6 +72,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
         arm_teleop_gripper_open=None,
         arm_teleop_gripper_closed=None,
     )
+    parser.add_argument(
+        "--start-at-cutlet-pickup",
+        action="store_true",
+        help="Start the robot at the cutlet pickup location.",)
+    parser.add_argument(
+        "--start-at-feeding-location",
+        action="store_true",
+        help="Start the robot at the feeding location.",)
+    
     return parser
 
 
@@ -84,7 +96,10 @@ def resolve_profile_defaults(args: argparse.Namespace):
 
 
 args_cli = build_arg_parser().parse_args()
+
 profile_cli = resolve_profile_defaults(args_cli)
+resolve_recording_flags(args_cli)
+
 
 from isaacsim import SimulationApp  # noqa: E402
 
@@ -94,10 +109,14 @@ simulation_app = SimulationApp(
 
 from isaacsim.core.utils.extensions import enable_extension  # noqa: E402
 
+from isaacsim.core.simulation_manager import SimulationManager
+from pxr import PhysxSchema
+
 enable_extension("isaacsim.ros2.bridge")
 if not args_cli.headless:
     enable_extension("omni.physx.ui")
 simulation_app.update()
+print(f"flag cutlet_pickup {args_cli.start_at_cutlet_pickup})")
 
 import isaacsim_fr3duo_teleop_bridge_core as core  # noqa: E402
 
@@ -106,9 +125,13 @@ from isaacsim.core.api import World  # noqa: E402
 from isaacsim.core.prims import SingleArticulation  # noqa: E402
 
 ROBOT_PRIM_PATH = "/World/Robot"
-
+TASK_OBJECTS_ROOT = "/World/Environment/RobotRoom/Asset/{}"
+OBJECT_NAMES = ["head", "bowl2", "plate2", "spoon2", "cup", "simple_tray"]
+OBJECT_PRIM_PATHS = [TASK_OBJECTS_ROOT.format(name) for name in OBJECT_NAMES]
 
 def main() -> None:
+
+
     room_path = Path(args_cli.room_usd).expanduser()
     robot_path = Path(args_cli.robot_usd).expanduser()
     franka_root = Path(args_cli.franka_root).expanduser()
@@ -127,9 +150,26 @@ def main() -> None:
         args_cli.embodiment,
         include_browser_commands=not args_cli.disable_browser_command_topics,
     )
+    # groups = core._load_joint_groups(
+    #     include_browser_commands=not args_cli.disable_browser_command_topics,
+    # )
     args_cli.task = "task3"
+    if args_cli.start_at_cutlet_pickup:
+        args_cli.robot_x = -4.0
+        args_cli.robot_y = -1.5
+        args_cli.robot_z = 0.0
+        args_cli.robot_yaw = -180.0
+    elif args_cli.start_at_feeding_location:
+        args_cli.robot_x = -4.0
+        args_cli.robot_y = 0.8
+        args_cli.robot_z = 0.0
+        args_cli.robot_yaw = 0.0
+        #TODO relocate the tray to the feeding location
+
+
     robot_position = room_scene.resolve_robot_position(args_cli)
     robot_yaw = room_scene.resolve_robot_yaw(args_cli)
+
 
     room_scene.build_stage(
         omni.kit.app.get_app(),
@@ -142,6 +182,15 @@ def main() -> None:
         head_placement=args_cli.head_placement,
         dynamic_beans=args_cli.dynamic_beans,
     )
+    #Task 2 recording copy
+    import recording3 as recording  # noqa: PLC0415
+
+    # build_stage already created the eval camera prim + graph; the scene
+    # camera config pass adopts them (pose from yaml) and only builds
+    # graphs for cameras the scene did not author.
+
+
+
 
     physics_scene_path = core._find_physics_scene_path() or "/physicsScene"
     world = World(
@@ -150,6 +199,27 @@ def main() -> None:
         physics_dt=1.0 / args_cli.physics_hz,
         rendering_dt=1.0 / args_cli.render_hz,
         sim_params={"use_fabric": True},
+    )
+    SimulationManager.enable_ccd(
+    True,
+    physics_scene=physics_scene_path,
+)
+
+
+    print(
+        "GPU dynamics:",
+        SimulationManager.is_gpu_dynamics_enabled(physics_scene_path),
+    )
+
+    print(
+        "CCD:",
+        SimulationManager.is_ccd_enabled(physics_scene_path),
+    )
+
+    stage = omni.usd.get_context().get_stage()
+
+    recording.setup_recording_cameras(
+        stage, args_cli, ROBOT_PRIM_PATH, "cameras_room.yaml"
     )
     core.prepare_robot_prim(ROBOT_PRIM_PATH, args_cli)
     core._configure_drives(
@@ -170,14 +240,41 @@ def main() -> None:
     print("Robot USD:", robot_path)
     print("Physics scene:", physics_scene_path)
     print("Articulation root:", articulation_root_path)
-    control = core.setup_robot_control(robot, groups, args_cli)
+    (
+        group_indices,
+        coupled_indices,
+        steering_ids,
+        drive_ids,
+        spine_keyboard_controller,
+        arm_keyboard_teleop,
+    ) = core.setup_robot_control(robot, groups, args_cli)
+
+    tick_callbacks = recording.build_recording_tick_callbacks(
+        world,
+        robot,
+        stage,
+        args_cli,
+        OBJECT_PRIM_PATHS,
+        spine_controller=spine_keyboard_controller,
+        arm_teleop=arm_keyboard_teleop,
+    )
+
     core.run_teleop_loop(
         simulation_app,
         world,
         robot,
         groups,
-        *control,
+        group_indices,
+        coupled_indices,
+        steering_ids,
+        drive_ids,
+        spine_keyboard_controller,
+        arm_keyboard_teleop,
         args_cli,
+        # Keep rendering in headless sessions so the task2 eval camera
+        # OmniGraph still publishes /isaac/eval_camera/*.
+        force_render=True,
+        tick_callbacks=tick_callbacks,
     )
 
 

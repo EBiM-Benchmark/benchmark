@@ -172,7 +172,7 @@ CUTLERY = {
     "bowl": {
         "usd_path": BOWL_USD,
         "offset": (0.0, 0.0, TABLETOP_Z_OFFSET),
-        "fixed_pos": (-1.8, 2.75, 0.755),
+        "fixed_pos": (-1.8, 2.75, 0.87),
         "fixed_rot": IDENTITY_ROT,
     },
     "plate": {

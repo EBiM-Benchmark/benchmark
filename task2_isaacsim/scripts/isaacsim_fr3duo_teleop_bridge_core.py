@@ -19,7 +19,7 @@ import sys
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-
+import time
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 # Reuse the Task 1 shared constants (joint names, gripper coupling, defaults).
 sys.path.insert(0, str(_REPO_ROOT / "task1_isaacsim" / "scripts"))
@@ -1197,14 +1197,14 @@ class IsaacSimRosBridge(Node):
                     lambda msg, label=group.label: self._on_joint_command(
                         label, msg
                     ),
-                    10,
+                    1,
                 )
                 self._command_subscriptions.append(sub)
         self._pedal_sub = self.create_subscription(
             String,
             PEDAL_STATE_TOPIC,
             self._on_pedal_state,
-            10,
+            1,
         )
         # Log the loaded contract once; the command topics are duplicated in
         # the task1 helper services, so this is the quickest drift check.
@@ -1700,6 +1700,8 @@ def run_teleop_loop(
             # Exclusive arbitration: the keyboard teleop replaces the ROS
             # arm and gripper commands (the only groups apply_commands
             # handles); joint states are still published below.
+
+
             if not arm_teleop_active:
                 node.apply_commands(
                     robot,
@@ -1710,9 +1712,11 @@ def run_teleop_loop(
             vx, vy, wz = node.pedal_base_twist(
                 args.pedal_linear_speed,
                 args.pedal_angular_speed,
-                args.pedal_timeout,
+                0.2#args.pedal_timeout,
             )
             node.last_base_twist = (vx, vy, wz)
+
+
             if steering_ids and drive_ids:
                 steering_targets, drive_targets = _compute_drive_targets(
                     robot.get_joint_positions(),
@@ -1738,12 +1742,14 @@ def run_teleop_loop(
                 spine_keyboard_controller.apply()
             if arm_teleop_active:
                 arm_keyboard_teleop.apply(loop_dt)
+
             # With render=False each iteration advances a single physics_dt, so
             # headless keeps the fastest possible ROS command/state loop.
             world.step(render=rendering)
             sim_time = float(world.current_time)
             # Every iteration, not publish_period-throttled: the recorder
             # paces its frame sampling on this.
+
             node.publish_clock(sim_time)
             for callback in tick_callbacks:
                 callback.tick(sim_time)
@@ -1752,6 +1758,7 @@ def run_teleop_loop(
                 node.publish_states(robot, group_indices)
                 node.publish_recording_streams(robot, sim_time)
                 next_publish_time = now + publish_period
+
     finally:
         node.destroy_node()
         rclpy.shutdown()

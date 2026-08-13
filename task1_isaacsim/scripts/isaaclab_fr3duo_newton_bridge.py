@@ -1672,6 +1672,7 @@ class IsaacLabRosBridge(Node):
         if timeout_sec >= 0.0 and now_sec - self._latest_pedal_time_sec > timeout_sec:
             self._latest_pedal_state = "NONE"
             return 0.0, 0.0, 0.0
+        print(f"Pedal state: {self._latest_pedal_state}", flush=True)
         state = self._latest_pedal_state
         # Keyboard and browser controls emit FWD/BACK; the physical pedal
         # continues to use the strafe/yaw tokens below.
@@ -1679,11 +1680,11 @@ class IsaacLabRosBridge(Node):
             return 0.0, 0.0, 0.0
         if state == "FWD":
             return linear_speed_mps, 0.0, 0.0
-        if state == "BACK":
+        if state == "2A":
             return -linear_speed_mps, 0.0, 0.0
-        if state == "A":
+        if state == "2B":
             return 0.0, linear_speed_mps, 0.0
-        if state == "B":
+        if state == "1B":
             return 0.0, -linear_speed_mps, 0.0
         if state == "A+C":
             return 0.0, 0.0, angular_speed_radps

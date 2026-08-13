@@ -40,10 +40,9 @@ INSIDE_KIT_ENV_VAR = "EBIM_SCENE_LAUNCH_INSIDE_KIT"
 INNER_ARGV_ENV_VAR = "EBIM_SCENE_LAUNCH_ARGV"
 ISAACSIM_LAUNCHER = Path("/isaac-sim/isaac-sim.sh")
 DEFAULT_BEAN_COLOR = (0.20, 0.12, 0.07)
-DEFAULT_BEAN_COUNT = 300
+DEFAULT_BEAN_COUNT = 150
 DEFAULT_BEAN_DENSITY = 850.0
 BOWL_USD = asset_path("bowl2.usd")
-TASK3_BOWL_POSITION = (-4.3, -1.5, 0.74659)
 TASK3_HEAD_PLACEMENTS = {
     "A": ((-2.8, 1.7, 0.74659), (0.0, 0.0, 270.0)),
     "B": ((-2.4, 1.7, 0.74659), (0.0, 0.0, 270.0)),
@@ -55,6 +54,7 @@ TASK3_HEAD_PLACEMENTS = {
     "H": ((-2.4, 2.2, 0.74659), (0.0, 0.0, 90.0)),
     "I": ((-2.8, 2.2, 0.74659), (0.0, 0.0, 90.0)),
 }
+
 INITIAL_VIEW_POSE = (
     (-8.12589, -3.29067, 2.79653),
     (73.13762, 0.0, -50.88313),
@@ -630,6 +630,27 @@ def move_task3_head(
     )
 
 
+def resolve_room_prim_path(
+    stage: Any,
+    room_asset_path: str,
+    name: str,
+) -> str:
+    candidate_paths = (
+        f"{room_asset_path}/{name}",
+        f"{room_asset_path}/root/{name}",
+        f"/root/{name}",
+    )
+    for prim_path in candidate_paths:
+        prim = stage.GetPrimAtPath(prim_path)
+        if prim and prim.IsValid():
+            return prim_path
+
+    raise RuntimeError(
+        f"Could not find room prim '{name}'. Tried: "
+        + ", ".join(candidate_paths)
+    )
+
+
 def create_preview_material(
     stage: Any,
     path: str,
@@ -700,17 +721,64 @@ def usd_world_bounds(
     return tuple(bound_min), tuple(bound_max)
 
 
+def prim_world_bounds(
+    stage: Any,
+    prim_path: str,
+) -> tuple[
+    tuple[float, float, float],
+    tuple[float, float, float],
+]:
+    from pxr import Usd as pxr_usd
+    from pxr import UsdGeom as pxr_usd_geom
+
+    Usd: Any = pxr_usd
+    UsdGeom: Any = pxr_usd_geom
+
+    prim = stage.GetPrimAtPath(prim_path)
+    if not prim or not prim.IsValid():
+        raise RuntimeError(
+            f"Could not read bounds for invalid prim: {prim_path}"
+        )
+
+    purposes = [
+        UsdGeom.Tokens.default_,
+        UsdGeom.Tokens.render,
+        UsdGeom.Tokens.proxy,
+    ]
+    bbox_cache = UsdGeom.BBoxCache(Usd.TimeCode.Default(), purposes)
+    bound_range = bbox_cache.ComputeWorldBound(prim).ComputeAlignedRange()
+    if bound_range.IsEmpty():
+        raise RuntimeError(f"Could not read non-empty bounds for: {prim_path}")
+
+    bound_min = bound_range.GetMin()
+    bound_max = bound_range.GetMax()
+    return tuple(bound_min), tuple(bound_max)
+
+
 def bean_spawn_positions(
     count: int,
     bowl_position: tuple[float, float, float],
 ) -> list[tuple[float, float, float]]:
     bowl_min_local, bowl_max_local = usd_world_bounds(BOWL_USD)
-    container_min = tuple(
-        bowl_min_local[index] + bowl_position[index] for index in range(3)
+    bounds = (
+        tuple(
+            bowl_min_local[index] + bowl_position[index] for index in range(3)
+        ),
+        tuple(
+            bowl_max_local[index] + bowl_position[index] for index in range(3)
+        ),
     )
-    container_max = tuple(
-        bowl_max_local[index] + bowl_position[index] for index in range(3)
-    )
+    return bean_spawn_positions_in_bounds(count, bounds)
+
+
+def bean_spawn_positions_in_bounds(
+    count: int,
+    bounds: tuple[
+        tuple[float, float, float],
+        tuple[float, float, float],
+    ],
+) -> list[tuple[float, float, float]]:
+    container_min, container_max = bounds
     container_center_xy = (
         0.5 * (container_min[0] + container_max[0]),
         0.5 * (container_min[1] + container_max[1]),
@@ -730,7 +798,7 @@ def bean_spawn_positions(
         - radial_margin,
     )
     layer_height = max(2.4 * bean_radius, 0.9 * bean_length)
-    spawn_bottom_z = bowl_position[2] + BEAN_PHYSICS["spawn_height"]
+    spawn_bottom_z = container_min[2] + BEAN_PHYSICS["spawn_height"]
     ring_spacing = BEAN_PHYSICS["spawn_spacing_scale"] * max(
         2.8 * bean_radius,
         0.92 * bean_length,
@@ -793,7 +861,10 @@ def add_coffee_beans(
     count: int,
     color: tuple[float, float, float],
     density: float,
-    bowl_position: tuple[float, float, float],
+    container_bounds: tuple[
+        tuple[float, float, float],
+        tuple[float, float, float],
+    ],
     dynamic: bool = True,
 ) -> None:
     if count <= 0:
@@ -828,7 +899,7 @@ def add_coffee_beans(
     radius = BEAN_PHYSICS["radius"]
     half_height = BEAN_PHYSICS["half_height"]
 
-    positions = bean_spawn_positions(count, bowl_position)
+    positions = bean_spawn_positions_in_bounds(count, container_bounds)
     for index, position in enumerate(positions):
         bean_prim_path = f"/World/Scene/CoffeeBeans/Bean_{index:04d}"
         bean = UsdGeom.Capsule.Define(stage, bean_prim_path)
@@ -1128,6 +1199,8 @@ def configure_robot_room_stage(
 ) -> Any:
     from pxr import UsdGeom as pxr_usd_geom
     from pxr import UsdLux as pxr_usd_lux
+    from pxr import PhysxSchema
+
 
     UsdGeom: Any = pxr_usd_geom
     UsdLux: Any = pxr_usd_lux
@@ -1157,6 +1230,8 @@ def configure_robot_room_stage(
             + ", ".join(removed_physics_scenes),
             flush=True,
         )
+
+
     if (
         robot_path is not None
         and robot_position is not None
@@ -1189,12 +1264,22 @@ def configure_robot_room_stage(
             head_position,
             head_orientation,
         )
+
+        bowl_prim_path = resolve_room_prim_path(
+            stage,
+            str(room_asset_prim.GetPath()),
+            "bowl2",
+        )
+
+
+
+
         add_coffee_beans(
             stage,
             count=DEFAULT_BEAN_COUNT,
             color=DEFAULT_BEAN_COLOR,
             density=DEFAULT_BEAN_DENSITY,
-            bowl_position=TASK3_BOWL_POSITION,
+            container_bounds=prim_world_bounds(stage, bowl_prim_path),
             dynamic=dynamic_beans,
         )
 
@@ -1262,6 +1347,7 @@ def build_stage(
         robot_rotation=robot_rotation,
         robot_yaw=robot_yaw,
         dynamic_beans=dynamic_beans,
+
     )
 
 
