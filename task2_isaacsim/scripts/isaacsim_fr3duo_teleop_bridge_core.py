@@ -1606,12 +1606,19 @@ def setup_robot_control(
             )
 
     arm_keyboard_teleop = None
-    if args.arm_keyboard_teleop and args.headless:
-        # Kit still creates an app-window keyboard headless, so the teleop
-        # would "work" while silently blocking ROS arm commands.
+    # Pure headless (no livestream) still creates a Kit app-window keyboard,
+    # so enabling teleop would silently block ROS arm commands with no
+    # usable input. WebRTC livestream forwards client key events into that
+    # same keyboard, so --livestream + --arm-keyboard-teleop is supported
+    # for remote EC2 sessions.
+    if (
+        args.arm_keyboard_teleop
+        and args.headless
+        and not getattr(args, "livestream", False)
+    ):
         print(
             "Warning: dual-arm keyboard teleop disabled in headless "
-            "sessions; ROS arm commands stay active.",
+            "sessions without --livestream; ROS arm commands stay active.",
             file=sys.stderr,
         )
     elif args.arm_keyboard_teleop:

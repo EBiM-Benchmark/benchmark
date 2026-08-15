@@ -77,6 +77,8 @@ Two scenes are available via `--scene` (both use the same robot USD and ROS topi
 
 ### Barebone (empty scene) with keyboard arms and base (no special hardware)
 
+Local GPU / X11:
+
 ```bash
 bash task2_isaacsim/scripts/run_isaacsim_teleop.sh \
    --scene barebone \
@@ -85,6 +87,21 @@ bash task2_isaacsim/scripts/run_isaacsim_teleop.sh \
    --controller-mode none \
    --no-republisher \
    --no-browser
+```
+
+Remote EC2 (no local NVIDIA GPU) — same flags plus WebRTC livestream; arm
+keys are typed in the Isaac Sim WebRTC Streaming Client after it connects:
+
+```bash
+PUBLIC_IP=<ec2-public-ip> CONTAINER_REPO=/workspace/EBiM_Challenge \
+bash task2_isaacsim/scripts/run_isaacsim_teleop.sh \
+   --scene barebone \
+   --with-keyboard-teleop \
+   --with-arm-keyboard-teleop \
+   --controller-mode none \
+   --no-republisher \
+   --no-browser \
+   --livestream
 ```
 
 #### Base: Keyboard
@@ -98,7 +115,8 @@ ros2 run keyboard_state_publisher keyboard_state_publisher
 
 #### Arms: Keyboard
 
-While the Isaac Sim window has focus, drive the arms with the following keys:
+While the Isaac Sim window (or WebRTC Streaming Client) has focus, drive the
+arms with the following keys:
 
 | Keys | Action |
 | --- | --- |
@@ -110,15 +128,21 @@ While the Isaac Sim window has focus, drive the arms with the following keys:
 | `'` | RIGHT gripper toggle |
 | `R` | reset both arm targets to the ready pose |
 
-This drives both arm end-effectors from the Isaac Sim window keyboard (with GUI focused) through per-arm RMPflow (Lula) policies. Targets are held in the robot base frame, so the arms ride along while the base drives and the keys always move the gripper relative to the robot's heading. Each arm has its own key cluster so both arms can move at once.
+This drives both arm end-effectors from the Kit keyboard through per-arm
+RMPflow (Lula) policies. Over `--livestream`, the WebRTC client forwards
+those key events into Kit — focus the streaming client, not the SSH
+terminal. Targets are held in the robot base frame, so the arms ride along
+while the base drives and the keys always move the gripper relative to the
+robot's heading. Each arm has its own key cluster so both arms can move at
+once.
 
 Notes:
 - Conflicting bare-key viewport hotkeys (`F` frame selection, `Q/W/E/R`
   transform tools, ...) are deregistered at startup.
 - Speeds are tunable via `-- --arm-teleop-linear-speed 0.18
   --arm-teleop-angular-speed-deg 60`.
-- In `--headless` runs the teleop is disabled (with a warning) and ROS arm
-  commands stay active.
+- Pure `--headless` (no livestream) disables the teleop (with a warning)
+  and keeps ROS arm commands active.
 
 #### Spine: Keyboard
 

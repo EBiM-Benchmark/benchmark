@@ -186,11 +186,14 @@ def main():
 
     world.scene.add_default_ground_plane()
     core._add_dome_light(stage)
-    if not args_cli.headless:
-        set_camera_view(
-            eye=list(args_cli.camera_position),
-            target=list(args_cli.camera_target),
-        )
+    # Always aim the Kit perspective camera: under --livestream Kit is
+    # headless but WebRTC still streams /OmniverseKit_Persp. Skipping this
+    # leaves the default eye looking at empty space, so the client appears
+    # to have "no scene/assets".
+    set_camera_view(
+        eye=list(args_cli.camera_position),
+        target=list(args_cli.camera_target),
+    )
 
     articulation_root_path = core._find_articulation_root_path(
         args_cli.robot_prim_path

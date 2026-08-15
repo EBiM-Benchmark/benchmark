@@ -13,7 +13,7 @@ docker compose --env-file docker/.env.base -f docker/docker-compose.yaml \
 # every run — sim + remote 3D view + browser arms
 # stop Task 1 helpers first if they are up (same port 8090 / ROS topics):
 #   docker compose -f task1_isaacsim/docker-compose.yml down
-PUBLIC_IP=13.217.2.25 CONTAINER_REPO=/workspace/EBiM_Challenge \
+PUBLIC_IP=174.129.107.145 CONTAINER_REPO=/workspace/EBiM_Challenge \
 bash task2_isaacsim/scripts/run_isaacsim_teleop.sh \
   --scene room \
   --with-keyboard-teleop \
@@ -36,11 +36,11 @@ Check the inbound list: you should see both `49100/tcp` and `47998/udp`.
 ## Local machine
 
 ```bash
-# 3D view — Isaac WebRTC Streaming Client → 13.217.2.25
+# 3D view — Isaac WebRTC Streaming Client → 174.129.107.145
 # https://docs.isaacsim.omniverse.nvidia.com/5.1.0/installation/manual_livestream_clients.html
 
 # arms/grippers — browser UI (SSH tunnel)
-ssh -i /path/to/your-key.pem -L 8090:localhost:8090 ubuntu@13.217.2.25
+ssh -i /path/to/your-key.pem -L 8090:localhost:8090 ubuntu@174.129.107.145
 # then open http://localhost:8090
 ```
 

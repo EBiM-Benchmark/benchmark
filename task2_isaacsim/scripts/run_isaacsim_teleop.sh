@@ -69,13 +69,14 @@ Options:
   --with-gello-teleop        Start the GELLO->bridge teleop adapter
   --with-gello-pedal-teleop  Alias of --with-gello-teleop (tested pedal+GELLO path)
   --with-arm-keyboard-teleop Drive both arm end effectors from the Isaac Sim
-                             window keyboard via dual RMPflow. LEFT arm:
-                             W/S A/D Q/E move, Z/X T/G C/V rotate, F gripper.
-                             RIGHT arm: O/L K/; I/P move, N/M U/J ,/. rotate,
-                             ' gripper. R resets both targets. While active,
-                             ROS arm/gripper commands (browser/GELLO) are NOT
-                             applied. (Equivalent to passing
-                             '-- --arm-keyboard-teleop'.)
+                             window keyboard via dual RMPflow (also works
+                             over WebRTC --livestream; focus the streaming
+                             client). LEFT arm: W/S A/D Q/E move, Z/X T/G
+                             C/V rotate, F gripper. RIGHT arm: O/L K/; I/P
+                             move, N/M U/J ,/. rotate, ' gripper. R resets
+                             both targets. While active, ROS arm/gripper
+                             commands (browser/GELLO) are NOT applied.
+                             (Equivalent to passing '-- --arm-keyboard-teleop'.)
   --no-browser               Do not start browser_controller
   --no-republisher           Do not start ros_republisher
   --headless                 Run Isaac Sim without a visible Kit window

@@ -186,8 +186,10 @@ def main():
         robot_yaw=robot_yaw,
         head_placement=args_cli.head_placement,
     )
-    if args_cli.task == "task2" and not args_cli.headless:
+    if args_cli.task == "task2":
         # Override build_stage's room overview with a view of the task2 table.
+        # Also required for --livestream (headless Kit, WebRTC streams this
+        # perspective camera).
         set_camera_view(
             eye=list(TASK2_VIEW_EYE),
             target=list(room_scene.TASK2_TABLE_POSITION),
