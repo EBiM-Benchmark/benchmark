@@ -197,6 +197,9 @@ services:
       # The host uid has no passwd entry in the container; give caches a
       # writable HOME.
       - HOME=/tmp
+      # Console output must stay line-timely when stdin is piped (no TTY):
+      # drivers wait on the banner / reset-event lines in the log.
+      - PYTHONUNBUFFERED=1
     volumes:
       - ..:/repo
       - ${ISAAC_DOCKER_ROOT:-${HOME}/docker/ebim-challenge}/eval-task2:/eval_out:ro

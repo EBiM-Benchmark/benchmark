@@ -613,6 +613,9 @@ class Session:
         self.episode = None
         self.last_episode = None
         self.pending_reset_request = None  # monotonic time of last request
+        # Set when the [1] key already scored the open episode; the echo of
+        # our own request on the wire must not score it a second time.
+        self._suppress_request_eval = False
         self.last_eval_summary = None
         self._eval_in_flight = threading.Lock()
         self._eval_thread = None  # last auto-evaluate thread, for shutdown
@@ -723,12 +726,36 @@ class Session:
             + (", discarded)" if discarded else ")")
         )
 
+    def evaluate_before_reset(self) -> None:
+        """Console [1] path: score the open episode's final state BEFORE
+        the reset request goes out. The threaded on_reset_request hook
+        races the bridge (which acts on the same message within a second
+        or two) and can sample the already-wiped scene; here the request
+        is not published yet, so the evaluation is guaranteed pre-reset.
+        The request's echo (we subscribe to the topic we publish on) is
+        suppressed so the state isn't scored twice."""
+        with self.lock:
+            episode = self.episode
+        if not self.args.auto_evaluate or episode is None:
+            return
+        print(
+            f"\n⚑ scoring {episode.name}'s final state before the reset "
+            "request goes out"
+        )
+        self._suppress_request_eval = True
+        self.evaluate(trigger="reset_request", episode=episode)
+
     def on_reset_request(self) -> None:
-        """A scene reset was REQUESTED but has not happened yet: the scene
-        still shows the episode's final state, so this is the moment to
-        score it. The actual reset (seconds later, publish-blocking) then
-        rotates episodes via the scene_reset event as usual."""
+        """A scene reset was REQUESTED but has not happened yet. For
+        external requesters (a policy that resets its own scene) this is
+        the only moment to score the ending episode — best-effort: the
+        evaluation runs threaded and races the bridge's reset. Our own
+        [1] key evaluates synchronously in evaluate_before_reset instead
+        and suppresses this hook for the request's echo."""
         self.pending_reset_request = time.monotonic()
+        if self._suppress_request_eval:
+            self._suppress_request_eval = False
+            return
         with self.lock:
             episode = self.episode
         if not self.args.auto_evaluate or episode is None:
@@ -1273,6 +1300,7 @@ def key_loop(args, session, reporter, stop_event) -> str:
         if key == "q":
             return "quit"
         if key == "1":
+            session.evaluate_before_reset()
             session.pending_reset_request = time.monotonic()
             session.node.publish_scene_reset_request()
             print("→ scene reset requested (waiting for the reset event)")
