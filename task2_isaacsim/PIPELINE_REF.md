@@ -297,7 +297,11 @@ thread feeds per-camera encoder threads over bounded-by-check queues
 (overflow is counted as `dropped`, never blocking); MP4 PTS come from
 ROS header stamps (sim time, ms, rebased per episode), so the per-camera
 videos stay mutually aligned at any RTF. A `.status.json` next to the
-episodes is rewritten every status tick.
+episodes is rewritten every status tick. On quit, an in-flight
+evaluation is joined (bounded by `evaluate_timeout_s`) and a
+still-recording, never-evaluated episode is scored one final time
+(`evaluate_on_quit`) — a session's last attempt never sees another
+reset request, so this is what scores it.
 
 `scripts/run_eval_recorder.sh` wraps the compose service: `record`
 (default, foreground + TTY; requires `--eval-name`), `build`, `shell`,

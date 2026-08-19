@@ -583,9 +583,11 @@ class AuditNode(Node):
     def publish_scene_reset_request(self) -> None:
         self._reset_request_pub.publish(String())
 
-    def call_evaluate(self, timeout_s=30.0):
+    def call_evaluate(self, timeout_s):
         """Trigger the official evaluation service; returns (ok, message)
-        where ok is None on transport failure (service absent/timeout)."""
+        where ok is None on transport failure (service absent/timeout).
+        timeout_s (--evaluate-timeout-s) bounds the call itself, on top
+        of a fixed 3 s service-discovery wait."""
         if not self._eval_client.wait_for_service(timeout_sec=3.0):
             return None, "evaluator service not available (eval_task2 up?)"
         future = self._eval_client.call_async(Trigger.Request())
@@ -614,6 +616,7 @@ class Session:
         self.pending_reset_request = None  # monotonic time of last request
         self.last_eval_summary = None
         self._eval_in_flight = threading.Lock()
+        self._eval_thread = None  # last auto-evaluate thread, for shutdown
         self._dump_files = {}
         self._dump_counts = {}
         self._first_episode_name = args.episode
@@ -730,12 +733,14 @@ class Session:
             f"\n⚑ reset requested — evaluating {episode.name}'s last "
             "frame before the reset"
         )
-        threading.Thread(
+        thread = threading.Thread(
             target=self.evaluate,
             kwargs={"trigger": "reset_request", "episode": episode},
             name="auto-evaluate",
-            daemon=True,
-        ).start()
+            daemon=True,  # shutdown joins it bounded; daemon is the net
+        )
+        self._eval_thread = thread
+        thread.start()
 
     def on_scene_reset(self, event) -> None:
         """Executor-thread hook: auto mode segments episodes here."""
@@ -803,7 +808,7 @@ class Session:
                 f"{eval_dir} (artifacts will not be archived)"
             )
         print("… calling official evaluation service")
-        ok, message = self.node.call_evaluate()
+        ok, message = self.node.call_evaluate(self.args.evaluate_timeout_s)
         new_files = []
         if eval_dir is not None and eval_dir.is_dir():
             new_files = sorted(
@@ -885,7 +890,44 @@ class Session:
         )
 
     # -- shutdown ------------------------------------------------------------
+    def _finish_evaluations(self, ended_by) -> None:
+        """Settle evaluator state before episodes close: join an
+        in-flight auto-evaluate (bounded), then — with evaluate_on_quit —
+        score a still-recording, never-evaluated episode, so a session's
+        last attempt is not lost just because no further scene-reset
+        request will arrive."""
+        thread = self._eval_thread
+        if thread is not None and thread.is_alive():
+            bound = self.args.evaluate_timeout_s + 5.0
+            print(f"waiting for the in-flight evaluation (≤{bound:.0f}s)…")
+            thread.join(timeout=bound)
+            if thread.is_alive():
+                print(
+                    "[WARN] in-flight evaluation still running at "
+                    "shutdown — its archive may be incomplete"
+                )
+        if not (self.args.evaluate_on_quit and self.args.auto_evaluate):
+            return
+        with self.lock:
+            episode = self.episode
+        if episode is None:  # stopped/discarded episodes are deliberate
+            return
+        with episode.lock:
+            calls = episode.evaluator_calls
+        if calls:
+            return
+        print(
+            f"\n⚑ quitting with {episode.name} unevaluated — scoring its "
+            "final state first (--no-evaluate-on-quit disables this)"
+        )
+        self.evaluate(trigger=ended_by, episode=episode)
+
     def shutdown(self, ended_by) -> None:
+        try:
+            self._finish_evaluations(ended_by)
+        except KeyboardInterrupt:
+            print("\n(final evaluation aborted — continuing shutdown)")
+        print("draining encoders…")
         with self.lock:
             if self.episode is not None:
                 for worker in self.workers.values():
@@ -1264,6 +1306,24 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="official evaluator output dir (ro mount); "
         "unset = skip artifact archiving",
     )
+    parser.add_argument(
+        "--evaluate-timeout-s",
+        type=float,
+        default=30.0,
+        help="deadline (s) for ONE official-evaluator Trigger call — "
+        "used by [e], auto-evaluate and evaluate-on-quit, on top of a "
+        "fixed 3 s service-discovery wait (unrelated to "
+        "--stream-timeout-s, the silent-stream warning threshold)",
+    )
+    parser.add_argument(
+        "--evaluate-on-quit",
+        default=True,
+        action=argparse.BooleanOptionalAction,
+        help="on quit/SIGTERM while an episode is recording with no "
+        "evaluator calls yet (and auto-evaluate on), run one final "
+        "evaluation before shutdown so the session's last attempt is "
+        "scored",
+    )
     return parser
 
 
@@ -1415,7 +1475,7 @@ def main() -> None:
         ended_by = key_loop(args, session, reporter, stop_event)
     finally:
         CONSOLE.restore()
-    print(f"\nshutting down ({ended_by}) — draining encoders…")
+    print(f"\nshutting down ({ended_by})…")
     session.shutdown(ended_by)
     executor.shutdown(timeout_sec=2.0)
     node.destroy_node()

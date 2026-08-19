@@ -52,3 +52,15 @@ status_interval_s: 5.0
 # /eval_out); null it to skip artifact archiving.
 evaluate_service: /isaac/eval_camera/evaluate
 eval_out_dir: /eval_out/evaluate
+# Deadline (seconds) for ONE evaluator Trigger call — applies to the [e]
+# key, auto_evaluate, and evaluate_on_quit, on top of a fixed 3 s
+# service-discovery wait. Not to be confused with stream_timeout_s (the
+# silent-stream warning) or status_interval_s (the console tick).
+evaluate_timeout_s: 30.0
+# On [q]/SIGTERM while an episode is recording with no evaluator calls
+# yet (and auto_evaluate on): score its final state before shutting
+# down — a session's LAST attempt never triggers another scene-reset
+# request, so without this it would end unscored. Adds up to
+# evaluate_timeout_s + 3 s to quit. Episodes ended with [3]/[0] are
+# deliberate stops and are not auto-scored.
+evaluate_on_quit: true

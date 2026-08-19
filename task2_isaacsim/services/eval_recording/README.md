@@ -46,7 +46,8 @@ task2_isaacsim/scripts/run_eval_recorder.sh record --eval-name sub_16
 
 # 4. Reset the scene ([1] in the console, or the policy resets it) ->
 #    episode starts; run the policy. The next reset request (or [e])
-#    scores the attempt; [q] when done.
+#    scores the attempt; [q] when done (the last attempt, which never
+#    sees another reset request, is auto-scored on quit).
 ```
 
 Console keys: `[1]` publish scene-reset request, `[2]` force-start an
@@ -54,6 +55,7 @@ episode, `[3]` stop, `[0]` stop + mark discarded (data kept), `[e]`
 official evaluation into the current/last episode, `[s]` status panel,
 `[q]` quit. In `-- extra args`: `--manual` disables auto-segmentation,
 `--no-auto-evaluate` disables evaluate-on-reset-request,
+`--no-evaluate-on-quit` skips the final-state evaluation on quit,
 `--record-preamble` also records from session start to the first reset.
 Without a TTY (piped stdin) keys are read line-wise and EOF quits, so
 sessions can be scripted.
@@ -75,7 +77,8 @@ ep_001/
 ├── frames/<cam>.jsonl   # {i, pts_ms, stamp, recv_wall, clock} per frame
 ├── dumps/*.jsonl        # object_poses + joint_states (every 6th msg)
 └── evaluator/call_NNN/  # evaluator_result.json (trigger: manual |
-                         #   reset_request) + artifacts/ + calls.jsonl
+                         #   reset_request | quit | signal)
+                         #   + artifacts/ + calls.jsonl
 ```
 
 Videos are playable even after a hard kill (fragmented MP4, per-packet
@@ -95,6 +98,14 @@ still valid (salvage state).
   manifest is written is only counted in `calls.jsonl` (authoritative),
   not `evaluator_calls_at_close`. One evaluation runs at a time;
   concurrent triggers are skipped with a console note.
+- **Last episode / quit.** A session's final attempt never sees another
+  reset request, so `[q]`/SIGTERM first joins any in-flight evaluation
+  (bounded by `evaluate_timeout_s` + 5 s) and then, with
+  `evaluate_on_quit` (default on, requires `auto_evaluate`), scores a
+  still-recording episode that has no evaluator calls yet. Episodes
+  ended with `[3]`/`[0]` before quitting are deliberate stops and are
+  not auto-scored. `evaluate_timeout_s` bounds each single Trigger call
+  (unrelated to `stream_timeout_s`, the silent-stream warning).
 - **Evaluator capture.** `[e]`/auto-evaluate call the same
   `/isaac/eval_camera/evaluate` Trigger service as the official
   `run.sh evaluate` and diff the evaluator output dir (the handler

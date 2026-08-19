@@ -125,5 +125,12 @@ result="$(dirname "${calls}")/call_001/evaluator_result.json"
 [[ -f "${result}" ]] || fail "missing ${result}"
 pass "evaluator call recorded (success=$(jq -c .success "${calls}"))"
 
+last_ep=$(find "${OUT}" -maxdepth 1 -type d -name 'ep_*' | sort | tail -1)
+[[ -f "${last_ep}/evaluator/calls.jsonl" ]] \
+  || fail "last episode not scored on quit (evaluate_on_quit)"
+tail -1 "${last_ep}/evaluator/calls.jsonl" | jq -e '.trigger == "quit"' \
+  >/dev/null || fail "last episode's final call is not trigger=quit"
+pass "last episode scored on quit ($(basename "${last_ep}"))"
+
 echo
 pass "smoke test complete"
