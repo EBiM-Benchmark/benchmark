@@ -41,6 +41,9 @@ clock: /isaac/clock
 
 teleop:
   pedal_state: /pedal/state
+  # Twist ingress for the base pedal-token adapter
+  # (scripts/adapters/twist_to_pedal.py); quantized to pedal_state tokens.
+  base_twist_command: /cmd_vel
 
 bridge:
   # state: published by the bridge; command / browser_command: consumed by
