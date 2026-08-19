@@ -154,3 +154,53 @@ services:
     tty: true
     profiles:
       - record
+
+  # Organizer-side evaluation audit recorder
+  # (services/eval_recording/record_eval_task2.py): passively records an
+  # evaluation session — per-episode MP4s, frame/ground-truth JSONLs,
+  # official evaluator call archives — segmenting episodes at
+  # /isaac/task2/scene_reset events. Preferred entry point (also captures
+  # host-side session provenance):
+  #   scripts/run_eval_recorder.sh record --eval-name <name>
+  # or start directly with an interactive terminal (single keypresses
+  # drive the console; use `run`, not `up` — `up` would pin the container
+  # name and steal the console):
+  #   docker compose --profile eval_recording run --rm eval_recording
+  # Results land in <repo>/task2_isaacsim/${EVAL_RAW_OUT:-services/eval_recording/eval_raw_out}/<eval-name>/.
+  # The official evaluator's artifact dir (${ISAAC_DOCKER_ROOT}/eval-task2)
+  # is mounted read-only at /eval_out for [e]/auto-evaluate archiving.
+  eval_recording:
+    build:
+      context: services/eval_recording
+      dockerfile: Dockerfile
+    image: task2-eval-recording
+    container_name: task2_eval_recording
+    # Run as the host user so recordings land on the bind mount with the
+    # caller's ownership instead of root. scripts/run_eval_recorder.sh
+    # exports HOST_UID/HOST_GID automatically; export them yourself first
+    # if invoking `docker compose --profile eval_recording` directly.
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    network_mode: host
+    ipc: host
+    working_dir: /repo/task2_isaacsim
+    command: >
+      bash -lc "source /opt/ros/jazzy/setup.bash &&
+      python3 services/eval_recording/record_eval_task2.py
+      --config ${EVAL_RECORDER_CONFIG:-services/eval_recording/eval_recording.yaml}
+      --out-root ${EVAL_RAW_OUT:-services/eval_recording/eval_raw_out}
+      --eval_name ${EVAL_NAME:-dev}
+      ${EVAL_RECORDER_ARGS:-}"
+    environment:
+      - ROS_DISTRO=jazzy
+      - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+      - FASTDDS_BUILTIN_TRANSPORTS=UDPv4
+      # The host uid has no passwd entry in the container; give caches a
+      # writable HOME.
+      - HOME=/tmp
+    volumes:
+      - ..:/repo
+      - ${ISAAC_DOCKER_ROOT:-${HOME}/docker/ebim-challenge}/eval-task2:/eval_out:ro
+    stdin_open: true
+    tty: true
+    profiles:
+      - eval_recording

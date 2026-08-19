@@ -1,0 +1,54 @@
+# Copyright (c) 2026 The EBiM Benchmark Contributors
+# SPDX-License-Identifier: Apache-2.0
+#
+# Audit recorder defaults for services/eval_recording/record_eval_task2.py.
+# Keys mirror the recorder's CLI flags; precedence is: argparse defaults <
+# this file < explicit CLI flags (so EVAL_RECORDER_ARGS always wins).
+# Point the recorder at another file with --config / EVAL_RECORDER_CONFIG.
+
+# video_cameras selects the recorded set by contract key from
+# config/topics.yaml.
+video_cameras: head,wrist_left,wrist_right,eval_camera
+# Cameras dropped with a warning (instead of failing) when their contract
+# entry is missing or their topic stays silent; empty = all required.
+optional_cameras: ""
+
+# Audit output root; relative paths resolve against task2_isaacsim/.
+# Sessions land in <out_root>/<eval_name>/ep_NNN/.
+out_root: services/eval_recording/eval_raw_out
+
+# Watch mode: /isaac/task2/scene_reset events segment episodes; the
+# keypress menu overrides. false = manual mode ([2]/[3] drive episodes).
+auto_episode: true
+# Also record from session start to the first reset (started_by:
+# session_start) instead of waiting for the first reset event.
+record_preamble: false
+# When a scene reset is REQUESTED (policy- or organizer-initiated),
+# trigger the official evaluation on the ending episode's final scene
+# state before the reset wipes it.
+auto_evaluate: true
+
+# Encoding. fps is only the encoder/GOP rate hint — frame PTS comes from
+# ROS header stamps (sim time), so all videos stay mutually aligned at
+# whatever rate the sim actually publishes.
+fps: 30
+vcodec: libx264
+preset: ultrafast   # concurrent streams; favor low CPU over size
+crf: 23
+gop_s: 2.0          # keyframe interval -> fragment size of the frag-MP4
+frame_stride: 1     # encode every Nth received frame per camera
+queue_maxsize: 120  # per-camera backlog before frames are dropped (counted)
+stream_timeout_s: 20.0
+
+# Low-rate audit dumps (object_poses + joint_states_full JSONLs).
+dump_topics: true
+dump_stride: 6      # every Nth message (~10 Hz at the 60 Hz publish rate)
+
+status_interval_s: 5.0
+
+# Official evaluator integration ([e] key / auto_evaluate). eval_out_dir
+# is where the evaluator writes its artifacts as seen from THIS container
+# (docker-compose.yml mounts ${ISAAC_DOCKER_ROOT}/eval-task2 read-only at
+# /eval_out); null it to skip artifact archiving.
+evaluate_service: /isaac/eval_camera/evaluate
+eval_out_dir: /eval_out/evaluate

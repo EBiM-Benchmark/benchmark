@@ -11,6 +11,7 @@ see the [README](README.md).
 | Scene script + bridge (`scripts/scene_room.py` / `scene_barebone.py` + `isaacsim_fr3duo_teleop_bridge_core.py`) | `isaac-sim-5-1-0-workshop` container, via `/isaac-sim/python.sh` (launched by `scripts/run_isaacsim_teleop.sh`) | `/workspace/EBiM_Challenge` | Simulation, teleop runtime, joint state/command ROS node; with `--record` also `/isaac/clock` (bridge node), the camera OmniGraphs (`scripts/recording/camera_publishers.py`), and ground-truth publishers (`scripts/recording/scene_capture.py`) |
 | Helper stack (`ros_republisher`, `position_controller`, `teleop_adapters`, `browser_controller`) | `task2_*` containers from [docker-compose.yml](docker-compose.yml), all `ros:jazzy-ros-base`-based | `../task1_isaacsim` at `/workspace` | Task 1 scripts reused verbatim: remap `/bridge/*` commands onto `/isaac/*`, adapt device topics, serve the browser UI (port 8090) |
 | Recorder (`services/recording/record_task2.py`) | `task2_lerobot_recorder` container (compose profile `record`), launched by `scripts/run_recorder.sh` | whole repo at `/repo`, working dir `/repo/task2_isaacsim` | Subscribes to the recording topics and writes the LeRobot dataset + `task2_extras/` sidecar |
+| Eval audit recorder (`services/eval_recording/record_eval_task2.py`) | `task2_eval_recording` container (compose profile `eval_recording`), launched by `scripts/run_eval_recorder.sh` | whole repo at `/repo`, working dir `/repo/task2_isaacsim`; evaluator artifacts read-only at `/eval_out` | Organizer-side passive audit of evaluation sessions: per-episode fragmented MP4s (PTS = sim time), frame/ground-truth JSONLs, official evaluator call archives, manifest + provenance |
 | Device publishers (keyboard / GELLO / pedal) | host, from the [`teleoperation`](https://github.com/EBiM-Benchmark/teleoperation) repo | — | Publish `/keyboard/state`, `/{left,right}/gello/joint_states`, pedal state |
 
 Everything is `network_mode: host` + FastDDS over UDPv4, so topics flow
@@ -171,13 +172,28 @@ argparse defaults  <  recording.yaml (--config)  <  explicit CLI flags
   type mismatches (booleans especially) are hard errors.
 - `null` means "use the built-in default" (e.g. `encoder_threads`).
 
+### `services/eval_recording/eval_recording.yaml`
+
+Eval audit recorder defaults; keys mirror the `record_eval_task2.py` CLI
+flags with the same precedence chain as `recording.yaml`. Through
+compose, `EVAL_RECORDER_CONFIG` sets the container-side config path,
+`EVAL_RECORDER_ARGS` passes individual flags, `EVAL_NAME` names the
+session, and `EVAL_RAW_OUT` moves the output root (a container path
+relative to `/repo/task2_isaacsim`). CLI-only keys: `eval_name`,
+`episode`, `config`. `eval_out_dir` is the evaluator's artifact dir as
+mounted in THIS container (`/eval_out/evaluate`, backed by
+`${ISAAC_DOCKER_ROOT}/eval-task2`); `null` skips artifact archiving.
+
 ### `.env`
 
 Helper-stack knobs (gripper calibration, adapter selection, controller
 mode) — see [.env.example](.env.example). `HOST_UID`/`HOST_GID` make the
 recorder write datasets with your ownership; `run_recorder.sh` exports them
 automatically (export them yourself first if invoking
-`docker compose --profile record` directly).
+`docker compose --profile record` directly). The `eval_recording` service
+adds `EVAL_NAME`, `EVAL_RAW_OUT`, `EVAL_RECORDER_*`, `ISAAC_DOCKER_ROOT`,
+and the provenance knobs (`EVAL_TARGET_DIR`, `ISAAC_SIM_5_CONTAINER`,
+`EVAL_SERVICE_CONTAINER`).
 
 ## Dataset schema
 
@@ -255,6 +271,42 @@ foreground + TTY), `build`, `shell`; `--config`; args after `--` are
 appended to `RECORDER_ARGS` (e.g. `-- --resume`). The container runs as `HOST_UID:HOST_GID` with `HOME=/tmp`
 (the host uid has no passwd entry inside, and HF/rerun need a writable
 cache dir).
+
+## Eval recording service internals
+
+`services/eval_recording/` is the organizer-side audit recorder — a
+passive observer of evaluation sessions (it publishes nothing but scene
+reset *requests* on the operator's `[1]` key):
+
+- `Dockerfile` — `ros:jazzy-ros-base` + ffmpeg + numpy/yaml +
+  `rosgraph_msgs` + PyAV (build-asserts `libx264`). Code is **not**
+  baked in; the container runs it from the `/repo` bind mount.
+- `eval_recording.yaml` — default recorder config (above).
+- `record_eval_task2.py` — the recorder node (interactive stdin console).
+- `tests/mock_sim.py` — synthetic contract publisher (cameras, clock,
+  ground truth, resets; mirrors reset_request → scene_reset) for
+  Isaac-free testing.
+- `tests/smoke_test.sh` — scripted end-to-end check against the mock sim.
+
+Episode lifecycle: every `/isaac/task2/scene_reset` event rotates to a
+fresh `ep_NNN/` (`auto_episode`); a `scene_reset_request` on the wire
+first triggers the official evaluation of the still-current scene state
+(`auto_evaluate`), archiving the Trigger response plus any new files the
+evaluator wrote under `/eval_out/evaluate`. Threading: one executor spin
+thread feeds per-camera encoder threads over bounded-by-check queues
+(overflow is counted as `dropped`, never blocking); MP4 PTS come from
+ROS header stamps (sim time, ms, rebased per episode), so the per-camera
+videos stay mutually aligned at any RTF. A `.status.json` next to the
+episodes is rewritten every status tick.
+
+`scripts/run_eval_recorder.sh` wraps the compose service: `record`
+(default, foreground + TTY; requires `--eval-name`), `build`, `shell`,
+`mock-sim`; `--config`; args after `--` are appended to
+`EVAL_RECORDER_ARGS`. Before attaching, `record` writes
+`.session_provenance.json` (repo git state, `topics.py`/`topics.yaml`
+sha256s, optional `EVAL_TARGET_DIR` git head, sim/evaluator container
+image ids) into the session dir; the recorder copies it into each
+episode as `provenance.json`.
 
 ## Recipes
 
