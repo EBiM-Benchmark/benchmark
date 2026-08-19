@@ -77,7 +77,7 @@ ep_001/
 ├── frames/<cam>.jsonl   # {i, pts_ms, stamp, recv_wall, clock} per frame
 ├── dumps/*.jsonl        # object_poses + joint_states (every 6th msg)
 └── evaluator/call_NNN/  # evaluator_result.json (trigger: manual |
-                         #   reset_request | quit | signal)
+                         #   reset_request | quit | signal | external)
                          #   + artifacts/ + calls.jsonl
 ```
 
@@ -106,6 +106,19 @@ still valid (salvage state).
   ended with `[3]`/`[0]` before quitting are deliberate stops and are
   not auto-scored. `evaluate_timeout_s` bounds each single Trigger call
   (unrelated to `stream_timeout_s`, the silent-stream warning).
+- **External evaluator calls** (`watch_external_evals`, default off). A
+  policy may call the `/isaac/eval_camera/evaluate` Trigger service
+  directly; ROS 2 service calls are point-to-point, so the recorder
+  cannot observe the call itself — but the evaluator writes artifacts
+  into the shared output dir either way. With this option the recorder
+  polls `eval_out_dir` every status tick and archives unclaimed new
+  files into the matching episode as `trigger: external` call records
+  (IoU parsed when present; files older than the current episode's
+  start are attributed to the previous episode). Such records count as
+  the episode being scored, so `evaluate_on_quit` will not re-score it.
+  Limits: calls landing within one tick coalesce into one record, and a
+  policy that scores in-process produces no service call and no
+  artifacts — there is nothing observable to record.
 - **Evaluator capture.** `[e]`/auto-evaluate call the same
   `/isaac/eval_camera/evaluate` Trigger service as the official
   `run.sh evaluate` and diff the evaluator output dir (the handler

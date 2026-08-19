@@ -64,3 +64,10 @@ evaluate_timeout_s: 30.0
 # evaluate_timeout_s + 3 s to quit. Episodes ended with [3]/[0] are
 # deliberate stops and are not auto-scored.
 evaluate_on_quit: true
+# Also poll eval_out_dir (each status tick) for artifacts written by
+# evaluator Trigger calls the recorder did NOT make (a policy calling
+# the service directly) and archive them into the matching episode as
+# trigger: external records. ROS 2 service calls themselves are
+# point-to-point and unobservable — only this artifact side effect is,
+# so a policy that scores in-process stays invisible either way.
+watch_external_evals: false

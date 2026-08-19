@@ -30,8 +30,12 @@ command -v ffprobe >/dev/null || fail "ffprobe not found on the host"
 export HOST_UID="${HOST_UID:-$(id -u)}"
 export HOST_GID="${HOST_GID:-$(id -g)}"
 
+EVAL_ART_DIR="${ISAAC_DOCKER_ROOT:-${HOME}/docker/ebim-challenge}/eval-task2/evaluate"
+INJECTED="${EVAL_ART_DIR}/eval_camera_iou_zz_smoke_$$.json"
+
 cleanup() {
   docker rm -f "${MOCK_NAME}" >/dev/null 2>&1 || true
+  rm -f "${INJECTED}"
   if [[ "${KEEP}" -eq 0 ]]; then
     rm -rf "${OUT}"
   else
@@ -49,12 +53,24 @@ echo "=== mock sim up (auto-reset every 20 s) ==="
 sleep 8
 
 echo "=== recorder session (~55 s, piped stdin => line-mode console) ==="
+# A fake evaluator artifact dropped into the watched dir mid-session
+# simulates a third-party Trigger call (the artifact side effect is all
+# the recorder can observe); the watcher must archive it as an
+# external record.
+mkdir -p "${EVAL_ART_DIR}"
+(
+  sleep 40
+  printf '%s' '{"iou_thermalpad_vs_target_current": 0.42,
+    "is_orientation_correct": true,
+    "orientation_case": "smoke_injected"}' > "${INJECTED}"
+) &
+
 # [e] fires an evaluator call mid-episode; the outcome must be recorded
 # either way (evaluator down: transport-failure record; evaluator up:
 # real Trigger response + artifact archive — note this also makes the
 # live evaluator write a fresh artifact set into its output dir).
 { sleep 30; echo e; sleep 25; echo q; } | \
-  "${RUNNER}" record --eval-name "${EVAL_NAME}"
+  "${RUNNER}" record --eval-name "${EVAL_NAME}" -- --watch-external-evals
 
 echo "=== assertions ==="
 [[ -f "${OUT}/.session_provenance.json" ]] \
@@ -131,6 +147,15 @@ last_ep=$(find "${OUT}" -maxdepth 1 -type d -name 'ep_*' | sort | tail -1)
 tail -1 "${last_ep}/evaluator/calls.jsonl" | jq -e '.trigger == "quit"' \
   >/dev/null || fail "last episode's final call is not trigger=quit"
 pass "last episode scored on quit ($(basename "${last_ep}"))"
+
+ext_result=$(grep -rl '"trigger": "external"' "${OUT}" \
+  --include=evaluator_result.json | head -1)
+[[ -n "${ext_result}" ]] \
+  || fail "injected artifact not archived (watch_external_evals)"
+jq -e '.iou.iou_thermalpad_vs_target_current == 0.42' "${ext_result}" \
+  >/dev/null || fail "external record iou mismatch"
+pass "external evaluator call archived ($(dirname "${ext_result}" \
+  | xargs basename))"
 
 echo
 pass "smoke test complete"

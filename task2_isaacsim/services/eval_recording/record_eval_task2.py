@@ -16,12 +16,11 @@ Passively watches an evaluation run and records, per episode:
 Episodes segment automatically at /isaac/task2/scene_reset events
 (the policy under evaluation may reset the scene itself); the keypress
 menu is the manual fallback/override. Topic names come from the shared
-contract
-(config/topics.yaml via scripts/topics.py). The console mirrors the
-official demo recorder (services/recording/record_task2.py): cbreak
-single-keypress on a TTY, line-mode fallback on piped stdin with EOF
-acting as quit. Launch through scripts/run_eval_recorder.sh (compose
-profile "eval_recording").
+contract (config/topics.yaml via scripts/topics.py). The console
+mirrors the official demo recorder (services/recording/record_task2.py):
+cbreak single-keypress on a TTY, line-mode fallback on piped stdin with
+EOF acting as quit. Launch through scripts/run_eval_recorder.sh
+(compose profile "eval_recording").
 """
 
 import argparse
@@ -617,6 +616,11 @@ class Session:
         self.last_eval_summary = None
         self._eval_in_flight = threading.Lock()
         self._eval_thread = None  # last auto-evaluate thread, for shutdown
+        # eval_out artifacts already attributed to a call record; only
+        # ever touched under _eval_in_flight (serializes the external
+        # watcher against the recorder's own call diffs).
+        self._claimed_files = set()
+        self._external_baseline = False
         self._dump_files = {}
         self._dump_counts = {}
         self._first_episode_name = args.episode
@@ -816,6 +820,14 @@ class Session:
                 for p in eval_dir.iterdir()
                 if p.is_file() and p.name not in before
             )
+            self._claimed_files.update(new_files)
+        self._record_call(trigger, episode, ok, message, new_files, eval_dir)
+
+    def _record_call(
+        self, trigger, episode, ok, message, new_files, eval_dir
+    ) -> None:
+        """Archive one evaluator call (own or external) into the
+        episode's evaluator/ dir: call_NNN/ + calls.jsonl."""
         calls_dir = episode.path / "evaluator"
         calls_dir.mkdir(exist_ok=True)
         call_index = 1 + sum(
@@ -872,7 +884,13 @@ class Session:
             )
         with episode.lock:
             episode.evaluator_calls += 1
-        if ok is None:
+        if trigger == "external":
+            summary = (
+                f"external eval #{call_index}: "
+                f"IoU={(iou or {}).get('iou_thermalpad_vs_target_current')} "
+                f"orientation_ok={(iou or {}).get('is_orientation_correct')}"
+            )
+        elif ok is None:
             summary = f"[FAIL] evaluation not captured: {message}"
         elif iou is not None:
             summary = (
@@ -888,6 +906,78 @@ class Session:
             f"\n{summary}\n   archived {len(new_files)} artifact(s) → "
             f"{call_dir}"
         )
+
+    # -- external evaluator calls (--watch-external-evals) -------------------
+    def scan_external_evals(self) -> None:
+        """Attribute evaluator artifacts written by Trigger calls the
+        recorder did not make (e.g. a policy calling the service
+        directly) to episodes. ROS 2 service calls are point-to-point
+        and unobservable by third parties — only this artifact side
+        effect in eval_out_dir is."""
+        if not (self.args.watch_external_evals and self.args.eval_out_dir):
+            return
+        eval_dir = Path(self.args.eval_out_dir)
+        if not eval_dir.is_dir():
+            return
+        if not self._eval_in_flight.acquire(blocking=False):
+            return  # a recorder-initiated call owns the dir diff now
+        try:
+            entries = {p.name: p for p in eval_dir.iterdir() if p.is_file()}
+            if not self._external_baseline:
+                # First sight of the dir: whatever is already there
+                # predates the session.
+                self._external_baseline = True
+                self._claimed_files.update(entries)
+                return
+            fresh = sorted(set(entries) - self._claimed_files)
+            if not fresh:
+                return
+            self._claimed_files.update(fresh)
+            for episode, names in self._attribute_external(fresh, entries):
+                if episode is None:
+                    print(
+                        f"\n[WARN] external evaluator artifacts with no "
+                        f"episode to attach: {', '.join(names)}"
+                    )
+                    continue
+                print(
+                    f"\n⚑ external evaluator call detected — archiving "
+                    f"{len(names)} artifact(s) into {episode.name}"
+                )
+                self._record_call(
+                    "external",
+                    episode,
+                    None,
+                    "external Trigger call observed via artifacts",
+                    names,
+                    eval_dir,
+                )
+        finally:
+            self._eval_in_flight.release()
+
+    def _attribute_external(self, fresh, entries):
+        """Group fresh artifact names by target episode: a file older
+        than the current episode's start belongs to the previous one
+        (an external call racing an episode rotation scored the
+        previous scene)."""
+        with self.lock:
+            current, last = self.episode, self.last_episode
+        if current is None and last is None:
+            return [(None, fresh)]
+        if current is None or last is None:
+            return [(current or last, fresh)]
+        try:
+            cur_start = datetime.fromisoformat(current.start_wall).timestamp()
+        except ValueError:
+            return [(current, fresh)]
+        groups = {}
+        for name in fresh:
+            try:
+                older = entries[name].stat().st_mtime < cur_start
+            except OSError:
+                older = False
+            groups.setdefault(last if older else current, []).append(name)
+        return list(groups.items())
 
     # -- shutdown ------------------------------------------------------------
     def _finish_evaluations(self, ended_by) -> None:
@@ -906,6 +996,9 @@ class Session:
                     "[WARN] in-flight evaluation still running at "
                     "shutdown — its archive may be incomplete"
                 )
+        # Late external artifacts both get archived and count as the
+        # episode being scored (suppressing evaluate_on_quit below).
+        self.scan_external_evals()
         if not (self.args.evaluate_on_quit and self.args.auto_evaluate):
             return
         with self.lock:
@@ -1000,6 +1093,7 @@ class StatusReporter:
                         for k in silent
                     )
                 )
+        self.session.scan_external_evals()
         print(self.line())
         self.write_status_json()
 
@@ -1146,6 +1240,10 @@ def print_menu(args, camera_keys) -> None:
     print(
         "   auto-evaluate on reset request: "
         + ("on" if args.auto_evaluate else "off")
+    )
+    print(
+        "   external eval watch: "
+        + ("on" if args.watch_external_evals else "off")
     )
     print(f" Keys ({hint}):")
     seen = set()
@@ -1324,6 +1422,16 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "evaluation before shutdown so the session's last attempt is "
         "scored",
     )
+    parser.add_argument(
+        "--watch-external-evals",
+        default=False,
+        action=argparse.BooleanOptionalAction,
+        help="poll eval-out-dir (each status tick) for evaluator "
+        "artifacts written by Trigger calls the recorder did not make "
+        "— e.g. a policy calling the service directly — and archive "
+        "them into the matching episode as trigger=external call "
+        "records; requires --eval-out-dir",
+    )
     return parser
 
 
@@ -1440,6 +1548,7 @@ def main() -> None:
     node_holder["node"] = node
     session = Session(args, node, workers, session_dir, topics_yaml)
     node.session = session
+    session.scan_external_evals()  # baseline: claim pre-session artifacts
     reporter = StatusReporter(args, node, session, workers, dropped)
 
     for worker in workers.values():

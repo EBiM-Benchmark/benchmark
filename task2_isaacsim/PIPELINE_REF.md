@@ -301,7 +301,11 @@ episodes is rewritten every status tick. On quit, an in-flight
 evaluation is joined (bounded by `evaluate_timeout_s`) and a
 still-recording, never-evaluated episode is scored one final time
 (`evaluate_on_quit`) — a session's last attempt never sees another
-reset request, so this is what scores it.
+reset request, so this is what scores it. With `watch_external_evals`
+(default off) the recorder also polls `/eval_out/evaluate` for
+artifacts from Trigger calls it did not make (a policy calling the
+evaluator directly) and archives them as `trigger: external` records —
+the service calls themselves are point-to-point and unobservable.
 
 `scripts/run_eval_recorder.sh` wraps the compose service: `record`
 (default, foreground + TTY; requires `--eval-name`), `build`, `shell`,
