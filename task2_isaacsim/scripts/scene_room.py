@@ -213,6 +213,14 @@ def main():
         arm_teleop=arm_keyboard_teleop,
     )
 
+    if spine_keyboard_controller is not None:
+        import policy_ext  # noqa: PLC0415
+
+        tick_callbacks = [
+            *tick_callbacks,
+            policy_ext.SpineCommandCallback(spine_keyboard_controller),
+        ]
+
     core.run_teleop_loop(
         simulation_app,
         world,

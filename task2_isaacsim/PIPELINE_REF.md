@@ -34,6 +34,7 @@ Isaac Sim; the recorder imports it through
 |---|---|---|
 | `/keyboard/state`, `/{left,right}/gello/joint_states`, gripper width topics | various | host device publishers → teleop adapters |
 | `/pedal/state` | `std_msgs/String` | teleop adapters (`keyboard_to_base.py`) or host pedal publisher → bridge (swerve base) |
+| `/isaac/spine_joint_commands` | `sensor_msgs/JointState` | any ROS publisher → in-sim spine command ingress (`scripts/policy_ext.py`, registered by `scene_room.py`; needs `--spine-keyboard-control`, on by default) |
 | `/bridge/{left,right}_joint_commands`, `/bridge/{left,right}_robotiq_joint_commands` | `sensor_msgs/JointState` | adapters / browser UI → republisher + position controller *(task1-side names, not in the contract)* |
 | `/isaac/{left,right}_joint_commands` | `sensor_msgs/JointState` | position controller → bridge |
 | `/isaac/{left,right}_robotiq_joint_commands` | `sensor_msgs/JointState` | republisher (gripper calibration) → bridge |

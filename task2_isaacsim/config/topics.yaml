@@ -62,6 +62,12 @@ bridge:
       state: /isaac/right_robotiq_joint_states
       command: /isaac/right_robotiq_joint_commands
       browser_command: /isaac/browser/right_robotiq_joint_commands
+  # command: consumed by the policy extension (scripts/policy_ext.py,
+  # registered by the scene scripts) for franka_spine_vertical_joint;
+  # same sensor_msgs/JointState convention as the joint groups. Requires
+  # --spine-keyboard-control so the spine controller exists.
+  spine:
+    command: /isaac/spine_joint_commands
 
 # Published by the bridge only with --publish-recording-topics (implied by
 # the scene scripts' --record flag).
