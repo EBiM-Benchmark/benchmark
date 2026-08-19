@@ -3,6 +3,8 @@
 Evaluates thermal-pad placement in the task2 scene by computing a
 **bounding-box IoU** between the pad (liner / thermalpad) and the target, plus an
 orientation check, from the Isaac Sim eval-camera ROS2 streams.
+The reason behind choosing bounding-box IoU instead of simulation
+ground-truth is to mimic the real-world evaluation.
 
 The main `docker/` stack (Isaac Sim/Lab) ships **without ROS2**, so this module
 runs in its **own, self-contained ROS2 container** (`ros:jazzy-ros-base`). It is

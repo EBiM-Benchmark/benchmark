@@ -36,13 +36,14 @@ task2_isaacsim/scripts/run_eval_recorder.sh build
 
 # 1. Launch the scene with recording topics enabled (repo root)
 bash task2_isaacsim/scripts/run_isaacsim_teleop.sh --scene room \
-    --no-browser --no-republisher --controller-mode none -- --record
+    --no-browser --no-republisher --controller-mode none -- --record \
+    --randomize-objects
 
 # 2. Bring up the official evaluator (for [e]/auto-evaluate capture)
 bash scripts/evaluation/task2/run.sh up
 
 # 3. Attach an audit session (interactive console)
-task2_isaacsim/scripts/run_eval_recorder.sh record --eval-name sub_16
+task2_isaacsim/scripts/run_eval_recorder.sh record --eval-name submission_000
 
 # 4. Reset the scene ([1] in the console, or the policy resets it) ->
 #    episode starts; run the policy. The next reset request (or [e])

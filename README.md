@@ -57,7 +57,7 @@ cd task1_mujoco
 See [`task1_mujoco/README.md`](task1_mujoco/README.md) for the full participant
 guide (paths, input modes, controls, troubleshooting).
 
-## Task 2 — Mobile FR3 Duo Teleoperation (Isaac Sim 5.1.0 / PhysX)
+## Task 2 — Deformable Material Handling (Isaac Sim 5.1.0 / PhysX)
 
 [`task2_isaacsim/`](task2_isaacsim/README.md) contains the Task 2 teleoperation
 stack: driving the mobile FR3 Duo to place the deformable thermal pad, running

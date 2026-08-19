@@ -16,6 +16,16 @@ in **Isaac Sim 5.1.0 (PhysX)**. This task requires PhysX GPU deformables, since 
 The evaluation code in this repository ([Task 2 evaluation](../scripts/evaluation/task2/README.md#evaluation-metric)) is a **development facilitator**; official scoring follows the rules and scoring
 published on the **[competition page](https://ebim-benchmark.github.io/competition.html#tasks)**.
 
+### Phase 1 (Simulation) Evaluation Protocol
+- For each submission, the organizers run a single evaluation session consisting of **10 episodes**. The **best score** across those episodes is reported as the final score.
+- Evaluation sessions are recorded by the `eval_recording` service (see [Task 2 evaluation recorder](services/eval_recording/README.md)) and scored by the evaluator service (see [Task 2 evaluation](../scripts/evaluation/task2/README.md)).
+- The evaluation camera and the ground-truth simulation object states are used strictly for scoring and auditing, and must **not be used by the policy**.
+- Evaluation sessions are segmented into episodes at `/isaac/task2/scene_reset` events. The policy under evaluation may request a scene reset itself by publishing on `/isaac/task2/scene_reset_request`. A reset request automatically triggers the official evaluation on the episode's final scene state.
+- In each episode, the object layout is **randomized**, as controlled by the `--randomize-objects` flag (see [Object randomization](#object-randomization)):
+  1. The target board is swapped into a randomly chosen one of the four slots (A–D).
+  2. Each board is independently jittered in XY (± 2 cm), without rotation.
+  3. The thermal pad and its sticker base are not randomized; they are restored to their authored spawn pose on every reset.
+
 ## Prerequisites
 
 1. Linux host with a supported NVIDIA GPU + recent driver.
@@ -268,9 +278,7 @@ stream details are documented in the
    coherent set before the suggestion goes `null` and the label falls back
    to the console prompt or default `False`), and the stored
    `success_suggestion` now also carries `orientation_confidence`, the
-   liner/thermalpad pixel ratios, and sync status. **The official score
-   composition — Pick Success × Placement Orientation Success × Placement
-   IoU — is unchanged.**
+   liner/thermalpad pixel ratios, and sync status.
 
 ### Object randomization
 
