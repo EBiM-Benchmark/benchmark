@@ -122,6 +122,13 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         "value or X Y Z. Ignored for a regular room USD.",
     )
     parser.add_argument(
+        "--align",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Listen for align_nudger.py (NuRec mode only). "
+        "Disable with --no-align.",
+    )
+    parser.add_argument(
         "--task",
         choices=tuple(room_scene.TASK_ROBOT_POSES),
         default="task2",
@@ -394,6 +401,9 @@ def main():
 
     robot_position = room_scene.resolve_robot_position(args_cli)
     robot_yaw = room_scene.resolve_robot_yaw(args_cli)
+    env_xyz = tuple(args_cli.xyz)
+    env_xyz_deg = tuple(args_cli.xyz_deg)
+    env_scale = _as_scale(args_cli.scale)
 
     app = omni.kit.app.get_app()
     if nurec_mode:
@@ -405,9 +415,9 @@ def main():
             robot_position=robot_position,
             robot_rotation=room_scene.yaw_to_quat(robot_yaw),
             task=args_cli.task,
-            xyz=tuple(args_cli.xyz),
-            xyz_deg=tuple(args_cli.xyz_deg),
-            scale=_as_scale(args_cli.scale),
+            xyz=env_xyz,
+            xyz_deg=env_xyz_deg,
+            scale=env_scale,
         )
     else:
         room_scene.build_stage(
@@ -483,6 +493,26 @@ def main():
         spine_controller=spine_keyboard_controller,
         arm_teleop=arm_keyboard_teleop,
     )
+
+    if nurec_mode and args_cli.align:
+        from align_nudger import AlignController, default_prims  # noqa: PLC0415
+
+        tick_callbacks.append(
+            AlignController(
+                prims={
+                    "root": stage.GetPrimAtPath(ENV_ROOT_PATH),
+                    "mesh": stage.GetPrimAtPath(ENV_MESH_PATH),
+                },
+                set_xform=room_scene.set_xform,
+                euler_to_quat=room_scene.euler_xyz_to_quat,
+                initial=default_prims(
+                    xyz=env_xyz,
+                    xyz_deg=env_xyz_deg,
+                    scale=env_scale,
+                ),
+                mesh_visible=False,
+            )
+        )
 
     core.run_teleop_loop(
         simulation_app,

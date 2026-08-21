@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 # Copyright (c) 2026 The EBiM Benchmark Contributors
 # SPDX-License-Identifier: Apache-2.0
-"""Live kitchen xform nudger — no Isaac relaunch.
+"""Live room xform nudger — no Isaac relaunch.
 
 Run this on the same machine as the Isaac container (host networking) while
-scene_room.py is up with a NuRec kitchen. Watch the WebRTC view and tap keys
-here; the sim applies translates/rotates on the next tick.
+scene_room.py is up with a NuRec room. Watch the WebRTC view and tap keys
+here; the sim applies translate / rotate / scale on the next tick.
 
-    python3 task2_isaacsim/scripts/kitchen_align_nudger.py
+    python3 task2_isaacsim/scripts/align_nudger.py
 
 Colon (``:``) opens a command line for exact values, e.g. ``:tz 1.24``,
 ``:rxyz 90 0 0``, or ``:scale 1.2``. ``p`` prints CLI flags you can paste
-into the next launch or into scene_room.py constants.
+into the next launch.
 """
 
 from __future__ import annotations
@@ -34,31 +34,22 @@ from typing import Any, Callable, Iterable
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
-TARGETS = ("kitchen", "parent", "robot")
-TARGET_ALIASES = {
-    "kitchen": "kitchen",
-    "volume": "kitchen",
-    "mesh": "kitchen",
-    "parent": "parent",
-    "robot": "robot",
-}
+ROOM = "room"
 STEP_M = (0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.0)
 STEP_DEG = (1.0, 5.0, 15.0, 45.0, 90.0)
 STEP_S = (0.01, 0.05, 0.1, 0.25)
 MIN_SCALE = 0.01
 UNIT_SCALE = (1.0, 1.0, 1.0)
-MESH_RX_OFFSET_DEG = -90.0
 
 HELP = """
   wasd / arrows   translate X/Y     q / e        translate Z
   z / x           rotate Rx         c / v        rotate Ry
   b / n           rotate Rz         + / -        uniform scale
-  1 kitchen (volume+mesh)  2 parent  3 robot      tab cycles
   [ ]  finer/coarser metres           { }  finer/coarser degrees
   ( )  finer/coarser scale
   m    toggle mesh visibility         p    print CLI flags
-  0    reset current target           R    reset all
-  :    type a command (xyz -3 -5.1 4.2, rxyz -90 0 0, scale 4, …)
+  0 / R  reset room
+  :    type a command (xyz -0.5 0.7 2.2, rxyz -93 0 0, scale 5, …)
   h    this help                      esc / ctrl-c  quit
 """.strip(
     "\n"
@@ -100,58 +91,24 @@ def _cli_scale(flag: str, scale: list[float]) -> str:
     return f"{flag} {sx:g} {sy:g} {sz:g}"
 
 
-def _is_identity_xyz(pos: list[float]) -> bool:
-    return all(abs(v) < 1e-9 for v in pos)
-
-
-def _is_unit_scale(scale: list[float]) -> bool:
-    return all(abs(v - 1.0) < 1e-9 for v in scale)
-
-
 def format_cli(prims: dict[str, dict[str, list[float]]]) -> str:
-    parent = prims["parent"]
-    kitchen = prims["kitchen"]
-    robot = prims["robot"]
-    parts = [
-        f"--xyz-deg {kitchen['rxyz'][0]:g} {kitchen['rxyz'][1]:g} {kitchen['rxyz'][2]:g}",
-        f"--xyz {kitchen['pos'][0]:g} {kitchen['pos'][1]:g} {kitchen['pos'][2]:g}",
-        _cli_scale("--scale", kitchen["scale"]),
-    ]
-    if not _is_identity_xyz(parent["pos"]):
-        parts.append(
-            f"--parent-xyz {parent['pos'][0]:g} {parent['pos'][1]:g} {parent['pos'][2]:g}"
-        )
-    if not _is_unit_scale(parent["scale"]):
-        parts.append(_cli_scale("--parent-scale", parent["scale"]))
-    parts.extend(
+    room = prims[ROOM]
+    return " ".join(
         [
-            f"--robot-x {robot['pos'][0]:g} --robot-y {robot['pos'][1]:g}",
-            f"--robot-z {robot['pos'][2]:g} --robot-yaw {robot['rxyz'][2]:g}",
+            f"--xyz-deg {room['rxyz'][0]:g} {room['rxyz'][1]:g} {room['rxyz'][2]:g}",
+            f"--xyz {room['pos'][0]:g} {room['pos'][1]:g} {room['pos'][2]:g}",
+            _cli_scale("--scale", room["scale"]),
         ]
     )
-    return " ".join(parts)
 
 
 def format_constants(prims: dict[str, dict[str, list[float]]]) -> str:
-    parent = prims["parent"]
-    kitchen = prims["kitchen"]
-    robot = prims["robot"]
-    return "\n".join(
-        [
-            f"ENV_RXYZ_DEG = ({kitchen['rxyz'][0]:.6g}, {kitchen['rxyz'][1]:.6g}, {kitchen['rxyz'][2]:.6g})",
-            f"ENV_XYZ_M = ({kitchen['pos'][0]:.6g}, {kitchen['pos'][1]:.6g}, {kitchen['pos'][2]:.6g})",
-            f"ENV_SCALE = ({kitchen['scale'][0]:.6g}, {kitchen['scale'][1]:.6g}, {kitchen['scale'][2]:.6g})",
-            f"ENV_PARENT_XYZ_M = ({parent['pos'][0]:.6g}, {parent['pos'][1]:.6g}, {parent['pos'][2]:.6g})",
-            f"ENV_PARENT_SCALE = ({parent['scale'][0]:.6g}, {parent['scale'][1]:.6g}, {parent['scale'][2]:.6g})",
-            f"KITCHEN_ROBOT_POSITION = ({robot['pos'][0]:.6g}, {robot['pos'][1]:.6g}, {robot['pos'][2]:.6g})",
-            f"KITCHEN_ROBOT_YAW_DEG = {robot['rxyz'][2]:.6g}",
-        ]
-    )
+    return format_cli(prims)
 
 
 @dataclass
 class AlignState:
-    target: str = "kitchen"
+    target: str = ROOM
     step_m: float = 0.1
     step_deg: float = 1.0
     step_s: float = 0.05
@@ -173,36 +130,23 @@ class AlignState:
 
 def default_prims(
     *,
-    parent_xyz: tuple[float, float, float],
-    kitchen_xyz: tuple[float, float, float],
-    kitchen_rxyz: tuple[float, float, float],
-    robot_xyz: tuple[float, float, float],
-    robot_yaw: float,
-    parent_scale: tuple[float, float, float] = UNIT_SCALE,
-    kitchen_scale: tuple[float, float, float] = UNIT_SCALE,
-    robot_scale: tuple[float, float, float] = UNIT_SCALE,
+    xyz: tuple[float, float, float],
+    xyz_deg: tuple[float, float, float],
+    scale: tuple[float, float, float],
 ) -> dict[str, dict[str, list[float]]]:
     return {
-        "kitchen": {
-            "pos": list(kitchen_xyz),
-            "rxyz": list(kitchen_rxyz),
-            "scale": list(kitchen_scale),
-        },
-        "parent": {
-            "pos": list(parent_xyz),
-            "rxyz": [0.0, 0.0, 0.0],
-            "scale": list(parent_scale),
-        },
-        "robot": {
-            "pos": list(robot_xyz),
-            "rxyz": [0.0, 0.0, float(robot_yaw)],
-            "scale": list(robot_scale),
+        ROOM: {
+            "pos": list(xyz),
+            "rxyz": list(xyz_deg),
+            "scale": list(scale),
         },
     }
 
 
 def _canonical_target(name: str) -> str | None:
-    return TARGET_ALIASES.get(str(name).lower())
+    if str(name).lower() in {ROOM, "volume", "mesh", "env"}:
+        return ROOM
+    return None
 
 
 def apply_command(state: AlignState, cmd: dict[str, Any]) -> str:
@@ -337,8 +281,8 @@ def parse_typed_command(text: str, target: str) -> dict[str, Any] | None:
             "cmd": "set_mesh",
             "visible": rest[0] in {"on", "show"},
         }
-    if head in TARGET_ALIASES:
-        return {"cmd": "select", "target": head}
+    if head in {ROOM, "volume", "mesh", "env"}:
+        return {"cmd": "select", "target": ROOM}
     if head in {"target", "t"} and rest:
         return {"cmd": "select", "target": rest[0].lower()}
     if head in {"print", "p", "cli"}:
@@ -422,10 +366,6 @@ def command_for_key(key: str) -> dict[str, Any] | None:
     if key in KEY_NUDGES:
         kind, delta = KEY_NUDGES[key]
         return {"cmd": "nudge", kind: delta, "_scale": kind}
-    if key in {"1", "2", "3"}:
-        return {"cmd": "select", "target": TARGETS[int(key) - 1]}
-    if key in {"\t"}:
-        return {"cmd": "cycle_target"}
     if key == "[":
         return {"cmd": "step_cycle", "which": "pos", "dir": -1}
     if key == "]":
@@ -456,7 +396,7 @@ def command_for_key(key: str) -> dict[str, Any] | None:
 # ---------------------------------------------------------------------------
 
 
-class KitchenAlignController:
+class AlignController:
     """Queue TCP/keyboard commands and apply them on the Isaac tick thread."""
 
     def __init__(
@@ -469,14 +409,10 @@ class KitchenAlignController:
         mesh_visible: bool,
         host: str = DEFAULT_HOST,
         port: int = DEFAULT_PORT,
-        apply_robot: Callable | None = None,
-        mesh_rx_offset_deg: float = MESH_RX_OFFSET_DEG,
     ) -> None:
         self._usd_prims = prims
         self._set_xform = set_xform
         self._euler_to_quat = euler_to_quat
-        self._apply_robot = apply_robot
-        self._mesh_rx_offset_deg = float(mesh_rx_offset_deg)
         self._baseline = deepcopy(initial)
         self.state = AlignState(
             mesh_visible=mesh_visible, prims=deepcopy(initial)
@@ -484,7 +420,7 @@ class KitchenAlignController:
         self._queue: queue.Queue = queue.Queue()
         self._clients: list[socket.socket] = []
         self._clients_lock = threading.Lock()
-        self._dirty = set(TARGETS)
+        self._dirty = True
         self._mesh_dirty = True
         self._last_print = ""
         self.host = host
@@ -494,13 +430,13 @@ class KitchenAlignController:
         try:
             self._start_server()
             print(
-                f"Kitchen aligner on {host}:{port} — "
-                "python3 task2_isaacsim/scripts/kitchen_align_nudger.py",
+                f"Room aligner on {host}:{port} — "
+                "python3 task2_isaacsim/scripts/align_nudger.py",
                 flush=True,
             )
         except OSError as exc:
             print(
-                f"Warning: kitchen aligner TCP {host}:{port} failed: {exc}",
+                f"Warning: room aligner TCP {host}:{port} failed: {exc}",
                 file=sys.stderr,
             )
 
@@ -526,101 +462,78 @@ class KitchenAlignController:
     def _handle(self, sock: socket.socket | None, cmd: dict[str, Any]) -> None:
         kind = str(cmd.get("cmd", "")).lower()
         if kind == "cycle_target":
-            idx = TARGETS.index(self.state.target)
-            cmd = {"cmd": "select", "target": TARGETS[(idx + 1) % len(TARGETS)]}
             kind = "select"
+            cmd = {"cmd": "select", "target": ROOM}
         if kind == "nudge" and cmd.get("_scale") == "dpos":
             scale = self.state.step_m
             cmd = {
                 "cmd": "nudge",
-                "target": cmd.get("target", self.state.target),
+                "target": ROOM,
                 "dpos": [scale * float(v) for v in cmd.get("dpos", (0, 0, 0))],
             }
         elif kind == "nudge" and cmd.get("_scale") == "drxyz":
             scale = self.state.step_deg
             cmd = {
                 "cmd": "nudge",
-                "target": cmd.get("target", self.state.target),
+                "target": ROOM,
                 "drxyz": [scale * float(v) for v in cmd.get("drxyz", (0, 0, 0))],
             }
         elif kind == "nudge" and cmd.get("_scale") == "dscale_uniform":
             cmd = {
                 "cmd": "nudge",
-                "target": cmd.get("target", self.state.target),
+                "target": ROOM,
                 "dscale_uniform": self.state.step_s
                 * float(cmd.get("dscale_uniform", 0.0)),
             }
         if kind == "help":
             self._reply(sock, "ok", help_text=HELP)
             return
-        if kind == "reset":
-            target = _canonical_target(str(cmd.get("target", self.state.target)))
-            if target is None:
-                self._reply(sock, f"unknown target {cmd.get('target')!r}")
-                return
-            self.state.prims[target] = deepcopy(self._baseline[target])
-            self._dirty.add(target)
-            self._reply(sock, _fmt_prim(target, self.state.prims[target]))
-            return
-        if kind == "reset_all":
+        if kind in {"reset", "reset_all"}:
             self.state.prims = deepcopy(self._baseline)
-            self._dirty.update(TARGETS)
-            self._reply(sock, "reset all")
+            self._dirty = True
+            self._reply(sock, _fmt_prim(ROOM, self.state.prims[ROOM]))
             return
         if kind == "print":
-            text = (
-                format_cli(self.state.prims)
-                + "\n"
-                + format_constants(self.state.prims)
-            )
+            text = format_cli(self.state.prims)
             self._last_print = text
-            print("\nKitchen align snapshot\n" + text, flush=True)
+            print("\nRoom align snapshot\n" + text, flush=True)
             self._reply(sock, "print", extra={"print": text})
             return
         status = apply_command(self.state, cmd)
-        target = _canonical_target(str(cmd.get("target", self.state.target)))
         if str(cmd.get("cmd", "")).lower() in {
             "nudge",
             "set",
             "reset",
             "reset_all",
         }:
-            if target in TARGETS:
-                self._dirty.add(target)
+            self._dirty = True
         if str(cmd.get("cmd", "")).lower() in {"toggle_mesh", "set_mesh"}:
             self._mesh_dirty = True
-        if str(cmd.get("cmd", "")).lower() in {"nudge", "set"}:
-            self._dirty.add(self.state.target)
         self._reply(sock, status)
 
-    def _apply_spec(self, usd_name: str, spec: dict[str, list[float]], *, mesh: bool = False) -> None:
-        prim = self._usd_prims.get(usd_name)
+    def _apply_spec(self, spec: dict[str, list[float]]) -> None:
+        prim = self._usd_prims.get("root")
         if prim is None:
             return
-        rxyz = list(spec["rxyz"])
-        if mesh:
-            rxyz[0] = rxyz[0] + self._mesh_rx_offset_deg
-        quat = self._euler_to_quat(tuple(rxyz))
-        scale = tuple(spec.get("scale", list(UNIT_SCALE)))
+        quat = self._euler_to_quat(tuple(spec["rxyz"]))
         pos = tuple(spec["pos"])
-        if usd_name == "robot" and self._apply_robot is not None:
-            self._apply_robot(pos, quat)
-        self._set_xform(prim, pos, quat, scale)
+        scale = tuple(spec.get("scale", list(UNIT_SCALE)))
+        self._set_xform(prim, pos, quat)
+        from pxr import Gf, UsdGeom  # noqa: PLC0415
+
+        UsdGeom.Xformable(prim).AddScaleOp(UsdGeom.XformOp.PrecisionDouble).Set(
+            Gf.Vec3d(*scale)
+        )
 
     def _flush_usd(self) -> None:
-        for name in list(self._dirty):
-            spec = self.state.prims.get(name)
-            if spec is None:
-                continue
-            try:
-                if name == "kitchen":
-                    self._apply_spec("volume", spec)
-                    self._apply_spec("mesh", spec, mesh=True)
-                else:
-                    self._apply_spec(name, spec)
-            except Exception as exc:  # noqa: BLE001 — keep the aligner alive
-                print(f"Warning: kitchen align set_xform {name}: {exc}", file=sys.stderr)
-        self._dirty.clear()
+        if self._dirty:
+            spec = self.state.prims.get(ROOM)
+            if spec is not None:
+                try:
+                    self._apply_spec(spec)
+                except Exception as exc:  # noqa: BLE001 — keep the aligner alive
+                    print(f"Warning: room align set_xform: {exc}", file=sys.stderr)
+            self._dirty = False
         if self._mesh_dirty:
             mesh = self._usd_prims.get("mesh")
             if mesh is not None:
@@ -633,7 +546,7 @@ class KitchenAlignController:
                     else:
                         imageable.MakeInvisible()
                 except Exception as exc:  # noqa: BLE001
-                    print(f"Warning: kitchen align mesh vis: {exc}", file=sys.stderr)
+                    print(f"Warning: room align mesh vis: {exc}", file=sys.stderr)
             self._mesh_dirty = False
 
     def _reply(
@@ -775,25 +688,21 @@ class AlignClient:
 
 def _render(state: dict[str, Any], status: str, typed: str | None) -> str:
     prims = state.get("prims") or {}
-    target = state.get("target", "kitchen")
-    rows = []
-    rows.append(
-        f"  kitchen aligner   {state.get('step_m', 0):g} m  "
+    spec = prims.get(ROOM) or {
+        "pos": [0, 0, 0],
+        "rxyz": [0, 0, 0],
+        "scale": [1, 1, 1],
+    }
+    rows = [
+        f"  room aligner   {state.get('step_m', 0):g} m  "
         f"{state.get('step_deg', 0):g} deg  "
         f"{state.get('step_s', 0):g} scale   "
-        f"mesh {'ON ' if state.get('mesh_visible') else 'off'}"
-    )
-    rows.append("  " + "─" * 62)
-    for name in TARGETS:
-        spec = prims.get(name) or {
-            "pos": [0, 0, 0],
-            "rxyz": [0, 0, 0],
-            "scale": [1, 1, 1],
-        }
-        mark = "▶" if name == target else " "
-        rows.append(f"  {mark} {_fmt_prim(name, spec)}")
-    rows.append("  " + "─" * 62)
-    rows.append(f"  {status}")
+        f"mesh {'ON ' if state.get('mesh_visible') else 'off'}",
+        "  " + "─" * 62,
+        f"  ▶ {_fmt_prim(ROOM, spec)}",
+        "  " + "─" * 62,
+        f"  {status}",
+    ]
     if typed is not None:
         rows.append(f"  :{typed}")
     else:
@@ -836,7 +745,7 @@ def run_interactive(client: AlignClient) -> int:
                 if key in {"\r", "\n"}:
                     try:
                         cmd = parse_typed_command(
-                            typed, client.state.get("target", "kitchen")
+                            typed, client.state.get("target", ROOM)
                         )
                     except ValueError as exc:
                         status = str(exc)
@@ -909,7 +818,7 @@ def run_repl(client: AlignClient) -> int:
         if cmd is None:
             try:
                 cmd = parse_typed_command(
-                    line, client.state.get("target", "kitchen")
+                    line, client.state.get("target", ROOM)
                 )
             except ValueError as exc:
                 print(exc)
@@ -928,11 +837,11 @@ def build_client_parser() -> argparse.ArgumentParser:
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument("--host", default=os.environ.get("KITCHEN_ALIGN_HOST", DEFAULT_HOST))
+    parser.add_argument("--host", default=os.environ.get("ALIGN_HOST", DEFAULT_HOST))
     parser.add_argument(
         "--port",
         type=int,
-        default=int(os.environ.get("KITCHEN_ALIGN_PORT", DEFAULT_PORT)),
+        default=int(os.environ.get("ALIGN_PORT", DEFAULT_PORT)),
     )
     parser.add_argument(
         "command",
@@ -949,9 +858,9 @@ def main(argv: list[str] | None = None) -> int:
     except OSError as exc:
         dest = Path(__file__).name
         print(
-            f"Cannot connect to kitchen aligner at {args.host}:{args.port}: {exc}\n"
+            f"Cannot connect to room aligner at {args.host}:{args.port}: {exc}\n"
             "Start the room scene first (NuRec .usdz). The sim prints\n"
-            f"  Kitchen aligner on {DEFAULT_HOST}:{DEFAULT_PORT}\n"
+            f"  Room aligner on {DEFAULT_HOST}:{DEFAULT_PORT}\n"
             f"then run:  python3 task2_isaacsim/scripts/{dest}",
             file=sys.stderr,
         )
@@ -959,7 +868,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.command:
             cmd = parse_typed_command(
-                " ".join(args.command), client.state.get("target", "kitchen")
+                " ".join(args.command), client.state.get("target", ROOM)
             )
             if cmd is None:
                 return 0
