@@ -33,7 +33,8 @@ from pathlib import Path
 from typing import Any, Callable, Iterable
 
 DEFAULT_HOST = "127.0.0.1"
-DEFAULT_PORT = 8765
+# Not 8765: camelo's policy websocket uses that port on the same host.
+DEFAULT_PORT = 9876
 ROOM = "room"
 STEP_M = (0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.0)
 STEP_DEG = (1.0, 5.0, 15.0, 45.0, 90.0)
