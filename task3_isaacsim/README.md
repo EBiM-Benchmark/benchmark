@@ -124,8 +124,10 @@ same normalized browser/GELLO opening contract; the helper stack applies the
 profile-specific physical joint range. In the Isaac Sim window, the Up/Down
 arrow keys control the vertical spine.
 
-The browser does not drive the mobile base. Use the ROS command below, the
-keyboard-base publisher, or a foot pedal for base motion.
+The browser drives both arms, grippers, and the mobile base via a 6-button
+directional pad posting to `/api/base_drive` (`/pedal/state`). First click
+**UI Control** in the header to activate publishing. Alternatively, use the
+ROS command below, the keyboard-base publisher, or a foot pedal for base motion.
 
 ## Argument combinations
 
@@ -266,7 +268,7 @@ reference only. With the Isaac Sim container running:
 ```bash
 docker exec -it isaac-sim-5-1-0-workshop bash -lc \
   'cd /workspace/EBiM_Challenge && \
-   /isaac-sim/python.sh task3_isaacsim/deprecated/scene_robot_room_rmpflow.py'
+   /isaac-sim/python.sh task3_isaacsim/deprecated/scripts/scene_robot_room_rmpflow.py'
 ```
 
 This path uses in-window dual-arm, gripper, and base keys. It does not start the

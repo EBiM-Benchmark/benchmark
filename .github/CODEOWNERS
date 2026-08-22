@@ -10,3 +10,5 @@
 # including one from a fallback with no domain owner involved. The domain/fallback
 # distinction is a convention for reviewers, not something CODEOWNERS enforces.
 /task1_isaacsim/ @QGSQ @2houyuhang @ShangQingLiu @Ju6276
+/task3_isaacsim/ @leochien1110 @ShangQingLiu @Ju6276
+/scripts/evaluation/task3/ @leochien1110 @ShangQingLiu @Ju6276

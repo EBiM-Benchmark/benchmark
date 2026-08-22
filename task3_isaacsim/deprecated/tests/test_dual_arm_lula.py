@@ -12,7 +12,7 @@ import pytest
 import yaml
 
 TASK3_ROOT = Path(__file__).resolve().parents[2]
-COMMON_DIR = Path(__file__).resolve().parents[1] / "common"
+COMMON_DIR = Path(__file__).resolve().parents[1] / "scripts" / "common"
 sys.path.insert(0, str(COMMON_DIR))
 
 

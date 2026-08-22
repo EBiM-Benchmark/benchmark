@@ -10,7 +10,9 @@ import numpy as np
 import pytest
 
 SCRIPT_PATH = (
-    Path(__file__).resolve().parents[1] / "scene_robot_room_rmpflow.py"
+    Path(__file__).resolve().parents[1]
+    / "scripts"
+    / "scene_robot_room_rmpflow.py"
 )
 spec = importlib.util.spec_from_file_location(
     "scene_robot_room_rmpflow", SCRIPT_PATH

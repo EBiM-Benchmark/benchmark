@@ -179,8 +179,25 @@ class EvalOverlay:
             color = COLOR_GREEN if i < passed_count else COLOR_RED
             color_attr.Set([_vec3f(*color)])
 
+    def _find_prim(self, name: str):
+        direct = self._stage.GetPrimAtPath(f"{self._room_base}/{name}")
+        if direct and direct.IsValid():
+            return direct
+        room = self._stage.GetPrimAtPath(self._room_base)
+        if room and room.IsValid():
+            for child in room.GetChildren():
+                cname = child.GetName()
+                if cname == name:
+                    return child
+                if (
+                    cname.startswith(f"{name}_")
+                    and cname[len(name) + 1 :].isdigit()
+                ):
+                    return child
+        return None
+
     def _world_point(self, name: str) -> grading.Point3D | None:
-        prim = self._stage.GetPrimAtPath(f"{self._room_base}/{name}")
+        prim = self._find_prim(name)
         if not prim or not prim.IsValid():
             return None
         world = self._xform_cache.GetLocalToWorldTransform(prim)
@@ -200,7 +217,7 @@ class EvalOverlay:
         return bounds, bounds_3d.z_min
 
     def _world_bounds_3d(self, name: str) -> grading.Bounds3D | None:
-        prim = self._stage.GetPrimAtPath(f"{self._room_base}/{name}")
+        prim = self._find_prim(name)
         if not prim or not prim.IsValid():
             return None
         rng = self._bbox_cache.ComputeWorldBound(prim).ComputeAlignedRange()

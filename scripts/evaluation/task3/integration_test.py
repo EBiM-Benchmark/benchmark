@@ -121,11 +121,18 @@ def main() -> None:
         exit_code = 1 if failed else 0
         if not args.headless:
             keep_gui_open(app)
-        if exit_code:
-            raise SystemExit(exit_code)
+    except Exception as e:
+        import traceback
+
+        print("An error occurred:", e)
+        traceback.print_exc()
+        exit_code = 1
+
     finally:
         if args.headless:
             app.close()
+        if exit_code != 0:
+            raise SystemExit(exit_code)
 
 
 def create_task3_stage(
@@ -920,6 +927,14 @@ def resolve_prim_path(stage: Any, name: str) -> str:
         prim = stage.GetPrimAtPath(candidate)
         if prim and prim.IsValid():
             return candidate
+
+    for prim in stage.Traverse():
+        prim_name = prim.GetName()
+        if prim_name == name or (
+            prim_name.startswith(f"{name}_")
+            and prim_name[len(name) + 1 :].isdigit()
+        ):
+            return str(prim.GetPath())
 
     suffix = f"/{name}"
     for prim in stage.Traverse():

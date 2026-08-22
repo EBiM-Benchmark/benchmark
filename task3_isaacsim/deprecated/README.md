@@ -13,4 +13,4 @@ keyboard/pedal input publishes `/pedal/state` to drive the swerve base.
 The code is kept here for reference only. It is **not** launched by
 `../scripts/run_isaacsim_teleop.sh`, and nothing in the supported runtime
 imports it. Its tests remain runnable in place under `tests/` (they resolve
-`../common` and `../scene_robot_room_rmpflow.py` relative to this folder).
+`../scripts/common` and `../scripts/scene_robot_room_rmpflow.py` relative to this folder).
