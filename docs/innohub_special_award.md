@@ -42,7 +42,8 @@ Total **10 points** = Illumination Robustness **4 points** + Collision Avoidance
 **6 points**.
 
 Task 3 comprises four stages: Table Setup → Feeding → Bean Recovery → Cleanup. Points are
-awarded per stage, against the Task 3 stage success criteria defined in the Rulebook,
+awarded per stage, against the Task 3 stage success criteria defined in the
+[Rulebook](https://ebim-benchmark.github.io/docs/Autonomous_Robot_Benchmark_Rulebook_1.0.pdf),
 where Task 3 is referred to as Track 3.
 
 ### 4. Illumination Robustness — 4 points
@@ -162,7 +163,7 @@ Results are announced on **1 October 2026**, together with the main competition 
 
 总分 **10 分** = 光照鲁棒性 **4 分** + 避障能力 **6 分**。
 
-任务三包含四个 stage：摆桌 → 喂食 → 豆粒回收 → 收拾。评分以规则手册所定义的任务三各 stage 成功判据为准（该手册中任务三称为 Track 3），逐 stage 计分。
+任务三包含四个 stage：摆桌 → 喂食 → 豆粒回收 → 收拾。评分以[规则手册](https://ebim-benchmark.github.io/docs/Autonomous_Robot_Benchmark_Rulebook_1.0.pdf)所定义的任务三各 stage 成功判据为准（该手册中任务三称为 Track 3），逐 stage 计分。
 
 ### 4. 光照鲁棒性 — 4 分
 
