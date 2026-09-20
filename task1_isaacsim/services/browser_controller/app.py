@@ -561,7 +561,7 @@ class BrowserControllerBridge:
 
         # ── Mobile-base drive (foot-pedal token stream) ──────────────────
         # Hold-to-drive base commands are relayed to the teleop bridges over
-        # /pedal/state as std_msgs/String tokens ("FWD"/"BACK"/"A"/"B"/…).
+        # /pedal/state as std_msgs/String tokens ("go_forward"/"go_backward"/…).
         # A token is republished at ~10 Hz while its heartbeat stays fresh;
         # on release we emit one explicit "STOP" so the bridges zero the base
         # twist immediately instead of waiting for their 1s pedal timeout.

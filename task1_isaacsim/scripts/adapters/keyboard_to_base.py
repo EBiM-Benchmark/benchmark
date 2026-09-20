@@ -16,9 +16,9 @@ mobile base from ``/pedal/state`` tokens. This node remaps the keyboard tokens t
 the pedal vocabulary the bridge understands so a plain keyboard can drive the
 simulated base:
 
-    w -> FWD    s -> BACK
-    a -> A      d -> B
-    q -> A+C    e -> B+C
+    w -> go_forward    s -> go_backward
+    a -> go_left       d -> go_right
+    q -> turn_left      e -> turn_right
 
 The keyboard publisher only emits messages while a key is pressed (auto-repeat),
 so releasing every key stops the stream and the bridge's ``--pedal-timeout``
@@ -39,12 +39,12 @@ from std_msgs.msg import String
 
 # Keyboard token (from keyboard_state_publisher) -> bridge /pedal/state token.
 KEY_TO_PEDAL = {
-    "w": "FWD",
-    "s": "BACK",
-    "a": "A",
-    "d": "B",
-    "q": "A+C",
-    "e": "B+C",
+    "w": "go_forward",
+    "s": "go_backward",
+    "a": "go_left",
+    "d": "go_right",
+    "q": "turn_left",
+    "e": "turn_right",
 }
 
 

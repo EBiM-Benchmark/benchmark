@@ -68,8 +68,10 @@ Current launcher behavior:
   bridge. Browser commands are included only when browser control is enabled.
 - `/bridge/*`: raw GELLO commands. `task1_ros_republisher` maps them to
   `/isaac/*` and applies Robotiq open/close calibration.
-- `/pedal/state`: base motion tokens (`A`, `B`, `A+C`,
-  `B+C`) converted by the bridge into steering and wheel targets.
+- `/pedal/state`: base motion tokens (`go_forward`, `go_backward`, `go_left`,
+  `go_right`, `turn_left`, `turn_right`) converted by the bridge into steering
+  and wheel targets, plus `spine_up`/`spine_down` chord tokens (dual-pedal
+  mode only) that move `franka_spine_vertical_joint` instead.
 - Kit keyboard arm control bypasses ROS. While `--with-keyboard-teleop` is
   active, the bridge ignores ROS arm/gripper commands and RMPflow owns those
   targets; base and spine control remain available.
@@ -225,17 +227,17 @@ Keep the keyboard-publisher terminal focused while driving the base:
 
 | Key | Base motion | `/pedal/state` token |
 | --- | --- | --- |
-| `w` | Move forward | `FWD` |
-| `s` | Move backward | `BACK` |
-| `a` | Strafe left | `A` |
-| `d` | Strafe right | `B` |
-| `q` | Rotate left | `A+C` |
-| `e` | Rotate right | `B+C` |
+| `w` | Move forward | `go_forward` |
+| `s` | Move backward | `go_backward` |
+| `a` | Strafe left | `go_left` |
+| `d` | Strafe right | `go_right` |
+| `q` | Rotate left | `turn_left` |
+| `e` | Rotate right | `turn_right` |
 
 The publisher emits messages while a key is held or auto-repeated. After no
 new message arrives for `--pedal-timeout` (default: 1.0 s), the bridge stops
-the base. `FWD/BACK` are accepted from both `keyboard_to_base.py` and the Task
-1 browser controller.
+the base. `go_forward`/`go_backward` are accepted from both `keyboard_to_base.py`
+and the Task 1 browser controller.
 
 The base input path is:
 
@@ -304,8 +306,19 @@ The dual-pedal publisher starts automatically and uses this mapping:
 
 | Device | Left button | Middle button | Right button |
 |---|---|---|---|
-| Pedal 1 | Forward | Backward | Translate left |
-| Pedal 2 | Translate right | Rotate counterclockwise | Rotate clockwise |
+| Pedal 1 | `go_forward` | `go_left` | `turn_right` |
+| Pedal 2 | `go_backward` | `go_right` | `turn_left` |
+
+Holding one button from each pedal at the same time chords into a spine-lift
+command instead of a base command:
+
+| Chord | `/pedal/state` token | Effect |
+|---|---|---|
+| Pedal 1 right + Pedal 2 left | `spine_down` | Lower `franka_spine_vertical_joint` |
+| Pedal 1 left + Pedal 2 right | `spine_up` | Raise `franka_spine_vertical_joint` |
+
+The spine moves at `--pedal-spine-speed` (default: 0.1 m/s) while a chord is
+held, clamped to `[--spine-keyboard-min, --spine-keyboard-max]`.
 
 It auto-detects exactly two `PCsensor FootSwitch Keyboard` devices through
 `/dev/input/by-path`. Because these pedals expose the same USB ID and no unique
@@ -318,8 +331,9 @@ PEDAL_TWO_DEVICE=/dev/input/by-path/<second-pedal>-event-kbd
 ```
 
 The input devices are grabbed exclusively in dual mode, which prevents their
-`a`/`b`/`c` keystrokes from also reaching a focused terminal. Pressing more
-than one pedal button at once publishes `STOP`.
+`a`/`b`/`c` keystrokes from also reaching a focused terminal. Pressing any
+other combination of two or more buttons (not one of the spine chords above)
+publishes `STOP`.
 
 ### Browser control
 
@@ -341,6 +355,7 @@ velocity targets. The relevant runtime parameters are:
 --pedal-linear-speed       default 0.5 m/s
 --pedal-angular-speed      default 0.5 rad/s
 --pedal-timeout            default 1.0 s
+--pedal-spine-speed        default 0.1 m/s
 --spine-keyboard-step      default 0.01 m
 --spine-keyboard-min       default 0.0 m
 --spine-keyboard-max       default 0.850 m

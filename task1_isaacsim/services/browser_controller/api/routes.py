@@ -16,7 +16,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 _STATIC_DIR = os.path.join(os.path.dirname(__file__), "..", "static")
 
 # Accepted mobile-base drive tokens. "STOP"/null clear the active token.
-_BASE_DRIVE_TOKENS = frozenset({"FWD", "BACK", "A", "B", "A+C", "B+C", "STOP"})
+_BASE_DRIVE_TOKENS = frozenset(
+    {"go_forward", "go_backward", "go_left", "go_right", "turn_left", "turn_right", "STOP"}
+)
 
 
 class SliderRequestHandler(BaseHTTPRequestHandler):

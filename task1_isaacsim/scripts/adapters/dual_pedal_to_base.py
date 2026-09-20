@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Copyright (c) 2026 The EBiM Benchmark Contributors
 # SPDX-License-Identifier: Apache-2.0
-"""Publish six mobile-base commands from two three-button USB foot pedals."""
+"""Publish base-motion and spine-lift commands from two three-button USB foot pedals."""
 
 from __future__ import annotations
 
@@ -18,15 +18,21 @@ from std_msgs.msg import String
 
 
 PEDAL_ONE_MAP = {
-    ecodes.KEY_A: "FWD",
-    ecodes.KEY_B: "BACK",
-    ecodes.KEY_C: "A",
+    ecodes.KEY_A: "go_forward",
+    ecodes.KEY_B: "go_left",
+    ecodes.KEY_C: "turn_right",
 }
 PEDAL_TWO_MAP = {
-    ecodes.KEY_A: "B",
-    ecodes.KEY_B: "A+C",
-    ecodes.KEY_C: "B+C",
+    ecodes.KEY_A: "go_backward",
+    ecodes.KEY_B: "go_right",
+    ecodes.KEY_C: "turn_left",
 }
+
+# Chording two specific single-pedal buttons across both pedals drives the
+# spine lift instead of the base. Each entry is (pedal_one_key, pedal_two_key);
+# the combo only fires when those are the *only* two keys held.
+SPINE_DOWN_KEYS = (ecodes.KEY_C, ecodes.KEY_A)  # pedal 1 right + pedal 2 left
+SPINE_UP_KEYS = (ecodes.KEY_A, ecodes.KEY_C)  # pedal 1 left + pedal 2 right
 
 
 def _parse_args() -> argparse.Namespace:
@@ -112,6 +118,12 @@ class DualPedalPublisher(Node):
 
 
 def _active_state(pressed: list[set[int]]) -> str:
+    pedal_one_keys, pedal_two_keys = pressed
+    if pedal_one_keys == {SPINE_DOWN_KEYS[0]} and pedal_two_keys == {SPINE_DOWN_KEYS[1]}:
+        return "spine_down"
+    if pedal_one_keys == {SPINE_UP_KEYS[0]} and pedal_two_keys == {SPINE_UP_KEYS[1]}:
+        return "spine_up"
+
     active = [
         token
         for key_map, keys in zip((PEDAL_ONE_MAP, PEDAL_TWO_MAP), pressed, strict=True)
@@ -138,11 +150,14 @@ def main() -> None:
     node = DualPedalPublisher(args.topic)
     node.get_logger().info(
         "Pedal 1: "
-        f"{pedal_paths[0]} [left=FWD, middle=BACK, right=LEFT]"
+        f"{pedal_paths[0]} [left=go_forward, middle=go_left, right=turn_right]"
     )
     node.get_logger().info(
         "Pedal 2: "
-        f"{pedal_paths[1]} [left=RIGHT, middle=CCW, right=CW]"
+        f"{pedal_paths[1]} [left=go_backward, middle=go_right, right=turn_left]"
+    )
+    node.get_logger().info(
+        "Chords: pedal1.right+pedal2.left=spine_down, pedal1.left+pedal2.right=spine_up"
     )
 
     try:

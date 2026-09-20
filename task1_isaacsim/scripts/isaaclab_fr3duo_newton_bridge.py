@@ -80,19 +80,25 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         "--pedal-linear-speed",
         type=float,
         default=0.5,
-        help="Base lateral translation speed in m/s used for pedal A/B commands.",
+        help="Base translation speed in m/s used for pedal go_forward/go_backward/go_left/go_right commands.",
     )
     parser.add_argument(
         "--pedal-angular-speed",
         type=float,
         default=0.5,
-        help="Base yaw speed in rad/s used for pedal A+C/B+C commands.",
+        help="Base yaw speed in rad/s used for pedal turn_left/turn_right commands.",
     )
     parser.add_argument(
         "--pedal-timeout",
         type=float,
         default=1.0,
         help="Seconds without a new /pedal/state message before forcing the base command to NONE.",
+    )
+    parser.add_argument(
+        "--pedal-spine-speed",
+        type=float,
+        default=0.1,
+        help="franka_spine_vertical_joint speed in m/s used for pedal spine_up/spine_down commands.",
     )
     parser.add_argument(
         "--spine-keyboard-step",
@@ -350,7 +356,19 @@ RIGHT_GRIPPER_DRIVER = "right_right_finger_joint"
 PEDAL_STATE_TOPIC = "/pedal/state"
 BASE_RELATIVE_POSE_TOPIC = "/isaac/base_pose_relative"
 BASE_COMMAND_TOPIC = "/isaac/base_command"
-_BASE_DRIVE_TOKENS = frozenset({"FWD", "BACK", "A", "B", "A+C", "B+C", "STOP"})
+_BASE_DRIVE_TOKENS = frozenset(
+    {
+        "go_forward",
+        "go_backward",
+        "go_left",
+        "go_right",
+        "turn_left",
+        "turn_right",
+        "spine_up",
+        "spine_down",
+        "STOP",
+    }
+)
 CAMERA_TOPICS = {
     "left_camera": (
         "/isaac/left_wrist_camera/image_compressed",
@@ -1130,6 +1148,17 @@ class SpineKeyboardController:
         self.target[:, 0] = value
         print(f"{self.joint_name}: target={value:.4f} m", flush=True)
 
+    def nudge_by(self, delta_m: float) -> None:
+        """Adjust the height target by ``delta_m`` without per-call logging.
+
+        Used by continuous, level-triggered inputs (dual-pedal spine_up/spine_down)
+        where logging every physics step would flood stdout.
+        """
+        if delta_m == 0.0:
+            return
+        current = float(self.target[0, 0].item())
+        self.target[:, 0] = max(self.min_m, min(self.max_m, current + delta_m))
+
     def _on_keyboard_event(self, event, *args, **kwargs):
         if self._carb_input is None:
             return True
@@ -1656,9 +1685,18 @@ class IsaacLabRosBridge(Node):
                 command[name] = float(msg.position[idx])
 
     def _on_pedal_state(self, msg: String):
-        state = msg.data.strip().upper().replace(" ", "")
+        state = msg.data.strip()
         self._latest_pedal_state = state if state in _BASE_DRIVE_TOKENS else "NONE"
         self._latest_pedal_time_sec = self.get_clock().now().nanoseconds * 1e-9
+
+    def _resolve_pedal_state(self, timeout_sec: float) -> str:
+        if self._latest_pedal_time_sec is None:
+            return "NONE"
+        now_sec = self.get_clock().now().nanoseconds * 1e-9
+        if timeout_sec >= 0.0 and now_sec - self._latest_pedal_time_sec > timeout_sec:
+            self._latest_pedal_state = "NONE"
+            return "NONE"
+        return self._latest_pedal_state
 
     def pedal_base_twist(
         self,
@@ -1666,30 +1704,28 @@ class IsaacLabRosBridge(Node):
         angular_speed_radps: float,
         timeout_sec: float,
     ) -> tuple[float, float, float]:
-        if self._latest_pedal_time_sec is None:
-            return 0.0, 0.0, 0.0
-        now_sec = self.get_clock().now().nanoseconds * 1e-9
-        if timeout_sec >= 0.0 and now_sec - self._latest_pedal_time_sec > timeout_sec:
-            self._latest_pedal_state = "NONE"
-            return 0.0, 0.0, 0.0
-        state = self._latest_pedal_state
-        # Keyboard and browser controls emit FWD/BACK; the physical pedal
-        # continues to use the strafe/yaw tokens below.
-        if state in {"NONE", "STOP"}:
-            return 0.0, 0.0, 0.0
-        if state == "FWD":
+        state = self._resolve_pedal_state(timeout_sec)
+        if state == "go_forward":
             return linear_speed_mps, 0.0, 0.0
-        if state == "BACK":
+        if state == "go_backward":
             return -linear_speed_mps, 0.0, 0.0
-        if state == "A":
+        if state == "go_left":
             return 0.0, linear_speed_mps, 0.0
-        if state == "B":
+        if state == "go_right":
             return 0.0, -linear_speed_mps, 0.0
-        if state == "A+C":
+        if state == "turn_left":
             return 0.0, 0.0, angular_speed_radps
-        if state == "B+C":
+        if state == "turn_right":
             return 0.0, 0.0, -angular_speed_radps
         return 0.0, 0.0, 0.0
+
+    def pedal_spine_direction(self, timeout_sec: float) -> int:
+        state = self._resolve_pedal_state(timeout_sec)
+        if state == "spine_up":
+            return 1
+        if state == "spine_down":
+            return -1
+        return 0
 
     def apply_commands(
         self,
@@ -2741,6 +2777,11 @@ def main():
                 robot.set_joint_velocity_target_index(target=drive_targets, joint_ids=drive_ids)
             node.set_applied_base_twist(vx, vy, wz)
             if spine_keyboard_controller is not None:
+                spine_direction = node.pedal_spine_direction(args_cli.pedal_timeout)
+                if spine_direction != 0:
+                    spine_keyboard_controller.nudge_by(
+                        spine_direction * args_cli.pedal_spine_speed * sim.get_physics_dt()
+                    )
                 spine_keyboard_controller.apply()
             if arm_keyboard_teleop is not None:
                 arm_keyboard_teleop.apply(sim.get_physics_dt())
@@ -2748,7 +2789,6 @@ def main():
             sim.step()
             scene.update(sim.get_physics_dt())
             step_count += 1
-            live_gripper_boxes = None
             if args_cli.cable_robotiq_finger_targets:
                 world_offset = tuple(float(v) for v in args_cli.cable_world_position_offset)
                 finger_targets, resolved_paths = _collect_robotiq_finger_targets(
@@ -2778,11 +2818,10 @@ def main():
                             flush=True,
                         )
                     node.publish_cable_robotiq_finger_targets(finger_targets)
-                    live_gripper_boxes = finger_targets
             _update_cable_stage_visual(cable_curve_visual, node.latest_cable_points())
             _update_cable_gripper_collision_box_visual(
                 cable_gripper_collision_visual,
-                live_gripper_boxes if live_gripper_boxes is not None else node.latest_cable_gripper_boxes(),
+                node.latest_cable_gripper_boxes(),
             )
             if step_count % sample_every_steps == 0:
                 node.publish_sample(
