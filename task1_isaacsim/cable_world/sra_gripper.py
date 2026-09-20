@@ -510,8 +510,17 @@ class RobotiqFingerPoseBindController:
     def update_from_contacts(self, state: newton.State, contacts: Any) -> None:
         if not self.config.enabled:
             return
+        # Fetch body_q and the contact arrays once per substep and share them across
+        # both finger pairs. Each of these calls is a blocking GPU->CPU sync, and the
+        # per-pair helper methods below used to repeat them redundantly (up to ~7 times
+        # per pair per substep for unchanged data), which dominated the substep cost.
+        body_q = state.body_q.numpy()
+        contact_count = int(contacts.rigid_contact_count.numpy()[0])
+        shape0 = contacts.rigid_contact_shape0.numpy()[:contact_count]
+        shape1 = contacts.rigid_contact_shape1.numpy()[:contact_count]
+        normals = contacts.rigid_contact_normal.numpy()[:contact_count]
         for pair_index, pair in enumerate(self.finger_pairs):
-            self._update_pair_from_contacts(pair_index, pair, state, contacts)
+            self._update_pair_from_contacts(pair_index, pair, state, body_q, shape0, shape1, normals)
 
     def apply_pose_binding(self, state: newton.State) -> None:
         body_q = state.body_q.numpy()
@@ -535,22 +544,31 @@ class RobotiqFingerPoseBindController:
             state.body_q.assign(body_q)
             state.body_qd.assign(body_qd)
 
-    def _update_pair_from_contacts(self, pair_index: int, pair: tuple[int, int], state: newton.State, contacts: Any) -> None:
+    def _update_pair_from_contacts(
+        self,
+        pair_index: int,
+        pair: tuple[int, int],
+        state: newton.State,
+        body_q: np.ndarray,
+        shape0: np.ndarray,
+        shape1: np.ndarray,
+        normals: np.ndarray,
+    ) -> None:
         pair_state = self._states[pair_index]
-        if self._pair_gap_m(state, pair) > self.config.release_gap_m:
+        if self._pair_gap_m(body_q, pair) > self.config.release_gap_m:
             self.release(pair_index)
             return
         if pair_state["state_name"] == "grasped":
-            if self._grasp_error_exceeds_limit(pair_index, pair, state):
+            if self._grasp_error_exceeds_limit(pair_index, pair, body_q):
                 self.release(pair_index)
                 return
             self.apply_pose_binding(state)
             return
-        if not self._candidate_inside_activation_radius(state, pair):
+        if not self._candidate_inside_activation_radius(body_q, pair):
             self.release(pair_index)
             return
 
-        candidate_body_id = self._detect_attach_candidate(state, contacts, pair)
+        candidate_body_id = self._detect_attach_candidate(body_q, shape0, shape1, normals, pair)
         if candidate_body_id is None:
             self.release(pair_index)
             return
@@ -561,11 +579,10 @@ class RobotiqFingerPoseBindController:
             pair_state["confirm_steps"] = 1
         pair_state["state_name"] = "confirming"
         if int(pair_state["confirm_steps"]) >= self.config.confirm_steps:
-            self._enter_grasped(pair_index, pair, state, candidate_body_id)
+            self._enter_grasped(pair_index, pair, body_q, candidate_body_id)
             self.apply_pose_binding(state)
 
-    def _enter_grasped(self, pair_index: int, pair: tuple[int, int], state: newton.State, body_id: int) -> None:
-        body_q = state.body_q.numpy()
+    def _enter_grasped(self, pair_index: int, pair: tuple[int, int], body_q: np.ndarray, body_id: int) -> None:
         root_pose = self._pair_pose_from_body_q(body_q, pair)
         relative_position, relative_rotation = _relative_pose_np(root_pose, body_q[body_id])
         pair_state = self._states[pair_index]
@@ -574,26 +591,28 @@ class RobotiqFingerPoseBindController:
         pair_state["relative_position"] = relative_position
         pair_state["relative_rotation"] = relative_rotation
 
-    def _grasp_error_exceeds_limit(self, pair_index: int, pair: tuple[int, int], state: newton.State) -> bool:
+    def _grasp_error_exceeds_limit(self, pair_index: int, pair: tuple[int, int], body_q: np.ndarray) -> bool:
         pair_state = self._states[pair_index]
         body_id = pair_state["grasped_body_id"]
         rel_pos = pair_state["relative_position"]
         rel_rot = pair_state["relative_rotation"]
         if body_id is None or rel_pos is None or rel_rot is None:
             raise ValueError("Robotiq grasp pose bind state is missing grasp data.")
-        body_q = state.body_q.numpy()
         target_pose = _compose_pose_np(self._pair_pose_from_body_q(body_q, pair), rel_pos, rel_rot)
         current_pose = body_q[int(body_id)]
         position_error = float(np.linalg.norm(np.asarray(current_pose[:3], dtype=np.float64) - target_pose[:3]))
         rotation_error = _quat_angle_np(np.asarray(current_pose[3:7], dtype=np.float64), target_pose[3:7])
         return position_error > self.config.max_position_error_m or rotation_error > self.config.max_rotation_error_rad
 
-    def _detect_attach_candidate(self, state: newton.State, contacts: Any, pair: tuple[int, int]) -> int | None:
-        contact_count = int(contacts.rigid_contact_count.numpy()[0])
-        shape0 = contacts.rigid_contact_shape0.numpy()[:contact_count]
-        shape1 = contacts.rigid_contact_shape1.numpy()[:contact_count]
-        normals = contacts.rigid_contact_normal.numpy()[:contact_count]
-        root_pose = self._pair_pose_from_body_q(state.body_q.numpy(), pair)
+    def _detect_attach_candidate(
+        self,
+        body_q: np.ndarray,
+        shape0: np.ndarray,
+        shape1: np.ndarray,
+        normals: np.ndarray,
+        pair: tuple[int, int],
+    ) -> int | None:
+        root_pose = self._pair_pose_from_body_q(body_q, pair)
         grasp_axis = rotate_vector_by_quat(root_pose[3:7], np.asarray((0.0, 1.0, 0.0), dtype=np.float64))
 
         first_shape = self.finger_shape_ids[pair[0]]
@@ -655,10 +674,9 @@ class RobotiqFingerPoseBindController:
                 second_alignments[object_body] = alignment
                 second_normals[object_body] = normal
 
-    def _candidate_inside_activation_radius(self, state: newton.State, pair: tuple[int, int]) -> bool:
+    def _candidate_inside_activation_radius(self, body_q: np.ndarray, pair: tuple[int, int]) -> bool:
         if self.config.activation_radius_m == 0.0:
             return True
-        body_q = state.body_q.numpy()
         root_position = self._pair_pose_from_body_q(body_q, pair)[:3]
         candidate_positions = np.asarray(body_q[list(self.candidate_body_ids), :3], dtype=np.float64)
         deltas = candidate_positions - root_position[None, :]
@@ -666,8 +684,7 @@ class RobotiqFingerPoseBindController:
         activation_radius_sq = float(self.config.activation_radius_m * self.config.activation_radius_m)
         return min_distance_sq <= activation_radius_sq
 
-    def _pair_gap_m(self, state: newton.State, pair: tuple[int, int]) -> float:
-        body_q = state.body_q.numpy()
+    def _pair_gap_m(self, body_q: np.ndarray, pair: tuple[int, int]) -> float:
         first = np.asarray(body_q[self.finger_body_ids[pair[0]], :3], dtype=np.float64)
         second = np.asarray(body_q[self.finger_body_ids[pair[1]], :3], dtype=np.float64)
         return float(np.linalg.norm(second - first))

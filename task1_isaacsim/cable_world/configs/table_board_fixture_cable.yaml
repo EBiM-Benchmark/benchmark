@@ -43,8 +43,8 @@ board:
     zero_downward_velocity: true
 simulation:
   fps: 60
-  substeps: 12
-  iterations: 64
+  substeps: 4
+  iterations: 8
   gravity: [0.0, 0.0, -9.81]
 solver:
   friction_epsilon: 0.01

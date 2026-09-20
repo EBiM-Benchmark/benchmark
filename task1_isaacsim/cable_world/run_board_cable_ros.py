@@ -67,13 +67,13 @@ def _add_ros_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--robotiq-finger-max-linear-speed",
         type=float,
-        default=0.35,
+        default=3.0,
         help="Maximum linear speed in m/s used while smoothing each Robotiq finger collision body target.",
     )
     parser.add_argument(
         "--robotiq-finger-max-angular-speed",
         type=float,
-        default=2.0,
+        default=12.0,
         help="Maximum angular speed in rad/s used while smoothing each Robotiq finger collision body target.",
     )
     parser.add_argument(
